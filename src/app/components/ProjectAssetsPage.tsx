@@ -289,7 +289,7 @@ export function ProjectAssetsPage() {
           <button onClick={() => setShowTypeMenu(!showTypeMenu)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
             style={{ background: typeFilter !== "all" ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: typeFilter !== "all" ? TYPE_CLR[typeFilter] : "rgba(255,255,255,0.45)", border: typeFilter !== "all" ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.07)" }}>
-            {typeFilter !== "all" && TYPE_ICONS[typeFilter].prototype && <TYPE_ICONS[typeFilter as Exclude<AssetType, "all">] size={10} />}
+            {typeFilter === "image" && <Image size={10} />}{typeFilter === "video" && <Video size={10} />}{typeFilter === "audio" && <Music size={10} />}
             {TYPE_LABELS[typeFilter]}<ChevronDown size={9} />
           </button>
           {showTypeMenu && (

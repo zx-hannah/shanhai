@@ -754,7 +754,7 @@ export function ConsumptionManagement() {
           bg="rgba(245,166,35,0.1)"
           isActive={activeMetric === "teamBalance"}
           onClick={() => setActiveMetric("teamBalance")}
-          description="团队账户充值、转账和团队内消费/退款明细"
+          description="团队可用于实际内容生产的生产栗额度"
         />
         <MetricCard
           label="团队可分配额度"
@@ -764,7 +764,7 @@ export function ConsumptionManagement() {
           bg="rgba(74,158,224,0.1)"
           isActive={activeMetric === "teamAllocatable"}
           onClick={() => setActiveMetric("teamAllocatable")}
-          description="个人生产栗分配和项目额度修改明细记录"
+          description="团队可用于分配下发的生产栗额度"
         />
         <MetricCard
           label="项目剩余总额度"
@@ -774,7 +774,7 @@ export function ConsumptionManagement() {
           bg="rgba(34,197,94,0.1)"
           isActive={activeMetric === "projectRemaining"}
           onClick={() => setActiveMetric("projectRemaining")}
-          description="按项目查看配额、剩余额度和消费/退款明细"
+          description="团队所有项目剩余额度总和"
         />
         <MetricCard
           label="个人剩余总额度"
@@ -784,7 +784,7 @@ export function ConsumptionManagement() {
           bg="rgba(155,89,182,0.1)"
           isActive={activeMetric === "personalRemaining"}
           onClick={() => setActiveMetric("personalRemaining")}
-          description="个人维度分配、消费、退款明细"
+          description="团队所有个人生产栗余额总和"
         />
       </div>
 
@@ -1506,9 +1506,10 @@ export function ConsumptionManagement() {
             <div className="grid text-xs px-4 py-3"
               style={{ gridTemplateColumns: "1.2fr 0.9fr 0.9fr 0.9fr 0.8fr", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <div>成员</div>
-              <div>个人生产栗余额</div>
               <div>个人总分配</div>
+              <div>个人生产栗余额</div>
               <div>个人总消耗</div>
+              <div>操作</div>
               <div>操作</div>
             </div>
             {filteredMembers.length === 0 ? (
@@ -1547,11 +1548,11 @@ export function ConsumptionManagement() {
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white flex-shrink-0" style={{ background: m.avatarColor }}>{m.letter}</div>
                       <span className="text-white">{m.name}</span>
                     </div>
-                    <div className="text-sm" style={{ color: totalBalance > 0 ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
-                      {totalBalance.toLocaleString()} 颗
-                    </div>
                     <div className="text-sm" style={{ color: totalAllocated > 0 ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
                       {totalAllocated.toLocaleString()} 颗
+                    </div>
+                    <div className="text-sm" style={{ color: totalBalance > 0 ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
+                      {totalBalance.toLocaleString()} 颗
                     </div>
                     <div className="text-sm" style={{ color: totalConsumed > 0 ? "#ef4444" : "rgba(255,255,255,0.3)" }}>
                       {totalConsumed.toLocaleString()} 颗
