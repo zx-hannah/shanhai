@@ -9,6 +9,7 @@ import {
   Monitor, Zap, Layers,
   Shield, Eye, Droplets, Trash2, X,
   RefreshCw, FolderOpen, MessageCircle,
+  Image as LucideImage,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -776,6 +777,217 @@ function InlineTotalQuotaEditor({
   );
 }
 
+// ─── Members Table Modal ──────────────────────────────────────────────────────
+function MembersTableModal({
+  activeMembers,
+  activeMembersIndexed,
+  memberQuotas,
+  memberPeriodConsumed,
+  projectBalance,
+  projectPerm,
+  onClose,
+  onSaveQuota,
+  onPermChange,
+  onRemove,
+}: {
+  activeMembers: MemberWithPerm[];
+  activeMembersIndexed: Array<{ m: MemberWithPerm; i: number }>;
+  memberQuotas: MemberQuota[];
+  memberPeriodConsumed: number[];
+  projectBalance: number;
+  projectPerm: ProjectPermission;
+  onClose: () => void;
+  onSaveQuota: (i: number, q: MemberQuota) => void;
+  onPermChange: (i: number, perm: ProjectPermission) => void;
+  onRemove: (i: number) => void;
+}) {
+  const [quotaEditIdx, setQuotaEditIdx] = useState<number | null>(null);
+  const [permDropIdx, setPermDropIdx] = useState<number | null>(null);
+  const [removeIdx, setRemoveIdx] = useState<number | null>(null);
+
+  const roleIcons: Record<ProjectPermission, ReactNode> = {
+    管理: <Shield size={10} />,
+    编辑: <Edit2 size={10} />,
+    阅读: <Eye size={10} />,
+  };
+
+  // Map original index to active index
+  const activeIdxToOrigIdx = (activeIdx: number) => activeMembersIndexed[activeIdx]?.i ?? activeIdx;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
+      <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", width: "720px", maxHeight: "80vh" }} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center gap-2">
+            <Users size={14} style={{ color: "#E87322" }} />
+            <span className="text-sm text-white font-medium">成员管理</span>
+            <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", fontSize: "10px" }}>{activeMembers.length} 人</span>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="overflow-auto" style={{ maxHeight: "calc(80vh - 130px)" }}>
+          {/* Table Header */}
+          <div className="grid px-5 py-2.5" style={{ gridTemplateColumns: "1fr 190px 110px 52px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>成员信息</span>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>消耗/配额 <span style={{ fontSize: "9px", opacity: 0.7 }}>（点击编辑）</span></span>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>权限</span>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}></span>
+          </div>
+
+          {/* Member Rows */}
+          <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.03)" }}>
+            {activeMembersIndexed.map(({ m, i }, idx) => {
+              const qd = memberQuotas[i] ?? memberQuotas[0];
+              const periodVal = memberPeriodConsumed[idx] ?? 0;
+              const permColor = PERM_COLORS[m.permission];
+              const isPermOpen = permDropIdx === idx;
+              const isQuotaOpen = quotaEditIdx === idx;
+
+              return (
+                <div
+                  key={i}
+                  className="grid px-5 py-3.5 hover:bg-white/[0.02] transition-colors group/row"
+                  style={{ gridTemplateColumns: "1fr 190px 110px 52px", alignItems: "center" }}
+                >
+                  {/* Member Info */}
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ background: MEMBER_COLORS[idx % MEMBER_COLORS.length], fontSize: "11px", fontWeight: 600, color: "#fff" }}>
+                      {m.avatar}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{m.name}</span>
+                        {idx === 0 && (
+                          <span className="px-1.5 py-0.5 rounded" style={{ background: "rgba(232,115,34,0.1)", color: "#E87322", fontSize: "10px" }}>你</span>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* Quota — clickable to edit */}
+                  <button
+                    className="text-left transition-all rounded-lg px-2 py-1.5 hover:bg-white/5 group/quota relative"
+                    onClick={() => setQuotaEditIdx(isQuotaOpen ? null : idx)}
+                    title="点击修改分配模式"
+                  >
+                    <QuotaTag qd={qd} />
+                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/quota:opacity-100 transition-opacity">
+                      <Edit2 size={9} style={{ color: "rgba(255,255,255,0.3)" }} />
+                    </div>
+                  </button>
+
+                  {/* Permission — inline dropdown */}
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setPermDropIdx(isPermOpen ? null : idx)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors hover:opacity-90"
+                      style={{ background: `${permColor}15`, color: permColor, border: `1px solid ${permColor}30`, fontSize: "11px" }}>
+                      {roleIcons[m.permission]}
+                      {m.permission}
+                      <ChevronDown size={9} style={{ marginLeft: "2px", opacity: 0.7 }} />
+                    </button>
+                    {isPermOpen && (
+                      <div className="absolute left-0 top-full mt-1 rounded-xl overflow-hidden z-20 shadow-2xl"
+                        style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "120px" }}>
+                        {(["管理", "编辑", "阅读"] as ProjectPermission[]).map((perm) => {
+                          const pc = PERM_COLORS[perm];
+                          return (
+                            <button key={perm} onClick={() => { onPermChange(i, perm); setPermDropIdx(null); }}
+                              className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-white/5 transition-colors"
+                              style={{ color: m.permission === perm ? pc : "rgba(255,255,255,0.65)" }}>
+                              <div className="flex items-center gap-2">
+                                <span style={{ color: pc }}>
+                                  {perm === "管理" ? <Shield size={11} /> : perm === "编辑" ? <Edit2 size={11} /> : <Eye size={11} />}
+                                </span>
+                                <span>{perm}</span>
+                              </div>
+                              {m.permission === perm && <Check size={11} style={{ color: pc }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remove button */}
+                  <div className="flex items-center justify-end">
+                    <button
+                      onClick={() => setRemoveIdx(idx)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover/row:opacity-100 hover:opacity-100 transition-all hover:bg-red-500/10"
+                      style={{ color: "rgba(255,100,100,0.5)" }}
+                      title="移除成员"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {activeMembers.length === 0 && (
+              <div className="px-5 py-8 text-center" style={{ color: "rgba(255,255,255,0.25)", fontSize: "13px" }}>
+                暂无成员
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer summary */}
+        <div className="px-5 py-3 flex items-center gap-6" style={{ borderTop: "1px solid rgba(255,255,255,0.04)", background: "rgba(255,255,255,0.01)" }}>
+          <div className="flex items-center gap-1.5">
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>成员总消耗</span>
+            <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600 }}>
+              {memberPeriodConsumed.reduce((a, b) => a + b, 0).toLocaleString()}
+            </span>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>颗</span>
+          </div>
+          <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
+          <div className="flex items-center gap-1.5">
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>项目剩余预算</span>
+            <span style={{ fontSize: "12px", color: "#4AC678", fontWeight: 600 }}>{projectBalance.toLocaleString()}</span>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>颗</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Quota editor nested modal */}
+      {quotaEditIdx !== null && (() => {
+        const { m, i } = activeMembersIndexed[quotaEditIdx] ?? {};
+        if (!m) return null;
+        const qd = memberQuotas[i] ?? memberQuotas[0];
+        return (
+          <MemberQuotaEditorModal
+            member={{ name: m.name, avatar: m.avatar, avatarColor: MEMBER_COLORS[quotaEditIdx % MEMBER_COLORS.length] }}
+            quota={qd}
+            memberTokenUsed={m.tokenUsed}
+            onClose={() => setQuotaEditIdx(null)}
+            onSave={(q) => onSaveQuota(i, q)}
+          />
+        );
+      })()}
+
+      {/* Remove confirm nested modal */}
+      {removeIdx !== null && (() => {
+        const { m, i } = activeMembersIndexed[removeIdx] ?? {};
+        if (!m) return null;
+        return (
+          <RemoveMemberConfirm
+            member={{ name: m.name, avatar: m.avatar, avatarColor: MEMBER_COLORS[removeIdx % MEMBER_COLORS.length], role: m.role }}
+            onClose={() => setRemoveIdx(null)}
+            onConfirm={() => onRemove(i)}
+          />
+        );
+      })()}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function ProjectHomePage() {
   const { id } = useParams<{ id: string }>();
@@ -791,6 +1003,7 @@ export function ProjectHomePage() {
   const [dateTo, setDateTo] = useState("");
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showAllocateDialog, setShowAllocateDialog] = useState(false);
+  const [showMembersTable, setShowMembersTable] = useState(false);
 
   // Basic info inline state
   const [basicInfo, setBasicInfo] = useState({
@@ -1021,7 +1234,14 @@ export function ProjectHomePage() {
                 <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>参与成员</span>
                 <StatTooltip text="当前参与此项目的活跃成员及其权限分布" />
               </div>
-              
+              {projectPerm === "管理" && (
+                <button
+                  onClick={() => setShowMembersTable(true)}
+                  className="px-2 py-1 rounded-lg text-xs transition-colors hover:opacity-80"
+                  style={{ background: "rgba(232,115,34,0.12)", color: "#E87322", border: "1px solid rgba(232,115,34,0.25)", fontSize: "10px" }}>
+                  管理成员
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2 mb-2.5">
               <div className="flex items-center" style={{ marginLeft: "-4px" }}>
@@ -1823,6 +2043,25 @@ export function ProjectHomePage() {
           member={{ name: removeConfirmEntry.m.name, avatar: removeConfirmEntry.m.avatar, avatarColor: MEMBER_COLORS[removeConfirmEntry.i % MEMBER_COLORS.length], role: removeConfirmEntry.m.role }}
           onClose={() => setRemoveConfirmIndex(null)}
           onConfirm={() => handleRemoveMember(removeConfirmEntry.i)}
+        />
+      )}
+
+      {/* ── Members Table Modal ── */}
+      {showMembersTable && (
+        <MembersTableModal
+          activeMembers={activeMembers}
+          activeMembersIndexed={activeMembersIndexed}
+          memberQuotas={memberQuotas}
+          memberPeriodConsumed={memberPeriodConsumed}
+          projectBalance={projectBalance}
+          projectPerm={projectPerm}
+          onClose={() => setShowMembersTable(false)}
+          onSaveQuota={(origIdx, q) => {
+            setMemberQuotas(prev => { const next = [...prev]; next[origIdx] = q; return next; });
+            setQuotaEditorIndex(null);
+          }}
+          onPermChange={(origIdx, perm) => handlePermChange(origIdx, perm)}
+          onRemove={(origIdx) => handleRemoveMember(origIdx)}
         />
       )}
     </div>
