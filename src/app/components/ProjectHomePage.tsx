@@ -1,8 +1,8 @@
 import { useState, useEffect, type ReactNode, type CSSProperties, type ComponentType } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
-  ChevronRight, ChevronDown, Check,
-  Users, Coins, Film, AlertTriangle, TrendingDown,
+  ChevronRight, ChevronDown, Check, Plus,
+  Users, Film, AlertTriangle, TrendingDown, Coins,
   Clock, Edit2, BarChart2,
   CheckCircle2, Circle, Loader2, Activity,
   Info,
@@ -60,11 +60,10 @@ const PERIOD_LABELS: { key: PeriodKey; label: string }[] = [
 ];
 
 // ─── Tab Types ────────────────────────────────────────────────────────────────
-type ProjectTab = "members" | "consumption" | "progress" | "warnings";
+type ProjectTab = "members" | "progress" | "warnings";
 
 const TAB_CONFIG: { key: ProjectTab; label: string; icon: typeof Users }[] = [
-  { key: "members", label: "成员列表", icon: Users },
-  { key: "consumption", label: "成本消耗", icon: Coins },
+  { key: "members", label: "成员与成本", icon: Users },
   { key: "progress", label: "分镜进度", icon: Film },
   { key: "warnings", label: "生成预警", icon: AlertTriangle },
 ];
@@ -340,12 +339,14 @@ function InlineEditBadge({
   icon: Icon,
   suffix,
   onSave,
+  readOnly,
 }: {
   label: string;
   value: string;
   icon: ComponentType<{ size?: number; style?: CSSProperties }>;
   suffix?: string;
   onSave: (v: string) => void;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value);
@@ -383,6 +384,16 @@ function InlineEditBadge({
   }
 
   return (
+    readOnly ? (
+    <div
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}
+    >
+      <Icon size={11} style={{ color: "rgba(255,255,255,0.35)" }} />
+      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{label}:</span>
+      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.75)" }}>{value}{suffix ? ` ${suffix}` : ""}</span>
+    </div>
+    ) : (
     <button
       onClick={() => setEditing(true)}
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all group hover:border-orange-500/30"
@@ -394,6 +405,7 @@ function InlineEditBadge({
       <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.75)" }}>{value}{suffix ? ` ${suffix}` : ""}</span>
       <Edit2 size={9} className="opacity-0 group-hover:opacity-60 transition-opacity" />
     </button>
+    )
   );
 }
 
@@ -679,7 +691,6 @@ function InlineTotalQuotaEditor({
 
   return (
     <div className="mt-2 rounded-xl p-3.5" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      {/* Input row */}
       <div className="flex items-center gap-2 mb-3">
         <input
           autoFocus
@@ -718,7 +729,6 @@ function InlineTotalQuotaEditor({
         </button>
       </div>
 
-      {/* Visual constraint bar */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>配额约束</span>
@@ -727,7 +737,6 @@ function InlineTotalQuotaEditor({
           </span>
         </div>
         <div className="relative w-full rounded-full overflow-hidden" style={{ height: "10px", background: "rgba(255,255,255,0.06)" }}>
-          {/* New total visualized */}
           {numVal > 0 && (
             <div className="absolute left-0 top-0 h-full rounded-full"
               style={{
@@ -736,7 +745,6 @@ function InlineTotalQuotaEditor({
                 transition: "width 0.25s",
               }} />
           )}
-          {/* Consumed fill */}
           <div className="absolute left-0 top-0 h-full rounded-full"
             style={{
               width: `${pctConsumed}%`,
@@ -791,9 +799,9 @@ export function ProjectHomePage() {
     frameRate: "24",
   });
 
-  // Total quota inline editing
-  const [editingTotalQuota, setEditingTotalQuota] = useState(false);
+  // Total quota for the project (used in consumption section)
   const [localTokenTotal, setLocalTokenTotal] = useState(project?.tokenTotal ?? 50000);
+  const [editingTotalQuota, setEditingTotalQuota] = useState(false);
 
   // Watermark state
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
@@ -809,11 +817,16 @@ export function ProjectHomePage() {
   // Tab state
   const [activeTab, setActiveTab] = useState<ProjectTab>("members");
 
+  // Episode progress collapse state
+  const [expandedEpisodes, setExpandedEpisodes] = useState<Set<number>>(new Set());
+
   if (!project) {
     return (
       <div className="flex items-center justify-center h-full" style={{ color: "rgba(255,255,255,0.4)" }}>项目不存在</div>
     );
   }
+
+  const projectPerm = project.permission;
 
   const membersWithPerm: MemberWithPerm[] = project.members.map((m, i) => ({
     ...m,
@@ -912,15 +925,22 @@ export function ProjectHomePage() {
             ) : (
               <div className="flex items-center gap-2 group">
                 <h1 className="text-white" style={{ fontSize: "24px", fontWeight: 600, letterSpacing: "-0.02em" }}>{projectName}</h1>
-                <button onClick={() => setEditingName(true)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 rounded-lg flex items-center justify-center hover:bg-white/10"
+                <button onClick={() => projectPerm === "管理" && setEditingName(true)}
+                  className={`transition-opacity w-6 h-6 rounded-lg flex items-center justify-center ${projectPerm === "管理" ? "opacity-0 group-hover:opacity-100 hover:bg-white/10" : "opacity-0 pointer-events-none"}`}
                   style={{ color: "rgba(255,255,255,0.4)" }}>
                   <Edit2 size={12} />
                 </button>
               </div>
             )}
 
-            {/* Status dropdown */}
+            {/* Status dropdown / badge */}
+            {projectPerm === "阅读" ? (
+              <span
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full flex-shrink-0"
+                style={{ background: statusStyle.bg, color: statusStyle.text, border: `1px solid ${statusStyle.border}`, fontSize: "12px" }}>
+                {status}
+              </span>
+            ) : (
             <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => setShowStatusDrop(!showStatusDrop)}
@@ -945,6 +965,7 @@ export function ProjectHomePage() {
                 </div>
               )}
             </div>
+            )}
 
             <div className="flex items-center gap-1 ml-2" style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>
               <Clock size={11} /><span>始于 {project.startDate}</span>
@@ -960,12 +981,14 @@ export function ProjectHomePage() {
               value={basicInfo.aspectRatio}
               icon={Monitor}
               onSave={(v) => setBasicInfo(prev => ({ ...prev, aspectRatio: v }))}
+              readOnly={projectPerm === "阅读"}
             />
             <InlineEditBadge
               label="分辨率"
               value={basicInfo.resolution}
               icon={Layers}
               onSave={(v) => setBasicInfo(prev => ({ ...prev, resolution: v }))}
+              readOnly={projectPerm === "阅读"}
             />
             <InlineEditBadge
               label="帧率"
@@ -973,6 +996,7 @@ export function ProjectHomePage() {
               icon={Zap}
               suffix="fps"
               onSave={(v) => setBasicInfo(prev => ({ ...prev, frameRate: v }))}
+              readOnly={projectPerm === "阅读"}
             />
 
             {/* Watermark indicator */}
@@ -986,7 +1010,7 @@ export function ProjectHomePage() {
           </div>
         </div>
 
-        {/* ── Stats Row: 4 unified cards ── */}
+      {/* ── Stats Row: 4 unified cards ── */}
         <div className="grid grid-cols-4 gap-4 mb-6">
 
           {/* ── 参与成员 ── */}
@@ -1135,7 +1159,6 @@ export function ProjectHomePage() {
             </p>
           </div>
         </div>
-
         {/* ══════════════════════════════════════════════════════════════════════
             ── Tab Container ──
         ══════════════════════════════════════════════════════════════════════ */}
@@ -1172,484 +1195,575 @@ export function ProjectHomePage() {
 
           {/* Tab Content */}
           <div className="p-5">
-            {/* ── 成员列表 Tab ── */}
+            {/* ── 成员与成本 Tab (merged) ── */}
             {activeTab === "members" && (
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-1.5">
-                    <StatTooltip text="管理项目成员及其权限和配额分配" />
-                  </div>
-                  <button
-                    onClick={() => setShowMemberModal(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:opacity-80"
-                    style={{ background: "rgba(232,115,34,0.12)", color: "#E87322", border: "1px solid rgba(232,115,34,0.2)" }}
-                  >
-                    <Users size={10} />添加成员
-                  </button>
-                </div>
+              <div className="flex flex-col gap-6">
 
-                {/* Table Header */}
-                <div className="grid px-4 py-2.5 rounded-lg" style={{ gridTemplateColumns: "1fr 190px 110px 52px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员信息</span>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>消耗/配额 <span style={{ fontSize: "9px", opacity: 0.7 }}>（点击编辑）</span></span>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>权限</span>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}></span>
-                </div>
-
-                {/* Member Rows */}
-                <div className="flex flex-col gap-2 mt-2">
-            {activeMembersIndexed.map(({ m, i }) => {
-              const qd = memberQuotas[i] ?? memberQuotas[0];
-              const periodVal = memberPeriodConsumed[i] ?? 0;
-              const permColor = PERM_COLORS[m.permission];
-              const roleIcons: Record<ProjectPermission, ReactNode> = {
-                管理: <Shield size={10} />,
-                编辑: <Edit2 size={10} />,
-                阅读: <Eye size={10} />,
-              };
-              const isPermOpen = openPermDropdown === i;
-
-              return (
-                <div
-                  key={i}
-                  className="grid px-5 py-3.5 hover:bg-white/[0.02] transition-colors group/row"
-                  style={{ gridTemplateColumns: "1fr 190px 110px 52px", alignItems: "center" }}
-                >
-                  {/* Member Info */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "11px", fontWeight: 600, color: "#fff" }}>
-                      {m.avatar}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{m.name}</span>
-                        {i === 0 && (
-                          <span className="px-1.5 py-0.5 rounded" style={{ background: "rgba(232,115,34,0.1)", color: "#E87322", fontSize: "10px" }}>你</span>
-                        )}
-                      </div>
-                      
-                    </div>
-                  </div>
-
-                  {/* Quota — clickable to edit */}
-                  <button
-                    className="text-left transition-all rounded-lg px-2 py-1.5 hover:bg-white/5 group/quota relative"
-                    onClick={() => setQuotaEditorIndex(i)}
-                    title="点击修改分配模式"
-                  >
-                    <QuotaTag qd={qd} />
-                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/quota:opacity-100 transition-opacity">
-                      <Edit2 size={9} style={{ color: "rgba(255,255,255,0.3)" }} />
-                    </div>
-                  </button>
-
-                  {/* Permission — inline dropdown */}
-                  <div className="relative" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => setOpenPermDropdown(isPermOpen ? null : i)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors hover:opacity-90"
-                      style={{ background: `${permColor}15`, color: permColor, border: `1px solid ${permColor}30`, fontSize: "11px" }}>
-                      {roleIcons[m.permission]}
-                      {m.permission}
-                      <ChevronDown size={9} style={{ marginLeft: "2px", opacity: 0.7 }} />
-                    </button>
-                    {isPermOpen && (
-                      <div className="absolute left-0 top-full mt-1 rounded-xl overflow-hidden z-20 shadow-2xl"
-                        style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "120px" }}>
-                        {(["管理", "编辑", "阅读"] as ProjectPermission[]).map((perm) => {
-                          const pc = PERM_COLORS[perm];
-                          return (
-                            <button key={perm} onClick={() => handlePermChange(i, perm)}
-                              className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-white/5 transition-colors"
-                              style={{ color: m.permission === perm ? pc : "rgba(255,255,255,0.65)" }}>
-                              <div className="flex items-center gap-2">
-                                <span style={{ color: pc }}>
-                                  {perm === "管理" ? <Shield size={11} /> : perm === "编辑" ? <Edit2 size={11} /> : <Eye size={11} />}
-                                </span>
-                                <span>{perm}</span>
-                              </div>
-                              {m.permission === perm && <Check size={11} style={{ color: pc }} />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Remove button */}
-                  <div className="flex items-center justify-end">
-                    <button
-                      onClick={() => setRemoveConfirmIndex(i)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover/row:opacity-100 hover:opacity-100 transition-all hover:bg-red-500/10"
-                      style={{ color: "rgba(255,100,100,0.5)" }}
-                      title="移除成员"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-
-            {activeMembers.length === 0 && (
-              <div className="px-4 py-8 text-center rounded-lg" style={{ background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.25)", fontSize: "13px" }}>
-                暂无成员
-              </div>
-            )}
-          </div>
-
-          {/* Footer summary */}
-          <div className="px-4 py-3 flex items-center gap-6 rounded-lg mt-2" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
-            <div className="flex items-center gap-1.5">
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员总消耗</span>
-              <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600 }}>
-                {memberPeriodConsumed.reduce((a, b) => a + b, 0).toLocaleString()}
-              </span>
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>颗</span>
-            </div>
-            <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
-            <div className="flex items-center gap-1.5">
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>项目剩余预算</span>
-              <span style={{ fontSize: "12px", color: "#4AC678", fontWeight: 600 }}>{projectBalance.toLocaleString()}</span>
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>颗</span>
-            </div>
-            <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
-            <div className="flex items-center gap-1.5 ml-auto">
-              <button
-                onClick={() => setShowAllocateDialog(true)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs hover:opacity-80"
-                style={{ background: "rgba(155,89,182,0.12)", color: "#9B59B6", border: "1px solid rgba(155,89,182,0.2)", fontSize: "11px" }}>
-                <RefreshCw size={9} />批量分配
-              </button>
-            </div>
-          </div>
-        </div>
-            )}
-
-            {/* ── 成本消耗 Tab ── */}
-            {activeTab === "consumption" && (
-              <div className="flex flex-col gap-5">
-
-              {/* Period filter + trend chart */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>时间段消耗</span>
-                    <StatTooltip text="所选时间段内项目生产栗的消耗总量" />
-                  </div>
-                  <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    {PERIOD_LABELS.map(({ key, label }) => (
-                      <button key={key} onClick={() => setPeriod(key)}
-                        className="px-2 py-1 rounded-md text-xs transition-colors"
-                        style={{ background: period === key ? "rgba(232,115,34,0.7)" : "transparent", color: period === key ? "#fff" : "rgba(255,255,255,0.45)" }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {period === "custom" && (
-                  <div className="flex items-center gap-2 mb-3">
-                    {["from", "to"].map((k) => (
-                      <input key={k} type="date"
-                        value={k === "from" ? dateFrom : dateTo}
-                        onChange={(e) => k === "from" ? setDateFrom(e.target.value) : setDateTo(e.target.value)}
-                        className="flex-1 px-2 py-1 rounded-lg text-xs outline-none"
-                        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }} />
-                    ))}
-                  </div>
-                )}
-                <div className="flex items-center gap-3 px-3 py-2 rounded-lg mb-4" style={{ background: "rgba(232,115,34,0.06)", border: "1px solid rgba(232,115,34,0.12)" }}>
-                  <TrendingDown size={12} style={{ color: "#ef4444" }} />
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>期间消耗</span>
-                  <span className="ml-auto" style={{ fontSize: "16px", fontWeight: 600, color: "#E87322" }}>{periodConsumed.toLocaleString()}</span>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>颗</span>
-                </div>
-
-                {/* Recharts Trend Chart */}
-                <div className="rounded-lg px-1 pt-2 pb-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                  <div className="flex items-center justify-between px-3 mb-1">
-                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>消耗趋势</span>
-                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>
-                      {period === "week" ? "最近7天" : period === "month" ? "最近30天" : period === "year" ? "最近12月" : period === "all" ? "全部时段" : "自定义时段"}
-                    </span>
-                  </div>
-                  <ResponsiveContainer width="100%" height={110}>
-                    <AreaChart data={trendData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="trendGradFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#E87322" stopOpacity={0.25} />
-                          <stop offset="95%" stopColor="#E87322" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }}
-                        axisLine={false}
-                        tickLine={false}
-                        interval="preserveStartEnd"
-                      />
-                      <YAxis
-                        tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }}
-                        axisLine={false}
-                        tickLine={false}
-                        tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                      />
-                      <ReTooltip
-                        content={<TrendTooltip />}
-                        cursor={{ stroke: "rgba(232,115,34,0.3)", strokeWidth: 1, strokeDasharray: "4 3" }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#E87322"
-                        strokeWidth={2}
-                        fill="url(#trendGradFill)"
-                        dot={false}
-                        activeDot={{ r: 4, fill: "#E87322", stroke: "#140F09", strokeWidth: 2 }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* ── 按成员消耗 和 按分类消耗 并列 ── */}
-              <div className="grid gap-5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                {/* ── 按成员消耗 ── */}
+                {/* ── Section 1: 成员管理 ── */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1.5">
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>按成员消耗</span>
-                      <StatTooltip text="当前时间段内各成员的生产栗消耗量及相对占比" />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>成员管理</span>
+                    <div className="flex items-center gap-2">
+                      {projectPerm === "管理" && (
+                      <button
+                        onClick={() => setShowAllocateDialog(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs hover:opacity-80"
+                        style={{ background: "rgba(155,89,182,0.12)", color: "#9B59B6", border: "1px solid rgba(155,89,182,0.2)", fontSize: "11px" }}>
+                        <RefreshCw size={9} />批量分配
+                      </button>
+                      )}
                     </div>
                   </div>
-                  {/* ── Stacked Member Consumption Bar ── */}
-                  {(() => {
-                    const totalConsumed = activeMembersIndexed.reduce((sum, { i }) => sum + (memberPeriodConsumed[i] ?? 0), 0);
-                    return (
-                      <div className="mb-4 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>生产栗消耗</span>
-                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-                            <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalConsumed.toLocaleString()}</span>
-                            <span style={{ color: "rgba(255,255,255,0.25)" }}> / {localTokenTotal.toLocaleString()}</span>
-                          </span>
-                        </div>
-                        {/* Stacked bar */}
-                        <div className="w-full rounded-full overflow-hidden flex" style={{ height: "8px", background: "rgba(255,255,255,0.07)" }}>
-                          {activeMembersIndexed.map(({ i }) => {
-                            const val = memberPeriodConsumed[i] ?? 0;
-                            const widthPct = localTokenTotal > 0 ? Math.min(100, (val / localTokenTotal) * 100) : 0;
-                            if (widthPct <= 0) return null;
-                            return (
-                              <div
-                                key={i}
-                                style={{
-                                  width: `${widthPct}%`,
-                                  background: MEMBER_COLORS[i % MEMBER_COLORS.length],
-                                  height: "100%",
-                                  transition: "width 0.6s ease",
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
-                        {/* Legend */}
-                        <div className="flex items-center gap-4 mt-2.5 flex-wrap">
-                          {activeMembersIndexed.map(({ m, i }) => (
-                            <div key={i} className="flex items-center gap-1.5">
-                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length] }} />
-                              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.45)" }}>{m.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  <div className="flex flex-col gap-3 overflow-auto" style={{ maxHeight: "280px" }}>
+
+                  {/* Table Header */}
+                  <div className="grid px-4 py-2.5 rounded-lg" style={{ gridTemplateColumns: "1fr 190px 110px 52px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员信息</span>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>消耗/配额 <span style={{ fontSize: "9px", opacity: 0.7 }}>（点击编辑）</span></span>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>权限</span>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}></span>
+                  </div>
+
+                  {/* Member Rows */}
+                  <div className="flex flex-col gap-2 mt-2">
                     {activeMembersIndexed.map(({ m, i }) => {
-                      const val = memberPeriodConsumed[i] ?? 0;
-                      const maxVal = Math.max(...memberPeriodConsumed.filter(Boolean));
                       const qd = memberQuotas[i] ?? memberQuotas[0];
-                      const quotaLabel = qd.type === "unlimited"
-                        ? "无限制"
-                        : qd.type === "periodic"
-                        ? `周期 ${qd.total.toLocaleString()}/${qd.period}`
-                        : `固定 ${qd.total.toLocaleString()}`;
+                      const periodVal = memberPeriodConsumed[i] ?? 0;
+                      const permColor = PERM_COLORS[m.permission];
+                      const roleIcons: Record<ProjectPermission, ReactNode> = {
+                        管理: <Shield size={10} />,
+                        编辑: <Edit2 size={10} />,
+                        阅读: <Eye size={10} />,
+                      };
+                      const isPermOpen = openPermDropdown === i;
+
                       return (
-                        <div key={i}>
-                          <div className="flex items-center gap-2.5 mb-1.5">
-                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0"
-                              style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "10px", fontWeight: 600 }}>
+                        <div
+                          key={i}
+                          className="grid px-5 py-3.5 hover:bg-white/[0.02] transition-colors group/row"
+                          style={{ gridTemplateColumns: "1fr 190px 110px 52px", alignItems: "center" }}
+                        >
+                          {/* Member Info */}
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                              style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "11px", fontWeight: 600, color: "#fff" }}>
                               {m.avatar}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between">
-                                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)" }}>{m.name}</span>
-                                <span style={{ fontSize: "11px", color: "#E87322", fontWeight: 500 }}>{val.toLocaleString()} 颗</span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5" style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
-                                <span>{m.generated} 生成</span>
-                                <span>·</span>
-                                <span>{quotaLabel}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{m.name}</span>
+                                {i === 0 && (
+                                  <span className="px-1.5 py-0.5 rounded" style={{ background: "rgba(232,115,34,0.1)", color: "#E87322", fontSize: "10px" }}>你</span>
+                                )}
                               </div>
                             </div>
                           </div>
-                          <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: "rgba(255,255,255,0.06)" }}>
-                            <div className="h-full rounded-full"
-                              style={{ width: `${maxVal ? (val / maxVal) * 100 : 0}%`, background: MEMBER_COLORS[i % MEMBER_COLORS.length] }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
 
-                {/* ── 按分类消耗 ── */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1.5">
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>按分类消耗</span>
-                      <StatTooltip text="按文件夹和对话分类统计的生产栗消耗量，展示层级结构下的资源使用情况" />
-                    </div>
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-                      总计 <span style={{ color: "#E87322", fontWeight: 500 }}>{CATEGORY_CONSUMPTION.reduce((a, f) => a + f.consumed, 0).toLocaleString()}</span> 颗
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-3 overflow-auto" style={{ maxHeight: "320px" }}>
-                    {CATEGORY_CONSUMPTION.map((item, idx) => {
-                      const maxConsumed = Math.max(...CATEGORY_CONSUMPTION.map(f => f.consumed));
-                      const itemPct = maxConsumed > 0 ? (item.consumed / maxConsumed) * 100 : 0;
-                      const isFolder = item.type === "folder";
-                      const Icon = isFolder ? FolderOpen : MessageCircle;
-                      const children = isFolder ? (item as FolderConsumption).children : [];
+                          {/* Quota — clickable to edit (only 管理) */}
+                          {projectPerm === "管理" ? (
+                          <button
+                            className="text-left transition-all rounded-lg px-2 py-1.5 hover:bg-white/5 group/quota relative"
+                            onClick={() => setQuotaEditorIndex(i)}
+                            title="点击修改分配模式"
+                          >
+                            <QuotaTag qd={qd} />
+                            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/quota:opacity-100 transition-opacity">
+                              <Edit2 size={9} style={{ color: "rgba(255,255,255,0.3)" }} />
+                            </div>
+                          </button>
+                          ) : (
+                          <div className="text-left rounded-lg px-2 py-1.5">
+                            <QuotaTag qd={qd} />
+                          </div>
+                          )}
 
-                      return (
-                        <div key={idx} className="rounded-lg p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Icon size={12} style={{ color: isFolder ? "#E87322" : "#4A9EE0" }} />
-                              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{item.name}</span>
-                              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{item.generated} 生成</span>
-                            </div>
-                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#E87322" }}>{item.consumed.toLocaleString()} 颗</span>
+                          {/* Permission — inline dropdown / read-only */}
+                          {projectPerm === "管理" ? (
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => setOpenPermDropdown(isPermOpen ? null : i)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors hover:opacity-90"
+                              style={{ background: `${permColor}15`, color: permColor, border: `1px solid ${permColor}30`, fontSize: "11px" }}>
+                              {roleIcons[m.permission]}
+                              {m.permission}
+                              <ChevronDown size={9} style={{ marginLeft: "2px", opacity: 0.7 }} />
+                            </button>
+                            {isPermOpen && (
+                              <div className="absolute left-0 top-full mt-1 rounded-xl overflow-hidden z-20 shadow-2xl"
+                                style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "120px" }}>
+                                {(["管理", "编辑", "阅读"] as ProjectPermission[]).map((perm) => {
+                                  const pc = PERM_COLORS[perm];
+                                  return (
+                                    <button key={perm} onClick={() => handlePermChange(i, perm)}
+                                      className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-white/5 transition-colors"
+                                      style={{ color: m.permission === perm ? pc : "rgba(255,255,255,0.65)" }}>
+                                      <div className="flex items-center gap-2">
+                                        <span style={{ color: pc }}>
+                                          {perm === "管理" ? <Shield size={11} /> : perm === "编辑" ? <Edit2 size={11} /> : <Eye size={11} />}
+                                        </span>
+                                        <span>{perm}</span>
+                                      </div>
+                                      {m.permission === perm && <Check size={11} style={{ color: pc }} />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                          <div className="w-full rounded-full overflow-hidden mb-2" style={{ height: "4px", background: "rgba(255,255,255,0.06)" }}>
-                            <div className="h-full rounded-full" style={{ width: `${itemPct}%`, background: isFolder ? "linear-gradient(90deg,#E87322,#F5A623)" : "#4A9EE0", transition: "width 0.5s" }} />
+                          ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+                            style={{ background: `${permColor}15`, color: permColor, border: `1px solid ${permColor}30`, fontSize: "11px" }}>
+                            {roleIcons[m.permission]}
+                            {m.permission}
+                          </span>
+                          )}
+
+                          {/* Remove button (only 管理) */}
+                          {projectPerm === "管理" && (
+                          <div className="flex items-center justify-end">
+                            <button
+                              onClick={() => setRemoveConfirmIndex(i)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover/row:opacity-100 hover:opacity-100 transition-all hover:bg-red-500/10"
+                              style={{ color: "rgba(255,100,100,0.5)" }}
+                              title="移除成员"
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           </div>
-                          {children.length > 0 && (
-                            <div className="flex flex-col gap-2 pl-3">
-                              {children.map((session, sIdx) => {
-                                const maxSessionConsumed = Math.max(...children.map(s => s.consumed));
-                                const sessionPct = maxSessionConsumed > 0 ? (session.consumed / maxSessionConsumed) * 100 : 0;
-                                return (
-                                  <div key={sIdx} className="flex items-center gap-2">
-                                    <MessageCircle size={9} style={{ color: "rgba(74,158,224,0.5)" }} />
-                                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", minWidth: "80px" }}>{session.name}</span>
-                                    <div className="flex-1 rounded-full overflow-hidden" style={{ height: "3px", background: "rgba(255,255,255,0.05)" }}>
-                                      <div className="h-full rounded-full" style={{ width: `${sessionPct}%`, background: "rgba(74,158,224,0.5)", transition: "width 0.5s" }} />
-                                    </div>
-                                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.45)", width: "50px", textAlign: "right" }}>{session.consumed.toLocaleString()}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
                           )}
                         </div>
                       );
                     })}
+
+                    {activeMembers.length === 0 && (
+                      <div className="px-4 py-8 text-center rounded-lg" style={{ background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.25)", fontSize: "13px" }}>
+                        暂无成员
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer summary */}
+                  <div className="px-4 py-3 flex items-center gap-6 rounded-lg mt-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                    <div className="flex items-center gap-1.5">
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员总消耗</span>
+                      <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600 }}>
+                        {memberPeriodConsumed.reduce((a, b) => a + b, 0).toLocaleString()}
+                      </span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>颗</span>
+                    </div>
+                    <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
+                    <div className="flex items-center gap-1.5">
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>项目剩余预算</span>
+                      <span style={{ fontSize: "12px", color: "#4AC678", fontWeight: 600 }}>{projectBalance.toLocaleString()}</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>颗</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Divider ── */}
+                <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+
+                {/* ── Section 2: 成本消耗 ── */}
+                <div className="flex flex-col gap-5">
+
+                  {/* Period filter + trend chart */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>消耗趋势</span>
+                      </div>
+                      <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        {PERIOD_LABELS.map(({ key, label }) => (
+                          <button key={key} onClick={() => setPeriod(key)}
+                            className="px-2 py-1 rounded-md text-xs transition-colors"
+                            style={{ background: period === key ? "rgba(232,115,34,0.7)" : "transparent", color: period === key ? "#fff" : "rgba(255,255,255,0.45)" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {period === "custom" && (
+                      <div className="flex items-center gap-2 mb-3">
+                        {["from", "to"].map((k) => (
+                          <input key={k} type="date"
+                            value={k === "from" ? dateFrom : dateTo}
+                            onChange={(e) => k === "from" ? setDateFrom(e.target.value) : setDateTo(e.target.value)}
+                            className="flex-1 px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }} />
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 px-3 py-2 rounded-lg mb-4" style={{ background: "rgba(232,115,34,0.06)", border: "1px solid rgba(232,115,34,0.12)" }}>
+                      <TrendingDown size={12} style={{ color: "#ef4444" }} />
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>期间消耗</span>
+                      <span className="ml-auto" style={{ fontSize: "16px", fontWeight: 600, color: "#E87322" }}>{periodConsumed.toLocaleString()}</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>颗</span>
+                    </div>
+
+                    {/* Recharts Trend Chart */}
+                    <div className="rounded-lg px-1 pt-2 pb-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                      <div className="flex items-center justify-between px-3 mb-1">
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>消耗趋势</span>
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>
+                          {period === "week" ? "最近7天" : period === "month" ? "最近30天" : period === "year" ? "最近12月" : period === "all" ? "全部时段" : "自定义时段"}
+                        </span>
+                      </div>
+                      <ResponsiveContainer width="100%" height={110}>
+                        <AreaChart data={trendData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="trendGradFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#E87322" stopOpacity={0.25} />
+                              <stop offset="95%" stopColor="#E87322" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }}
+                            axisLine={false}
+                            tickLine={false}
+                            interval="preserveStartEnd"
+                          />
+                          <YAxis
+                            tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+                          />
+                          <ReTooltip
+                            content={<TrendTooltip />}
+                            cursor={{ stroke: "rgba(232,115,34,0.3)", strokeWidth: 1, strokeDasharray: "4 3" }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#E87322"
+                            strokeWidth={2}
+                            fill="url(#trendGradFill)"
+                            dot={false}
+                            activeDot={{ r: 4, fill: "#E87322", stroke: "#140F09", strokeWidth: 2 }}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* ── 按成员消耗 和 按分类消耗 并列 ── */}
+                  <div className="grid gap-5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                    {/* ── 按成员消耗 ── */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>按成员消耗</span>
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                          总计 <span style={{ color: "#E87322", fontWeight: 500 }}>{activeMembersIndexed.reduce((sum, { i }) => sum + (memberPeriodConsumed[i] ?? 0), 0).toLocaleString()}</span> 颗
+                        </span>
+                      </div>
+                      {/* ── Stacked Member Consumption Bar ── */}
+                      {(() => {
+                        const totalConsumed = activeMembersIndexed.reduce((sum, { i }) => sum + (memberPeriodConsumed[i] ?? 0), 0);
+                        return (
+                          <div className="mb-4 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>生产栗消耗</span>
+                              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                                <span style={{ color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalConsumed.toLocaleString()}</span>
+                                <span style={{ color: "rgba(255,255,255,0.25)" }}> / {localTokenTotal.toLocaleString()}</span>
+                              </span>
+                            </div>
+                            {/* Stacked bar */}
+                            <div className="w-full rounded-full overflow-hidden flex" style={{ height: "8px", background: "rgba(255,255,255,0.07)" }}>
+                              {activeMembersIndexed.map(({ i }) => {
+                                const val = memberPeriodConsumed[i] ?? 0;
+                                const widthPct = localTokenTotal > 0 ? Math.min(100, (val / localTokenTotal) * 100) : 0;
+                                if (widthPct <= 0) return null;
+                                return (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      width: `${widthPct}%`,
+                                      background: MEMBER_COLORS[i % MEMBER_COLORS.length],
+                                      height: "100%",
+                                      transition: "width 0.6s ease",
+                                    }}
+                                  />
+                                );
+                              })}
+                            </div>
+                            {/* Legend */}
+                            <div className="flex items-center gap-4 mt-2.5 flex-wrap">
+                              {activeMembersIndexed.map(({ m, i }) => (
+                                <div key={i} className="flex items-center gap-1.5">
+                                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length] }} />
+                                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.45)" }}>{m.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      <div className="flex flex-col gap-3 overflow-auto" style={{ maxHeight: "280px" }}>
+                        {activeMembersIndexed.map(({ m, i }) => {
+                          const val = memberPeriodConsumed[i] ?? 0;
+                          const maxVal = Math.max(...memberPeriodConsumed.filter(Boolean));
+                          const qd = memberQuotas[i] ?? memberQuotas[0];
+                          const quotaLabel = qd.type === "unlimited"
+                            ? "无限制"
+                            : qd.type === "periodic"
+                            ? `周期 ${qd.total.toLocaleString()}/${qd.period}`
+                            : `固定 ${qd.total.toLocaleString()}`;
+                          return (
+                            <div key={i}>
+                              <div className="flex items-center gap-2.5 mb-1.5">
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0"
+                                  style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "10px", fontWeight: 600 }}>
+                                  {m.avatar}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)" }}>{m.name}</span>
+                                    <span style={{ fontSize: "11px", color: "#E87322", fontWeight: 500 }}>{val.toLocaleString()} 颗</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5" style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
+                                    <span>{m.generated} 生成</span>
+                                    <span>·</span>
+                                    <span>{quotaLabel}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: "rgba(255,255,255,0.06)" }}>
+                                <div className="h-full rounded-full"
+                                  style={{ width: `${maxVal ? (val / maxVal) * 100 : 0}%`, background: MEMBER_COLORS[i % MEMBER_COLORS.length] }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── 按分类消耗 ── */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>按分类消耗</span>
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                          总计 <span style={{ color: "#E87322", fontWeight: 500 }}>{CATEGORY_CONSUMPTION.reduce((a, f) => a + f.consumed, 0).toLocaleString()}</span> 颗
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-3 overflow-auto" style={{ maxHeight: "320px" }}>
+                        {CATEGORY_CONSUMPTION.map((item, idx) => {
+                          const maxConsumed = Math.max(...CATEGORY_CONSUMPTION.map(f => f.consumed));
+                          const itemPct = maxConsumed > 0 ? (item.consumed / maxConsumed) * 100 : 0;
+                          const isFolder = item.type === "folder";
+                          const Icon = isFolder ? FolderOpen : MessageCircle;
+                          const children = isFolder ? (item as FolderConsumption).children : [];
+
+                          return (
+                            <div key={idx} className="rounded-lg p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Icon size={12} style={{ color: isFolder ? "#E87322" : "#4A9EE0" }} />
+                                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{item.name}</span>
+                                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{item.generated} 生成</span>
+                                </div>
+                                <span style={{ fontSize: "12px", fontWeight: 600, color: "#E87322" }}>{item.consumed.toLocaleString()} 颗</span>
+                              </div>
+                              <div className="w-full rounded-full overflow-hidden mb-2" style={{ height: "4px", background: "rgba(255,255,255,0.06)" }}>
+                                <div className="h-full rounded-full" style={{ width: `${itemPct}%`, background: isFolder ? "linear-gradient(90deg,#E87322,#F5A623)" : "#4A9EE0", transition: "width 0.5s" }} />
+                              </div>
+                              {children.length > 0 && (
+                                <div className="flex flex-col gap-2 pl-3">
+                                  {children.map((session, sIdx) => {
+                                    const maxSessionConsumed = Math.max(...children.map(s => s.consumed));
+                                    const sessionPct = maxSessionConsumed > 0 ? (session.consumed / maxSessionConsumed) * 100 : 0;
+                                    return (
+                                      <div key={sIdx} className="flex items-center gap-2">
+                                        <MessageCircle size={9} style={{ color: "rgba(74,158,224,0.5)" }} />
+                                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", minWidth: "80px" }}>{session.name}</span>
+                                        <div className="flex-1 rounded-full overflow-hidden" style={{ height: "3px", background: "rgba(255,255,255,0.05)" }}>
+                                          <div className="h-full rounded-full" style={{ width: `${sessionPct}%`, background: "rgba(74,158,224,0.5)", transition: "width 0.5s" }} />
+                                        </div>
+                                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.45)", width: "50px", textAlign: "right" }}>{session.consumed.toLocaleString()}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
             )}
 
             {/* ── 分镜进度 Tab ── */}
             {activeTab === "progress" && (
-              <div className="flex flex-col gap-4 overflow-auto" style={{ maxHeight: "600px" }}>
-              {project.episodeStats.map((ep, idx) => {
-                const stages = deriveStages(ep.progress);
-                return (
-                  <div key={idx} className="rounded-lg p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                    <div className="flex items-center justify-between mb-2.5">
-                      <div className="flex items-center gap-2">
-                        {ep.progress === 100
-                          ? <CheckCircle2 size={13} style={{ color: "#4AC678" }} />
-                          : ep.progress > 0
-                            ? <Loader2 size={13} style={{ color: "#E87322" }} />
-                            : <Circle size={13} style={{ color: "rgba(255,255,255,0.2)" }} />}
-                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.7)" }}>{ep.name}</span>
-                      </div>
-                      <span style={{ fontSize: "12px", fontWeight: 600, color: ep.progress === 100 ? "#4AC678" : ep.progress > 0 ? "#E87322" : "rgba(255,255,255,0.25)" }}>
-                        {ep.progress}%
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      {stages.map((stage) => (
-                        <div key={stage.label} className="flex items-center gap-2">
-                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", width: "52px", flexShrink: 0 }}>{stage.label}</span>
-                          <div className="flex-1 rounded-full overflow-hidden" style={{ height: "4px", background: "rgba(255,255,255,0.06)" }}>
-                            <div className="h-full rounded-full"
-                              style={{ width: `${stage.progress}%`, background: stage.progress === 100 ? "#4AC678" : stage.progress > 0 ? "linear-gradient(90deg,#E87322,#F5A623)" : "transparent", transition: "width 0.5s" }} />
-                          </div>
-                          <span style={{ fontSize: "10px", color: stage.progress === 100 ? "#4AC678" : "rgba(255,255,255,0.3)", width: "28px", textAlign: "right", flexShrink: 0 }}>
-                            {stage.progress}%
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+              <div className="flex flex-col gap-2">
+                {/* Summary bar */}
+                <div className="flex items-center gap-4 px-4 py-2.5 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ background: "#4AC678" }} />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                      已完成 <span style={{ color: "#4AC678", fontWeight: 600 }}>{project.episodeStats.filter(ep => ep.progress === 100).length}</span>
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ background: "#E87322" }} />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                      进行中 <span style={{ color: "#E87322", fontWeight: 600 }}>{project.episodeStats.filter(ep => ep.progress > 0 && ep.progress < 100).length}</span>
+                    </span>
+                  </div>
+                  <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                      未开始 <span style={{ color: "rgba(255,255,255,0.35)", fontWeight: 600 }}>{project.episodeStats.filter(ep => ep.progress === 0).length}</span>
+                    </span>
+                  </div>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <button onClick={() => setExpandedEpisodes(new Set(project.episodeStats.map((_, i) => i)))}
+                      className="px-2 py-0.5 rounded text-xs hover:opacity-80"
+                      style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px" }}>全部展开</button>
+                    <button onClick={() => setExpandedEpisodes(new Set())}
+                      className="px-2 py-0.5 rounded text-xs hover:opacity-80"
+                      style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px" }}>全部收起</button>
+                  </div>
+                </div>
+
+                {/* Episode list */}
+                {project.episodeStats.map((ep, idx) => {
+                  const stages = deriveStages(ep.progress);
+                  const isExpanded = expandedEpisodes.has(idx);
+                  const statusColor = ep.progress === 100 ? "#4AC678" : ep.progress > 0 ? "#E87322" : "rgba(255,255,255,0.2)";
+                  const StatusIcon = ep.progress === 100 ? CheckCircle2 : ep.progress > 0 ? Loader2 : Circle;
+
+                  return (
+                    <div key={idx} className="rounded-lg overflow-hidden transition-all"
+                      style={{ background: isExpanded ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.02)", border: `1px solid ${isExpanded ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.04)"}` }}>
+                      {/* Header row — always visible */}
+                      <button onClick={() => {
+                        setExpandedEpisodes(prev => {
+                          const next = new Set(prev);
+                          next.has(idx) ? next.delete(idx) : next.add(idx);
+                          return next;
+                        });
+                      }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.01] transition-colors">
+                        <div className="flex items-center gap-3">
+                          <StatusIcon size={14} style={{ color: statusColor }} />
+                          <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{ep.name}</span>
+                          {/* Mini stage pills */}
+                          <div className="flex items-center gap-1.5">
+                            {stages.map(s => (
+                              <span key={s.label} className="flex items-center gap-1 px-1.5 py-0.5 rounded"
+                                style={{
+                                  background: s.progress === 100 ? "rgba(74,198,120,0.1)" : s.progress > 0 ? "rgba(232,115,34,0.08)" : "rgba(255,255,255,0.03)",
+                                  fontSize: "9px",
+                                  color: s.progress === 100 ? "#4AC678" : s.progress > 0 ? "#E87322" : "rgba(255,255,255,0.2)",
+                                }}>
+                                {s.label} {s.progress}%
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* Overall mini bar */}
+                          <div className="w-20 rounded-full overflow-hidden" style={{ height: "4px", background: "rgba(255,255,255,0.06)" }}>
+                            <div className="h-full rounded-full" style={{ width: `${ep.progress}%`, background: statusColor, transition: "width 0.5s" }} />
+                          </div>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: statusColor, width: "32px", textAlign: "right" }}>
+                            {ep.progress}%
+                          </span>
+                          {isExpanded
+                            ? <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.25)" }} />
+                            : <ChevronRight size={14} style={{ color: "rgba(255,255,255,0.25)" }} />}
+                        </div>
+                      </button>
+
+                      {/* Expanded stage details */}
+                      {isExpanded && (
+                        <div className="px-5 pb-3 pt-0 flex flex-col gap-2.5" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                          {stages.map((stage) => {
+                            const StageIcon = stage.label === "草分绘制" ? Edit2 : stage.label === "静帧生成" ? Image : Zap;
+                            return (
+                              <div key={stage.label} className="flex items-center gap-3">
+                                <StageIcon size={12} style={{ color: stage.progress === 100 ? "#4AC678" : "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+                                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", width: "56px", flexShrink: 0 }}>{stage.label}</span>
+                                <div className="flex-1 rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.06)" }}>
+                                  <div className="h-full rounded-full"
+                                    style={{
+                                      width: `${stage.progress}%`,
+                                      background: stage.progress === 100 ? "#4AC678" : stage.progress > 0 ? "linear-gradient(90deg,#E87322,#F5A623)" : "rgba(255,255,255,0.04)",
+                                      transition: "width 0.5s",
+                                    }} />
+                                </div>
+                                <span style={{ fontSize: "11px", fontWeight: 600, color: stage.progress === 100 ? "#4AC678" : stage.progress > 0 ? "#E87322" : "rgba(255,255,255,0.2)", width: "32px", textAlign: "right" }}>
+                                  {stage.progress}%
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
 
             {/* ── 生成预警 Tab ── */}
             {activeTab === "warnings" && (
-              <div>
-                <p className="text-xs mb-3" style={{ color: "rgba(255,255,255,0.35)", lineHeight: 1.6 }}>
-                  以下 Prompt 相似度高于 80%，可能产生重复内容，建议合并或调整以节省生产栗。
-                </p>
-                <div className="flex flex-col gap-2">
-            {DUPLICATE_PROMPTS.map((item, idx) => (
-              <div key={idx} className="flex items-start gap-3 px-3 py-2.5 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center mt-0.5"
-                  style={{ background: item.similarity > 90 ? "rgba(255,100,100,0.12)" : "rgba(232,115,34,0.12)" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: item.similarity > 90 ? "#ff6b6b" : "#E87322" }}>{item.similarity}%</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs truncate" style={{ color: "rgba(255,255,255,0.65)" }}>{item.prompt}</p>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-                      出现 <span style={{ color: item.count >= 5 ? "#ff6b6b" : "#E87322" }}>{item.count} 次</span>
-                      ，浪费约 <span style={{ color: "#E87322" }}>{(item.count - 1) * 50}</span> 颗
-                    </p>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded"
-                        style={{ background: "rgba(74,158,224,0.1)", fontSize: "10px", color: "#4A9EE0" }}>
-                        <Users size={8} />{item.person}
-                      </span>
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded"
-                        style={{ background: "rgba(155,89,182,0.1)", fontSize: "10px", color: "#9B59B6" }}>
-                        <Film size={8} />{item.episode}
-                      </span>
-                      {item.shots.map((shot) => (
-                        <span key={shot} className="px-1.5 py-0.5 rounded"
-                          style={{ background: "rgba(255,255,255,0.06)", fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>
-                          {shot}
-                        </span>
-                      ))}
-                    </div>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={13} style={{ color: "#ff6b6b" }} />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                      共 <span style={{ color: "#ff6b6b", fontWeight: 600 }}>{DUPLICATE_PROMPTS.length}</span> 组重复 Prompt
+                    </span>
                   </div>
+                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+                    预估浪费 <span style={{ color: "#E87322", fontWeight: 600 }}>{DUPLICATE_PROMPTS.reduce((s, i) => s + (i.count - 1) * 50, 0).toLocaleString()}</span> 颗
+                  </span>
                 </div>
-                <span className="px-2 py-0.5 rounded text-xs flex-shrink-0"
-                  style={{ background: item.count >= 5 ? "rgba(255,100,100,0.12)" : "rgba(232,115,34,0.1)", color: item.count >= 5 ? "#ff6b6b" : "#E87322", fontSize: "10px" }}>
-                  {item.count >= 5 ? "高危" : "注意"}
-                </span>
-              </div>
-            ))}
-                </div>
+
+                {DUPLICATE_PROMPTS.map((item, idx) => {
+                  const isHigh = item.similarity > 90;
+                  return (
+                    <div key={idx} className="flex items-center gap-3 px-4 py-3 rounded-lg"
+                      style={{
+                        background: isHigh ? "rgba(255,100,100,0.04)" : "rgba(255,255,255,0.02)",
+                        border: `1px solid ${isHigh ? "rgba(255,100,100,0.15)" : "rgba(255,255,255,0.04)"}`,
+                      }}>
+                      {/* Similarity badge */}
+                      <div className="flex flex-col items-center justify-center flex-shrink-0 w-12" style={{ gap: "2px" }}>
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                          style={{ background: isHigh ? "rgba(255,100,100,0.12)" : "rgba(232,115,34,0.1)" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 700, color: isHigh ? "#ff6b6b" : "#E87322" }}>
+                            {item.similarity}%
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "9px", color: isHigh ? "#ff6b6b" : "#E87322", fontWeight: 500 }}>
+                          {isHigh ? "高危" : "注意"}
+                        </span>
+                      </div>
+
+                      {/* Prompt + stats */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.7)" }}>{item.prompt}</p>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>
+                            出现 <strong style={{ color: isHigh ? "#ff6b6b" : "#E87322" }}>{item.count} 次</strong>
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded"
+                            style={{ background: "rgba(232,115,34,0.1)", fontSize: "10px", color: "#E87322", fontWeight: 500 }}>
+                            浪费 ~{(item.count - 1) * 50} 颗
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

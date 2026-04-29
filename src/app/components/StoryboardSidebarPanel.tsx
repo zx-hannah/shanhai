@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Plus, Film, Play, AlignLeft, Image, Video } from "lucide-react";
+import { ChevronRight, Plus, Film, Play, AlignLeft, Image as LucideImage, Video } from "lucide-react";
 import { toast } from "sonner";
 
 type StoryField = "script" | "image" | "video";
@@ -84,7 +84,7 @@ export function StoryboardSidebarPanel() {
             }}
           >
             {key === "script" && <AlignLeft size={9} />}
-            {key === "image"  && <Image size={9} />}
+            {key === "image"  && <LucideImage size={9} />}
             {key === "video"  && <Video size={9} />}
             {label}
           </button>

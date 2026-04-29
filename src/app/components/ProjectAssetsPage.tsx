@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Image, Video, Music, Download, Star, Trash2, Check, Search,
+  Image as LucideImage, Video, Music, Download, Star, Trash2, Check, Search,
   ChevronDown, X, Grid3X3, LayoutList, Pencil, ArrowDown, ArrowUp,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,7 +43,7 @@ const TAB_LABELS: { key: AssetTab; label: string }[] = [
   { key: "collect", label: "全部收藏" },
 ];
 
-const TYPE_ICONS = { image: Image, video: Video, audio: Music };
+const TYPE_ICONS = { image: LucideImage, video: Video, audio: Music };
 const TYPE_LABELS: Record<AssetType, string> = { all: "全部类型", image: "图片", video: "视频", audio: "音频" };
 const TYPE_CLR: Record<AssetType, string> = { all: "rgba(255,255,255,0.45)", image: "#3b82f6", video: "#a78bfa", audio: "#22c55e" };
 
@@ -289,7 +289,7 @@ export function ProjectAssetsPage() {
           <button onClick={() => setShowTypeMenu(!showTypeMenu)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
             style={{ background: typeFilter !== "all" ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: typeFilter !== "all" ? TYPE_CLR[typeFilter] : "rgba(255,255,255,0.45)", border: typeFilter !== "all" ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.07)" }}>
-            {typeFilter === "image" && <Image size={10} />}{typeFilter === "video" && <Video size={10} />}{typeFilter === "audio" && <Music size={10} />}
+            {typeFilter === "image" && <LucideImage size={10} />}{typeFilter === "video" && <Video size={10} />}{typeFilter === "audio" && <Music size={10} />}
             {TYPE_LABELS[typeFilter]}<ChevronDown size={9} />
           </button>
           {showTypeMenu && (
@@ -300,7 +300,7 @@ export function ProjectAssetsPage() {
                 <button key={t} onClick={() => { setTypeFilter(t); setShowTypeMenu(false); }}
                   className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
                   style={{ color: typeFilter === t ? "#E87322" : "rgba(255,255,255,0.6)" }}>
-                  {t === "image" && <Image size={10} />}{t === "video" && <Video size={10} />}{t === "audio" && <Music size={10} />}
+                  {t === "image" && <LucideImage size={10} />}{t === "video" && <Video size={10} />}{t === "audio" && <Music size={10} />}
                   {TYPE_LABELS[t]}{typeFilter === t && <Check size={9} className="ml-auto" />}
                 </button>
               ))}
@@ -364,7 +364,7 @@ export function ProjectAssetsPage() {
             {filteredAssets.length === 0 && (
               <div className="col-span-full flex flex-col items-center justify-center h-48 rounded-2xl"
                 style={{ border: "1px dashed rgba(255,255,255,0.08)" }}>
-                <Image size={32} style={{ color: "rgba(255,255,255,0.1)" }} />
+                <LucideImage size={32} style={{ color: "rgba(255,255,255,0.1)" }} />
                 <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
                   {activeTab === "collect" ? "暂无收藏内容" : "暂无资产"}
                 </p>
@@ -388,7 +388,7 @@ export function ProjectAssetsPage() {
             {filteredAssets.map((a) => renderListRow(a))}
             {filteredAssets.length === 0 && (
               <div className="flex flex-col items-center justify-center h-48" style={{ color: "rgba(255,255,255,0.25)" }}>
-                <Image size={32} style={{ color: "rgba(255,255,255,0.1)" }} />
+                <LucideImage size={32} style={{ color: "rgba(255,255,255,0.1)" }} />
                 <p className="mt-3 text-sm">暂无资产</p>
               </div>
             )}

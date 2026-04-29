@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useNavigate, useLocation, Outlet, useParams } from "react-router";
-import { Layers, Sparkles, PenTool, Film, ArrowLeft, Home, RefreshCw } from "lucide-react";
+import { Layers, Sparkles, Film, ArrowLeft, Home, RefreshCw } from "lucide-react";
 import { getProjectById } from "../data/projectsData";
 import { TokenModal, ENTERPRISE_ALLOC, GIFT_TOKENS, TOTAL_TOKENS, ALL_PROJECT_ALLOC } from "./TokenModal";
 import { PROJECTS_DATA } from "../data/projectsData";
@@ -10,13 +10,21 @@ import { SpaceSwitcher } from "./SpaceSwitcher";
 import { EnterpriseSettings } from "./enterprise/EnterpriseSettings";
 
 type NavKey = "home" | "assets" | "generate" | "canvas" | "storyboard";
+type PermLevel = "管理" | "编辑" | "阅读";
 
-const SUB_NAV_ITEMS: { icon: typeof Layers; label: string; path: string; key: NavKey }[] = [
- // { icon: Layers, label: "资产", path: "assets", key: "assets" },
+interface NavItemDef { icon: typeof Layers; label: string; path: string; key: NavKey }
+
+const ALL_NAV_ITEMS: NavItemDef[] = [
   { icon: Sparkles, label: "生成", path: "generate", key: "generate" },
-//  { icon: PenTool, label: "画布", path: "canvas", key: "canvas" },
   { icon: Film, label: "分镜", path: "storyboard", key: "storyboard" },
 ];
+
+// Permission → allowed nav keys
+const PERM_NAV: Record<PermLevel, NavKey[]> = {
+  "管理": ["generate", "storyboard"],
+  "编辑": ["generate", "storyboard"],
+  "阅读": ["storyboard"],
+};
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   进行中: { bg: "rgba(232,115,34,0.15)", text: "#E87322" },
@@ -24,15 +32,13 @@ const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   暂停: { bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.4)" },
 };
 
-const MODULE_LABELS: Record<string, string> = {
-  assets: "资产库",
-  generate: "AI 生成",
- // canvas: "画布",
-  storyboard: "故事板",
+const PERM_STYLE: Record<string, { bg: string; text: string }> = {
+  "管理": { bg: "rgba(232,115,34,0.15)", text: "#E87322" },
+  "编辑": { bg: "rgba(59,130,246,0.15)", text: "#3b82f6" },
+  "阅读": { bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.4)" },
 };
 
 const ALL_USED = PROJECTS_DATA.reduce((s, p) => s + p.tokenUsed, 0);
-const GLOBAL_AVAILABLE = TOTAL_TOKENS - ALL_USED;
 
 function fmt(n: number) {
   return n >= 10000 ? `${(n / 10000).toFixed(1)}万` : n.toLocaleString();
@@ -59,10 +65,13 @@ export function ProjectDetailLayout() {
   const activeKey = getActiveKey();
   const isOnHome = activeKey === "home";
 
-  // Current project available tokens
-  const projectAvailable = project
-    ? ENTERPRISE_ALLOC + project.tokenTotal + GIFT_TOKENS - project.tokenUsed
-    : ENTERPRISE_ALLOC + GIFT_TOKENS;
+  // Filter nav items by permission
+  const perm = project?.permission ?? "编辑";
+  const allowedKeys = PERM_NAV[perm];
+  const visibleNavItems = ALL_NAV_ITEMS.filter(item => allowedKeys.includes(item.key));
+
+  // Check if current route is allowed
+  const isAllowed = !isOnHome && activeKey !== "home" ? allowedKeys.includes(activeKey) : true;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: "#140F09" }}>
@@ -130,7 +139,7 @@ export function ProjectDetailLayout() {
 
         {/* Sub nav items */}
         <div className="flex flex-col gap-0.5 flex-1 w-full">
-          {SUB_NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.key === activeKey;
             return (
@@ -229,6 +238,12 @@ export function ProjectDetailLayout() {
               >
                 {project.status}
               </span>
+              <span
+                className="px-2 py-0.5 rounded-full flex-shrink-0"
+                style={{ ...PERM_STYLE[project.permission], fontSize: "10px" }}
+              >
+                {project.permission}
+              </span>
             </div>
 
             <div style={{ width: "1px", height: "16px", background: "rgba(255,255,255,0.08)" }} />
@@ -249,7 +264,26 @@ export function ProjectDetailLayout() {
         )}
 
         <div className="flex-1 overflow-hidden">
-          <Outlet />
+          {isAllowed ? (
+            <Outlet />
+          ) : (
+            <div className="flex items-center justify-center h-full" style={{ background: "#140F09" }}>
+              <div className="text-center">
+                <div className="text-4xl mb-4" style={{ opacity: 0.15 }}>🔒</div>
+                <h3 className="text-base text-white mb-2">无权访问</h3>
+                <p className="text-sm mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  当前权限为 <span style={{ color: PERM_STYLE[perm].text }}>{perm}</span>，无法使用此功能
+                </p>
+                <button
+                  onClick={() => navigate(`/project/${id}`)}
+                  className="px-4 py-1.5 rounded-lg text-sm transition-colors"
+                  style={{ color: "#E87322", background: "rgba(232,115,34,0.1)" }}
+                >
+                  返回项目总览
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

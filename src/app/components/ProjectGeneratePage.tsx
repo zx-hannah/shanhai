@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { ReactNode } from "react";
 import {
-  Folder, FolderOpen, MessageSquare, ChevronRight, Plus, Image, Video, Music,
+  Folder, FolderOpen, MessageSquare, ChevronRight, Plus, Image as LucideImage, Video, Music,
   Star, Upload, Package, Send, Sparkles, MoreHorizontal, Download, RefreshCw,
   Search, Pencil, Trash2, X, Check, ChevronDown, Film, AlignLeft, Copy, Play,
   ChevronLeft, Users, Filter,

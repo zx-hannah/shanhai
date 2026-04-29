@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ChevronRight, Plus, Film, MoreHorizontal, AlignLeft, LayoutGrid,
   Filter, Settings2, Upload, Download, X, Check, Pencil, Trash2,
   Users, Clock, ChevronDown, Share2, Link, Eye, Edit3,
-  ChevronLeft, Sparkles, Package, Star, Search, Image, Video, Music,
+  ChevronLeft, Sparkles, Package, Star, Search, Image as LucideImage, Video, Music,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ProjectAssetsSidebarPanel } from "./ProjectAssetsSidebarPanel";
@@ -133,6 +133,19 @@ export function ProjectStoryboardPage() {
   const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null);
   const [sortDuration, setSortDuration] = useState<"none" | "asc" | "desc">("none");
   const [showShareModal, setShowShareModal] = useState(false);
+  const [progressDropdownId, setProgressDropdownId] = useState<string | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!progressDropdownId) return;
+    const handler = (e: MouseEvent) => {
+      if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
+        setProgressDropdownId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [progressDropdownId]);
 
   const activeEpisode = episodes.find((e) => e.id === activeEpisodeId);
   const activeScene = activeEpisode?.scenes.find((s) => s.id === activeSceneId);
@@ -430,7 +443,7 @@ export function ProjectStoryboardPage() {
         <div className="flex-1 overflow-auto">
           {viewMode === "table" ? (
             /* TABLE VIEW */
-            <div style={{ minWidth: "fit-content" }}>
+            <div ref={tableRef} style={{ minWidth: "fit-content" }}>
               {/* Table header */}
               <div className="flex items-center sticky top-0 z-10 flex-shrink-0" style={{ background: "#110E0A", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 {/* Row number */}
@@ -587,18 +600,41 @@ export function ProjectStoryboardPage() {
                             )}
 
                             {col.key === "progress" && (
-                              <button className="px-2 py-0.5 rounded text-xs flex-shrink-0"
-                                style={{ background: PROGRESS_STYLES[panel.progress].bg, color: PROGRESS_STYLES[panel.progress].color, fontSize: "11px" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const opts: ProgressStatus[] = ["待审核", "审核中", "已完成", "未开始"];
-                                  const idx = opts.indexOf(panel.progress);
-                                  const nextStatus = opts[(idx + 1) % opts.length];
-                                  updatePanelField(panel.id, "progress", nextStatus);
-                                }}
-                              >
-                                {panel.progress}
-                              </button>
+                              <div className="relative flex-shrink-0">
+                                <button className="px-2 py-0.5 rounded text-xs"
+                                  style={{ background: PROGRESS_STYLES[panel.progress].bg, color: PROGRESS_STYLES[panel.progress].color, fontSize: "11px" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setProgressDropdownId(progressDropdownId === panel.id ? null : panel.id);
+                                  }}
+                                >
+                                  {panel.progress}
+                                </button>
+                                {progressDropdownId === panel.id && (
+                                  <div className="absolute top-full left-0 mt-1 z-50 rounded-md overflow-hidden shadow-lg border border-white/10"
+                                    style={{ background: "#1a1714", minWidth: "90px" }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {(["待审核", "审核中", "已完成", "未开始"] as ProgressStatus[]).map((status) => (
+                                      <button key={status}
+                                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                                        style={{
+                                          color: panel.progress === status ? PROGRESS_STYLES[status].color : "rgba(255,255,255,0.6)",
+                                          background: panel.progress === status ? PROGRESS_STYLES[status].bg : "transparent",
+                                        }}
+                                        onMouseEnter={(e) => { if (panel.progress !== status) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                                        onMouseLeave={(e) => { if (panel.progress !== status) e.currentTarget.style.background = "transparent"; }}
+                                        onClick={() => {
+                                          updatePanelField(panel.id, "progress", status);
+                                          setProgressDropdownId(null);
+                                        }}
+                                      >
+                                        {status}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             )}
 
                             {col.key === "notes" && (

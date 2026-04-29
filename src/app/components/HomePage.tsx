@@ -1,13 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { ChevronDown, Send, Coins, ArrowUpRight, FolderOpen, Clock, Megaphone, Palette, Zap, Video } from "lucide-react";
+import { ChevronDown, Send, Coins, ArrowUpRight, FolderOpen, Clock, Megaphone, Palette, Zap, Video, Layout, Mic, Image as LucideImage } from "lucide-react";
 import { PROJECTS_DATA } from "../data/projectsData";
+import { useSpace } from "../context/SpaceContext";
 
 const ACTIVITY_CARDS = [
   { tag: "无限画布", title: "活动", color: "#C45C1A", image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=300&q=80" },
   { tag: "无限画布", title: "活动", color: "#4A1A8C", image: "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=300&q=80" },
   { tag: "活动", title: "限时挑战", color: "#1A5CC4", image: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=300&q=80" },
   { tag: "活动", title: "花开富贵", color: "#8C1A1A", image: "https://images.unsplash.com/photo-1490750967868-88df5691cc6f?w=300&q=80" },
+];
+const FEATURE_CARDS = [
+  { label: "无限画布", sub: "释放你的AI创造力", color: "#7B3FC4", gradient: "linear-gradient(135deg, #7B3FC4, #4A1A8C)" },
+  { label: "创建项目", sub: "还原影视化创作流程", color: "#2A6FC4", gradient: "linear-gradient(135deg, #2A6FC4, #1A3A8C)" },
+  { label: "生音频", icon: Mic, color: "#1E1A14" },
+  { label: "对口型", icon: Layout, color: "#1E1A14" },
+  { label: "图片高清", icon: LucideImage, color: "#1E1A14" },
+  { label: "视频超分", icon: Video, color: "#1E1A14" },
 ];
 
 const STATUS_COLOR: Record<string, string> = {
@@ -24,7 +33,7 @@ function RecentProjectCard({ project }: { project: typeof PROJECTS_DATA[number] 
       style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.07)" }}
     >
       {/* Cover */}
-      <div className="relative h-28">
+      <div className="relative h-36">
         <img src={project.cover} alt={project.name} className="w-full h-full object-cover" />
         <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 60%)" }} />
         <div className="absolute top-2 left-2">
@@ -39,28 +48,6 @@ function RecentProjectCard({ project }: { project: typeof PROJECTS_DATA[number] 
           </span>
         </div>
       </div>
-      {/* Info */}
-      <div className="px-3 py-2.5 flex flex-col gap-2">
-        {/* Progress */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>进度</span>
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>{project.progress}%</span>
-          </div>
-          <div className="w-full rounded-full overflow-hidden" style={{ height: "3px", background: "rgba(255,255,255,0.08)" }}>
-            <div className="h-full rounded-full" style={{ width: `${project.progress}%`, background: "linear-gradient(90deg,#E87322,#F5A623)" }} />
-          </div>
-        </div>
-        {/* Stats */}
-        <div className="flex items-center gap-3 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
-          <span>{project.completedEpisodes}/{project.episodes} 集</span>
-          <span>{project.totalAssets} 资产</span>
-          <span className="flex items-center gap-0.5">
-            <Coins size={9} style={{ color: "#E87322" }} />
-            {(project.tokenUsed / 1000).toFixed(1)}k
-          </span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -69,6 +56,7 @@ export function HomePage() {
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("图片生成");
   const navigate = useNavigate();
+  const { spaceId } = useSpace();
 
   const recentProjects = PROJECTS_DATA.slice(0, 4);
 
@@ -139,6 +127,7 @@ export function HomePage() {
         </div>
 
         {/* Recent Projects */}
+        {spaceId !== "personal" && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -162,7 +151,62 @@ export function HomePage() {
             ))}
           </div>
         </div>
+        )}
+      {/* Recent Projects */}
+        {spaceId == "personal" && (
+       <div className="grid grid-cols-4 gap-3 mb-8">
+          {/* Large cards */}
+          <div
+            className="col-span-1 rounded-xl overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] relative h-32"
+            style={{ background: FEATURE_CARDS[0].gradient }}
+            onClick={() => navigate("/canvas")}
+          >
+            <div className="p-3 h-full flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.2)" }}>
+                <Layout size={16} className="text-white" />
+              </div>
+              <div>
+                <div className="text-white text-sm">{FEATURE_CARDS[0].label}</div>
+                <div className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>{FEATURE_CARDS[0].sub}</div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="col-span-1 rounded-xl overflow-hidden cursor-pointer transition-transform hover:scale-[1.02] relative h-32"
+            style={{ background: FEATURE_CARDS[1].gradient }}>
+            <div className="p-3 h-full flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.2)" }}>
+                <Video size={16} className="text-white" />
+              </div>
+              <div>
+                <div className="text-white text-sm">{FEATURE_CARDS[1].label}</div>
+                <div className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>{FEATURE_CARDS[1].sub}</div>
+              </div>
+            </div>
+          </div>
 
+          {/* Right 2x2 grid */}
+          <div className="col-span-2 grid grid-cols-2 gap-3">
+            {[
+              { label: "生音频", icon: Mic },
+              { label: "对口型", icon: Layout },
+              { label: "图片高清", icon: LucideImage },
+              { label: "视频超分", icon: Video },
+            ].map(({ label, icon: Icon }) => (
+              <button key={label}
+                className="rounded-xl flex items-center gap-2 px-3 cursor-pointer transition-colors h-14 text-left"
+                style={{ background: "rgba(30,26,20,0.8)", border: "1px solid rgba(255,255,255,0.08)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(232,115,34,0.3)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.08)"; }}>
+                <Icon size={16} style={{ color: "#E87322" }} />
+                <span className="text-sm text-white">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        )}
         {/* 更新与活动 */}
         <div>
           <div className="flex items-center justify-between mb-3">

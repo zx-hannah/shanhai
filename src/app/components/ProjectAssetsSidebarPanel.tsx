@@ -2,7 +2,7 @@
 import { useState } from "react";
 import {
   ChevronRight, Search, Star, Plus, Video, Sparkles,
-  Upload, Package, X, Image, Music, ChevronDown,
+  Upload, Package, X, Image as LucideImage, Music, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PROJECTS_DATA } from "../data/projectsData";
@@ -20,7 +20,7 @@ const SUB_TABS: { key: SubTab; label: string; icon: typeof Sparkles }[] = [
 
 const TYPE_FILTERS: { key: TypeFilter; label: string; icon?: typeof Image }[] = [
   { key: "all",   label: "全部"  },
-  { key: "image", label: "图片", icon: Image },
+  { key: "image", label: "图片", icon: LucideImage },
   { key: "video", label: "视频", icon: Video },
   { key: "audio", label: "音频", icon: Music },
 ];

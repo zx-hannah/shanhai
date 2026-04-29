@@ -1508,7 +1508,7 @@ export function ConsumptionManagement() {
               <div>成员</div>
               <div>个人总分配</div>
               <div>个人生产栗余额</div>
-              <div>个人总消耗</div>
+              <div>个人总消费</div>
               <div>操作</div>
               <div>操作</div>
             </div>

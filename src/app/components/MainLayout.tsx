@@ -2,13 +2,14 @@ import { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router";
 import {
   Home, Box, Zap, FolderOpen, Layout, Wrench,
-  ClipboardList, Menu, RefreshCw, ListTodo, ChevronDown,
+  Menu, RefreshCw, ListTodo, ChevronDown,
 } from "lucide-react";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { EnterpriseSettings } from "./enterprise/EnterpriseSettings";
 import { TokenModal, TOTAL_TOKENS, ENTERPRISE_ALLOC, GIFT_TOKENS, ALL_PROJECT_ALLOC } from "./TokenModal";
 import { TaskQueue } from "./TaskQueue";
 import { PROJECTS_DATA } from "../data/projectsData";
+import { SpaceContext, type SpaceId } from "../context/SpaceContext";
 
 const NAV_ITEMS = [
   { icon: Home, label: "主页", path: "/" },
@@ -17,6 +18,12 @@ const NAV_ITEMS = [
   { icon: FolderOpen, label: "项目", path: "/projects" },
   { icon: Layout, label: "画布", path: "/canvas" },
   { icon: Wrench, label: "工具库", path: "/tools" },
+];
+
+const SPACES = [
+  { id: "personal", name: "个人空间", short: "个人", type: "personal" as const, avatarColor: "#4A4A4A", letter: "我" },
+  { id: "ent1", name: "山海科技有限公司", short: "山海科技", type: "enterprise" as const, role: "所有者", avatarColor: "#C45C1A", letter: "山" },
+  { id: "ent2", name: "未来创意工作室", short: "未来创意", type: "enterprise" as const, role: "成员", avatarColor: "#1A5CC4", letter: "未" },
 ];
 
 const ALL_USED = PROJECTS_DATA.reduce((s, p) => s + p.tokenUsed, 0);
@@ -31,7 +38,10 @@ export function MainLayout() {
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showTaskQueue, setShowTaskQueue] = useState(false);
 
+  const currentSpace = SPACES.find(s => s.id === currentSpaceId)!;
+
   return (
+    <SpaceContext.Provider value={{ spaceId: currentSpaceId as SpaceId }}>
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: "#140F09" }}>
       {/* Sidebar */}
       <div className="flex flex-col items-center py-4 flex-shrink-0 relative z-20"
@@ -45,6 +55,9 @@ export function MainLayout() {
         {/* Nav Items */}
         <div className="flex flex-col gap-1 flex-1">
           {NAV_ITEMS.map(({ icon: Icon, label, path }) => {
+            // Hide "项目" in personal space
+            if (currentSpaceId === "personal" && path === "/projects") return null;
+
             const isActive = location.pathname === path;
             return (
               <button
@@ -82,19 +95,22 @@ export function MainLayout() {
             </div>
           </button>
 
-          {/* User Avatar */}
+          {/* ── Space Switcher Avatar ── */}
           <div className="relative">
             <button
               onClick={() => setShowSpaceSwitcher(!showSpaceSwitcher)}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs overflow-hidden relative"
-              style={{ background: "#E87322" }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold"
+              style={{ background: currentSpace.avatarColor }}
+              title="切换空间"
             >
-              Bob
-              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center"
-                style={{ background: "#2A2018", border: "1.5px solid rgba(255,255,255,0.15)" }}>
-                <RefreshCw size={8} style={{ color: "#E87322" }} />
-              </div>
+              {currentSpace.letter}
             </button>
+            <div
+              className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center"
+              style={{ background: "#140F09", border: "1.5px solid rgba(255,255,255,0.15)" }}
+            >
+              <RefreshCw size={7} style={{ color: "#E87322" }} />
+            </div>
           </div>
 
           {/* Menu */}
@@ -161,5 +177,6 @@ export function MainLayout() {
         <Outlet />
       </div>
     </div>
+    </SpaceContext.Provider>
   );
 }

@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Plus, Clock, MoreHorizontal, Trash2, Edit2, FolderOpen, Film } from "lucide-react";
 import { PROJECTS_DATA, ProjectData } from "../data/projectsData";
+import { useSpace } from "../context/SpaceContext";
 
 const PROJECT_STATUS = {
   IN_PROGRESS: "进行中",
@@ -191,7 +192,9 @@ const ProjectCard = memo(function ProjectCard({ project, onNavigate }: ProjectCa
 });
 
 export function ProjectsPage() {
+  const { spaceId } = useSpace();
   const navigate = useNavigate();
+  const isReadOnly = spaceId === "ent2";
 
   const handleNavigate = (id: string) => navigate(`/project/${id}`);
   const handleNewProject = () => {
@@ -220,6 +223,37 @@ export function ProjectsPage() {
           className="grid gap-4"
           style={{ gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))" }}
         >
+          {isReadOnly ? (
+          <div
+            className="rounded-xl cursor-pointer flex flex-col items-center justify-center transition-all group relative"
+            style={{
+              border: "2px dashed rgba(255,255,255,0.08)",
+              background: "rgba(255,255,255,0.02)",
+              minHeight: "210px",
+              opacity: 0.5,
+            }}
+          >
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1.5px dashed rgba(255,255,255,0.15)",
+              }}
+            >
+              <Plus size={20} style={{ color: "rgba(255,255,255,0.25)" }} />
+            </div>
+            <span className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>
+              新建项目
+            </span>
+            {/* Hover tooltip */}
+            <div
+              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-3 py-2 rounded-lg text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}
+            >
+              没有权限，请联系团队管理员开启
+            </div>
+          </div>
+          ) : (
           <div
             className="rounded-xl cursor-pointer flex flex-col items-center justify-center transition-all hover:opacity-80"
             style={{
@@ -242,6 +276,7 @@ export function ProjectsPage() {
               新建项目
             </span>
           </div>
+          )}
 
           {PROJECTS_DATA.map((project) => (
             <ProjectCard key={project.id} project={project} onNavigate={handleNavigate} />

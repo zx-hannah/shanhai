@@ -431,6 +431,7 @@ export function ProjectManagement() {
   );
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<{ projectId: string; newStatus: string } | null>(null);
+  const [allowMemberCreate, setAllowMemberCreate] = useState(false);
 
   const STATUS_OPTIONS = [
     { value: "进行中", color: "#E87322" },
@@ -470,34 +471,70 @@ export function ProjectManagement() {
       </div>
 
       {/* Default Quota Banner — prominent */}
-{/*       <div
-        className="flex items-center justify-between px-5 py-4 rounded-2xl mb-5 cursor-pointer transition-opacity hover:opacity-90"
+     <div
+        className="rounded-2xl mb-5 overflow-hidden"
         style={{ background: "linear-gradient(135deg, rgba(123,63,196,0.18) 0%, rgba(74,158,224,0.12) 100%)", border: "1px solid rgba(123,63,196,0.3)" }}
-        onClick={() => setShowDefaultQuotaDialog(true)}
       >
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(123,63,196,0.2)" }}>
-            <Settings size={16} style={{ color: "#7B3FC4" }} />
-          </div>
-          <div>
-            <div className="text-sm text-white">新建项目默认配额</div>
-            <div className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
-              每个新建项目将自动获得此初始生产栗额度，可随时调整
+        {/* Toggle row */}
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(123,63,196,0.2)" }}>
+              <Settings size={16} style={{ color: "#7B3FC4" }} />
+            </div>
+            <div>
+              <div className="text-sm text-white">允许团队成员新建项目</div>
+              <div className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+开启后，普通成员将拥有创建项目的权限，且新建项目会自动分配默认配额。
+              </div>
             </div>
           </div>
+          {/* Toggle switch */}
+          <button
+            onClick={() => setAllowMemberCreate((v) => !v)}
+            className="relative flex-shrink-0 transition-all duration-200"
+            style={{ width: "44px", height: "24px" }}
+          >
+            <div
+              className="w-full h-full rounded-full transition-colors duration-200"
+              style={{ background: allowMemberCreate ? "#7B3FC4" : "rgba(255,255,255,0.12)", border: `1px solid ${allowMemberCreate ? "#7B3FC4" : "rgba(255,255,255,0.2)"}` }}
+            />
+            <div
+              className="absolute top-0.5 rounded-full transition-all duration-200"
+              style={{
+                width: "20px",
+                height: "20px",
+                background: "white",
+                left: allowMemberCreate ? "22px" : "2px",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
+              }}
+            />
+          </button>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="text-right">
-            <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>当前默认值</div>
-            <div className="text-white" style={{ fontSize: "15px" }}>
-              {defaultQuota.toLocaleString()} <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>颗</span>
+
+        {/* Default quota row — only visible when toggle is on */}
+        {allowMemberCreate && (
+          <div
+            className="flex items-center justify-between px-5 py-3.5 cursor-pointer transition-opacity hover:opacity-90"
+            style={{ borderTop: "1px solid rgba(123,63,196,0.2)", background: "rgba(123,63,196,0.06)" }}
+            onClick={() => setShowDefaultQuotaDialog(true)}
+          >
+            <div className="flex items-center gap-2" style={{ color: "rgba(255,255,255,0.55)" }}>
+              <Coins size={13} />
+              <span className="text-xs">项目默认配额</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="text-right">
+                <div className="text-white" style={{ fontSize: "14px" }}>
+                  {defaultQuota.toLocaleString()} <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>颗</span>
+                </div>
+              </div>
+              <div className="px-2.5 py-1 rounded-lg text-xs" style={{ background: "rgba(123,63,196,0.25)", color: "#A97CF0", border: "1px solid rgba(123,63,196,0.35)" }}>
+                修改
+              </div>
             </div>
           </div>
-          <div className="px-3 py-1.5 rounded-lg text-xs" style={{ background: "rgba(123,63,196,0.25)", color: "#A97CF0", border: "1px solid rgba(123,63,196,0.35)" }}>
-            修改
-          </div>
-        </div>
-      </div>*/}
+        )}
+      </div>
 
       {/* Table Header */}
       <div
@@ -736,7 +773,7 @@ export function ProjectManagement() {
         <SimpleProjectQuotaDialog
           title="新建项目默认配额"
           subtitle="设置新建项目时的初始生产栗配额"
-          description="创建新项目时将自动分配该数量的生产栗作为初始配额，项目管理员可在后续根据需要手动调整配额上限。"
+          description="团队普通成员创建新项目时将自动分配该数量的生产栗作为初始配额，团队管理员可后续根据需要手动调整单个项目配额。"
           currentQuota={defaultQuota}
           onClose={() => setShowDefaultQuotaDialog(false)}
           onSave={(quota) => {

@@ -215,11 +215,12 @@ export function SpaceSwitcher({ onClose, currentSpaceId, onSwitchSpace, onOpenSe
                     onOpenSettings();
                     onClose();
                   }}
-                  className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center transition-colors hover:opacity-80"
-                  style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}
+                  className="flex-shrink-0 px-2 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors hover:opacity-80"
+                  style={{ background: "rgba(232,115,34,0.12)", border: "1px solid rgba(232,115,34,0.25)", color: "#E87322" }}
                   title="团队设置"
                 >
-                  <Settings size={12} />
+                  <Settings size={11} />
+                  <span style={{ fontSize: "10px" }}>设置</span>
                 </button>
               )}
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Layers, Eye, EyeOff, Lock, Unlock, ChevronRight, Plus, Image, Type,
+  Layers, Eye, EyeOff, Lock, Unlock, ChevronRight, Plus, Image as LucideImage, Type,
   Minus, ZoomIn, ZoomOut, Move, MousePointer, Maximize2, MoreHorizontal,
   Upload, Package, Star, Search, Film, Video,
   ChevronLeft,
@@ -256,7 +256,7 @@ export function ProjectCanvasPage() {
 
           <div className="flex items-center gap-1">
             <button className="w-7 h-7 rounded flex items-center justify-center transition-colors hover:bg-white/10">
-              <Image size={13} style={{ color: "rgba(255,255,255,0.4)" }} />
+              <LucideImage size={13} style={{ color: "rgba(255,255,255,0.4)" }} />
             </button>
             <button className="w-7 h-7 rounded flex items-center justify-center transition-colors hover:bg-white/10">
               <Type size={13} style={{ color: "rgba(255,255,255,0.4)" }} />

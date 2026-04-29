@@ -16,6 +16,8 @@ export interface MemberStat {
   contribution: number; // 0-100
 }
 
+export type ProjectPermission = "管理" | "编辑" | "阅读";
+
 export interface ProjectData {
   id: string;
   name: string;
@@ -32,6 +34,7 @@ export interface ProjectData {
   startDate: string;
   episodeStats: EpisodeStat[];
   members: MemberStat[];
+  permission: ProjectPermission;
 }
 
 export const PROJECTS_DATA: ProjectData[] = [
@@ -65,6 +68,7 @@ export const PROJECTS_DATA: ProjectData[] = [
       { name: "Carol", avatar: "Ca", role: "角色", generated: 64, tokenUsed: 2900, contribution: 24 },
       { name: "Dave", avatar: "Da", role: "道具", generated: 28, tokenUsed: 1300, contribution: 10 },
     ],
+    permission: "管理" as const,
   },
   {
     id: "2",
@@ -93,6 +97,7 @@ export const PROJECTS_DATA: ProjectData[] = [
       { name: "Frank", avatar: "Fr", role: "场景", generated: 54, tokenUsed: 2600, contribution: 34 },
       { name: "Grace", avatar: "Gr", role: "角色", generated: 37, tokenUsed: 2000, contribution: 25 },
     ],
+    permission: "编辑" as const,
   },
   {
     id: "3",
@@ -119,6 +124,7 @@ export const PROJECTS_DATA: ProjectData[] = [
       { name: "Iris", avatar: "Ir", role: "角色", generated: 105, tokenUsed: 6300, contribution: 35 },
       { name: "Jack", avatar: "Ja", role: "背景", generated: 87, tokenUsed: 4500, contribution: 25 },
     ],
+    permission: "阅读" as const,
   },
   {
     id: "4",
@@ -145,6 +151,7 @@ export const PROJECTS_DATA: ProjectData[] = [
       { name: "Kate", avatar: "Ka", role: "主创", generated: 55, tokenUsed: 2800, contribution: 67 },
       { name: "Leo", avatar: "Le", role: "助理", generated: 34, tokenUsed: 1400, contribution: 33 },
     ],
+    permission: "编辑" as const,
   },
   {
     id: "5",
@@ -177,6 +184,7 @@ export const PROJECTS_DATA: ProjectData[] = [
       { name: "Nick", avatar: "Ni", role: "场景", generated: 32, tokenUsed: 1800, contribution: 32 },
       { name: "Olivia", avatar: "Ol", role: "角色", generated: 21, tokenUsed: 1000, contribution: 18 },
     ],
+    permission: "管理" as const,
   },
 ];
 
