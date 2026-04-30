@@ -1693,7 +1693,7 @@ export function ProjectHomePage() {
                       {isExpanded && (
                         <div className="px-5 pb-3 pt-0 flex flex-col gap-2.5" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                           {stages.map((stage) => {
-                            const StageIcon = stage.label === "草分绘制" ? Edit2 : stage.label === "静帧生成" ? Image : Zap;
+                            const StageIcon = stage.label === "草分绘制" ? Edit2 : stage.label === "静帧生成" ? LucideImage : Zap;
                             return (
                               <div key={stage.label} className="flex items-center gap-3">
                                 <StageIcon size={12} style={{ color: stage.progress === 100 ? "#4AC678" : "rgba(255,255,255,0.25)", flexShrink: 0 }} />
@@ -1759,7 +1759,22 @@ export function ProjectHomePage() {
                       {/* Prompt + stats */}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.7)" }}>{item.prompt}</p>
-                        <div className="flex items-center gap-3 mt-1.5">
+                        <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                          {/* Person */}
+                          <div className="flex items-center gap-1">
+                            <div className="w-4 h-4 rounded-full flex items-center justify-center text-white"
+                              style={{ background: MEMBER_COLORS[idx % MEMBER_COLORS.length], fontSize: "8px", fontWeight: 600 }}>
+                              {item.person.charAt(0)}
+                            </div>
+                            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)" }}>{item.person}</span>
+                          </div>
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.15)" }}>·</span>
+                          {/* Episode + shots */}
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.45)" }}>
+                            {item.episode} · {item.shots.join("、")}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1">
                           <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>
                             出现 <strong style={{ color: isHigh ? "#ff6b6b" : "#E87322" }}>{item.count} 次</strong>
                           </span>
