@@ -8,7 +8,7 @@ import {
   Info,
   Monitor, Zap, Layers, Video,
   Shield, Eye, Droplets, Trash2, X,
-  RefreshCw, FolderOpen, MessageCircle, Search,
+  RefreshCw, FolderOpen, MessageCircle, Search, Pencil,
   Image as LucideImage,
 } from "lucide-react";
 import {
@@ -1640,6 +1640,88 @@ export function ProjectHomePage() {
             {activeTab === "members" && (
               <div className="flex flex-col gap-6">
 
+                {/* ── Section 2: 成本消耗 ── */}
+                <div className="flex flex-col gap-5">
+
+                  {/* Period filter + trend chart */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>消耗趋势</span>
+                      </div>
+                      <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        {PERIOD_LABELS.map(({ key, label }) => (
+                          <button key={key} onClick={() => setPeriod(key)}
+                            className="px-2 py-1 rounded-md text-xs transition-colors"
+                            style={{ background: period === key ? "rgba(232,115,34,0.7)" : "transparent", color: period === key ? "#fff" : "rgba(255,255,255,0.45)" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {period === "custom" && (
+                      <div className="flex items-center gap-2 mb-3">
+                        {["from", "to"].map((k) => (
+                          <input key={k} type="date"
+                            value={k === "from" ? dateFrom : dateTo}
+                            onChange={(e) => k === "from" ? setDateFrom(e.target.value) : setDateTo(e.target.value)}
+                            className="flex-1 px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }} />
+                        ))}
+                      </div>
+                    )}
+                    
+
+                    {/* Recharts Trend Chart */}
+                    <div className="rounded-lg px-1 pt-2 pb-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                      <div className="flex items-center justify-between px-3 mb-1">
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>消耗趋势</span>
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>
+                          {period === "week" ? "最近7天" : period === "month" ? "最近30天" : period === "year" ? "最近12月" : period === "all" ? "全部时段" : "自定义时段"}
+                        </span>
+                      </div>
+                      <ResponsiveContainer width="100%" height={110}>
+                        <AreaChart data={trendData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="trendGradFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#E87322" stopOpacity={0.25} />
+                              <stop offset="95%" stopColor="#E87322" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }}
+                            axisLine={false}
+                            tickLine={false}
+                            interval="preserveStartEnd"
+                          />
+                          <YAxis
+                            tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+                          />
+                          <ReTooltip
+                            content={<TrendTooltip />}
+                            cursor={{ stroke: "rgba(232,115,34,0.3)", strokeWidth: 1, strokeDasharray: "4 3" }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#E87322"
+                            strokeWidth={2}
+                            fill="url(#trendGradFill)"
+                            dot={false}
+                            activeDot={{ r: 4, fill: "#E87322", stroke: "#140F09", strokeWidth: 2 }}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+
+                </div>
                 {/* ── Section 1: 成员管理 ── */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
@@ -1659,6 +1741,7 @@ export function ProjectHomePage() {
                       onChange={setFilterMembers}
                     />
                     <PermFilterDropdown value={filterPerm} onChange={setFilterPerm} />
+                    {/*
                     <div className="flex items-center gap-1.5">
                       <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
                         className="px-2 py-1 rounded-lg text-xs outline-none"
@@ -1668,6 +1751,7 @@ export function ProjectHomePage() {
                         className="px-2 py-1 rounded-lg text-xs outline-none"
                         style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", fontSize: "10px" }} />
                     </div>
+                    */}
                     <button onClick={handleDownloadCSV}
                       className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
                       style={{ background: "rgba(74,198,120,0.1)", color: "#4AC678", border: "1px solid rgba(74,198,120,0.2)", fontSize: "10px" }}>
@@ -1676,60 +1760,40 @@ export function ProjectHomePage() {
                   </div>
                   )}
 
-                  {/* Table Header */}
-                  <div className="grid px-4 py-2.5 rounded-lg"
-                    style={{ gridTemplateColumns: "120px 140px 85px 85px 85px 85px 80px 90px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员</span>
-                    <MetricHeader label="消耗/配额" tooltip="点击可修改配额模式（无限制/固定额度）" />
-                    <MetricHeader label="图片生成" tooltip="生成的图片数量" />
-                    <MetricHeader label="图片消耗" tooltip="生成图片消耗的生产栗" />
-                    <MetricHeader label="视频生成" tooltip="生成的视频数量" />
-                    <MetricHeader label="视频消耗" tooltip="生成视频消耗的生产栗" />
-                    <MetricHeader label="视频时长" tooltip="累计生成的视频总时长" />
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>操作</span>
-                  </div>
-
-                  {/* Member Rows */}
-                  <div className="flex flex-col gap-1 mt-2">
+                  {/* Member List */}
+                  <div className="flex flex-col gap-1">
                     {/* ── 总计 Row ── */}
                     {(() => {
                       const ti = filteredMembersIndexed;
                       const totalConsumed = ti.reduce((s, { i }) => s + (memberPeriodConsumed[i] ?? 0), 0);
-                      const totalImageGen = ti.reduce((s, { m }) => s + m.imageGenerated, 0);
-                      const totalImageTok = ti.reduce((s, { m }) => s + m.imageTokenUsed, 0);
-                      const totalVidGen = ti.reduce((s, { m }) => s + m.videoGenerated, 0);
-                      const totalVidTok = ti.reduce((s, { m }) => s + m.videoTokenUsed, 0);
-                      const totalDuration = ti.reduce((s, { m }) => {
-                        const parts = m.videoDuration.match(/(\d+)分(\d+)秒/);
-                        return s + (parts ? parseInt(parts[1]) * 60 + parseInt(parts[2]) : 0);
-                      }, 0);
+                      const pct = localTokenTotal > 0 ? Math.round((totalConsumed / localTokenTotal) * 100) : 0;
                       return (
-                        <div className="grid px-5 py-2.5 rounded-lg"
-                          style={{ gridTemplateColumns: "120px 140px 85px 85px 85px 85px 80px 90px", alignItems: "center", background: "rgba(232,115,34,0.04)", border: "1px solid rgba(232,115,34,0.1)" }}>
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(232,115,34,0.2)", fontSize: "10px", fontWeight: 700, color: "#E87322" }}>Σ</div>
-                            <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600 }}>总计</span>
+                        <div className="flex items-center gap-4 px-5 py-3 rounded-lg"
+                          style={{ background: "rgba(232,115,34,0.06)", border: "1px solid rgba(232,115,34,0.12)" }}>
+                          {/* 成员 */}
+                          <div className="flex items-center gap-2 flex-shrink-0" style={{ width: "100px" }}>
+                            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(232,115,34,0.2)", fontSize: "11px", fontWeight: 700, color: "#E87322" }}>Σ</div>
+                            <span style={{ fontSize: "13px", color: "#E87322", fontWeight: 600 }}>总计</span>
                           </div>
-                          <button
-                            className="text-left rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors relative group/edit-total"
-                            onClick={() => setQuotaEditorIndex(-1)}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="w-full rounded-full overflow-hidden" style={{ height: "5px", background: "rgba(255,255,255,0.07)", flex: 1 }}>
-                                <div className="h-full rounded-full" style={{ width: `${tokenPercent}%`, background: tokenPercent > 80 ? "linear-gradient(90deg,#ff6b6b,#ff9b9b)" : "linear-gradient(90deg,#E87322,#F5A623)" }} />
-                              </div>
-                              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)" }}>
-                                {tokenPercent}%
-                              </span>
+                          {/* 消耗/配额 */}
+                          <div className="flex-1 flex items-center gap-3">
+                            <div className="flex-1 rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.07)" }}>
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct > 80 ? "linear-gradient(90deg,#ff6b6b,#ff9b9b)" : "linear-gradient(90deg,#E87322,#F5A623)" }} />
                             </div>
-                            <span style={{ fontSize: "10px", color: "#E87322" }}>编辑配额</span>
-                          </button>
-                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalImageGen}</div>
-                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalImageTok.toLocaleString()}</div>
-                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalVidGen}</div>
-                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalVidTok.toLocaleString()}</div>
-                          <div className="text-right" style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{formatDuration(totalDuration)}</div>
-                          <div />
+                            <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600, minWidth: "36px" }}>{pct}%</span>
+                            <button
+                              onClick={() => setQuotaEditorIndex(-1)}
+                              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                              style={{ color: "#E87322" }}
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600, fontFamily: "monospace", minWidth: "80px" }}>
+                              {totalConsumed.toLocaleString()}/{localTokenTotal.toLocaleString()}
+                            </span>
+                          </div>
+                          {/* 操作 */}
+                          <div style={{ width: "60px" }} />
                         </div>
                       );
                     })()}
@@ -1738,94 +1802,82 @@ export function ProjectHomePage() {
                     {filteredMembersIndexed.map(({ m, i }) => {
                       const qd = memberQuotas[i] ?? memberQuotas[0];
                       const totalTok = memberPeriodConsumed[i] ?? 0;
-                      const quotaPct = qd.type === "fixed" && qd.total > 0 ? Math.min(100, (totalTok / qd.total) * 100) : 0;
+                      const quotaPct = qd.type === "fixed" && qd.total > 0 ? Math.min(100, Math.round((totalTok / qd.total) * 100)) : 0;
                       const isExpanded = expandedDetailMember === m.name;
                       const memberTxns = MEMBER_TRANSACTIONS.filter(t => t.memberName === m.name);
 
                       return (
                         <Fragment key={i}>
                           <div
-                            className="grid px-5 py-3 hover:bg-white/[0.02] transition-colors group/row"
-                            style={{ gridTemplateColumns: "120px 140px 85px 85px 85px 85px 80px 90px", alignItems: "center" }}
+                            className="flex items-center gap-4 px-5 py-3 rounded-lg hover:bg-white/[0.02] transition-colors"
+                            style={{ border: "1px solid rgba(255,255,255,0.04)" }}
                           >
-                            {/* Member Info */}
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                            {/* 成员 */}
+                            <div className="flex items-center gap-2 flex-shrink-0" style={{ width: "100px" }}>
+                              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
                                 style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "10px", fontWeight: 600, color: "#fff" }}>
                                 {m.avatar}
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="truncate" style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{m.name}</span>
+                                  <span className="truncate" style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{m.name}</span>
                                   {i === 0 && (
                                     <span className="px-1 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(232,115,34,0.1)", color: "#E87322", fontSize: "9px" }}>你</span>
                                   )}
                                 </div>
-                                <div className="truncate" style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
-                                  {m.role}
-                                </div>
+                                <div className="truncate" style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{m.role}</div>
                               </div>
                             </div>
-
-                            {/* Quota — progress bar + edit额度 */}
-                            <div className="flex flex-col gap-0.5">
-                              <div className="w-full rounded-full overflow-hidden" style={{ height: "4px", background: "rgba(255,255,255,0.07)" }}>
+                            {/* 消耗/配额 */}
+                            <div className="flex-1 flex flex-col gap-1">
+                              <div className="w-full rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.07)" }}>
                                 <div className="h-full rounded-full transition-all" style={{
-                                  width: qd.type === "unlimited" ? "100%" : `${Math.min(100, quotaPct)}%`,
+                                  width: qd.type === "unlimited" ? "100%" : `${quotaPct}%`,
                                   background: qd.type === "unlimited" ? "#4AC678" : quotaPct > 90 ? "#ff6b6b" : "#9B59B6",
                                 }} />
                               </div>
                               <div className="flex items-center justify-between">
-                                <button
-                                  className="text-xs transition-all hover:opacity-80"
-                                  style={{
-                                    color: qd.type === "unlimited" ? "#4AC678" : "rgba(255,255,255,0.55)",
-                                    fontSize: "10px",
-                                  }}
-                                  onClick={() => setEditQuotaIndex(i)}
-                                >
-                                  {qd.type === "unlimited" ? "无额度限制" : `${totalTok.toLocaleString()} / ${qd.total.toLocaleString()}`}
-                                </button>
-                                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", flexShrink: 0 }}>
-                                  {qd.type === "unlimited" ? "∞" : "固定"}
-                                </span>
+                                {qd.type === "unlimited" ? (
+                                  <>
+                                    <span style={{ fontSize: "11px", color: "#4AC678", fontWeight: 500 }}>无额度限制</span>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => setEditQuotaIndex(i)}
+                                        className="p-1 rounded hover:bg-white/10 transition-colors"
+                                        style={{ color: "#4AC678" }}
+                                      >
+                                        <Pencil size={12} />
+                                      </button>
+                                      <span style={{ fontSize: "11px", color: "#4AC678" }}>∞</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span style={{ fontSize: "11px", color: "#9B59B6", fontWeight: 500 }}>固定额度</span>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => setEditQuotaIndex(i)}
+                                        className="p-1 rounded hover:bg-white/10 transition-colors"
+                                        style={{ color: "rgba(255,255,255,0.4)" }}
+                                      >
+                                        <Pencil size={12} />
+                                      </button>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", fontFamily: "monospace" }}>
+                                        {totalTok.toLocaleString()}/{qd.total.toLocaleString()}
+                                      </span>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
-
-                            {/* Image count */}
-                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.imageGenerated}</div>
-
-                            {/* Image tokens */}
-                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.imageTokenUsed}</div>
-
-                            {/* Video count */}
-                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoGenerated}</div>
-
-                            {/* Video tokens */}
-                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoTokenUsed}</div>
-
-                            {/* Video duration */}
-                            <div className="text-right" style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{m.videoDuration}</div>
-
-                            {/* Actions */}
-                            <div className="flex items-center gap-1 justify-end">
+                            {/* 操作 */}
+                            <div className="flex items-center gap-1 justify-end flex-shrink-0" style={{ width: "60px" }}>
                               <button
                                 onClick={() => toggleDetailMember(m.name)}
-                                className="px-1.5 py-0.5 rounded text-xs transition-all"
-                                style={{
-                                  color: isExpanded ? "#E87322" : "rgba(255,255,255,0.4)",
-                                  fontSize: "10px",
-                                }}
+                                className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
+                                style={{ color: isExpanded ? "#E87322" : "rgba(255,255,255,0.4)" }}
                               >
-                                明细
-                              </button>
-                              <span style={{ color: "rgba(255,255,255,0.1)" }}>|</span>
-                              <button
-                                onClick={() => setRemoveConfirmIndex(i)}
-                                className="px-1.5 py-0.5 rounded text-xs transition-all hover:text-red-400"
-                                style={{ color: "rgba(255,100,100,0.5)", fontSize: "10px" }}
-                              >
-                                删除
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                               </button>
                             </div>
                           </div>
@@ -1877,24 +1929,7 @@ export function ProjectHomePage() {
                   </div>
 
 
-                  {/* Footer summary */}
-                  {projectPerm === "管理" && (
-                  <div className="px-4 py-3 flex items-center gap-6 rounded-lg mt-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                    <div className="flex items-center gap-1.5">
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员总消耗</span>
-                      <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600 }}>
-                        {memberPeriodConsumed.reduce((a, b) => a + b, 0).toLocaleString()}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>颗</span>
-                    </div>
-                    <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
-                    <div className="flex items-center gap-1.5">
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>项目剩余预算</span>
-                      <span style={{ fontSize: "12px", color: "#4AC678", fontWeight: 600 }}>{projectBalance.toLocaleString()}</span>
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>颗</span>
-                    </div>
-                  </div>
-                  )}
+                
                 </div>
 
                 {/* ── Divider ── */}
@@ -1912,7 +1947,13 @@ export function ProjectHomePage() {
                         className="px-2 py-0.5 rounded text-xs hover:opacity-80 transition-opacity"
                         style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px" }}>全部收起</button>
                     </div>
+                     <button onClick={handleDownloadCSV}
+                      className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
+                      style={{ background: "rgba(74,198,120,0.1)", color: "#4AC678", border: "1px solid rgba(74,198,120,0.2)", fontSize: "10px" }}>
+                      <DownloadIcon size={10} />下载表格
+                    </button>
                   </div>
+                  
                   <div className="overflow-auto rounded-lg" style={{ maxHeight: "380px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
                     {/* Header */}
                     <div className="grid grid-cols-7 gap-2 px-4 py-2 text-xs sticky top-0 z-10"
@@ -1986,113 +2027,10 @@ export function ProjectHomePage() {
                         );
                       })}
                       {/* Totals row */}
-                      <div className="grid grid-cols-7 gap-2 px-4 py-2.5 text-xs font-semibold sticky bottom-0"
-                        style={{ background: "rgba(30,26,20,0.95)", borderTop: "1px solid rgba(255,255,255,0.08)", color: "#E87322" }}>
-                        <span className="col-span-1 flex items-center gap-1.5">
-                          <TrendingDown size={10} />
-                          总计
-                        </span>
-                        <span className="text-right font-bold">{sumCat(CATEGORY_CONSUMPTION, "totalTokens").toLocaleString()}</span>
-                        <span className="text-right">{sumCat(CATEGORY_CONSUMPTION, "imageCount")}</span>
-                        <span className="text-right">{sumCat(CATEGORY_CONSUMPTION, "imageTokens").toLocaleString()}</span>
-                        <span className="text-right">{sumCat(CATEGORY_CONSUMPTION, "videoCount")}</span>
-                        <span className="text-right">{formatDuration(sumCat(CATEGORY_CONSUMPTION, "videoDurationSec"))}</span>
-                        <span className="text-right">{sumCat(CATEGORY_CONSUMPTION, "videoTokens").toLocaleString()}</span>
-                      </div>
+                      
                     </div>
                   </div>
                 </div>
-
-
-                {/* ── Section 2: 成本消耗 ── */}
-                <div className="flex flex-col gap-5">
-
-                  {/* Period filter + trend chart */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-1.5">
-                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>消耗趋势</span>
-                      </div>
-                      <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        {PERIOD_LABELS.map(({ key, label }) => (
-                          <button key={key} onClick={() => setPeriod(key)}
-                            className="px-2 py-1 rounded-md text-xs transition-colors"
-                            style={{ background: period === key ? "rgba(232,115,34,0.7)" : "transparent", color: period === key ? "#fff" : "rgba(255,255,255,0.45)" }}>
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {period === "custom" && (
-                      <div className="flex items-center gap-2 mb-3">
-                        {["from", "to"].map((k) => (
-                          <input key={k} type="date"
-                            value={k === "from" ? dateFrom : dateTo}
-                            onChange={(e) => k === "from" ? setDateFrom(e.target.value) : setDateTo(e.target.value)}
-                            className="flex-1 px-2 py-1 rounded-lg text-xs outline-none"
-                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }} />
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 px-3 py-2 rounded-lg mb-4" style={{ background: "rgba(232,115,34,0.06)", border: "1px solid rgba(232,115,34,0.12)" }}>
-                      <TrendingDown size={12} style={{ color: "#ef4444" }} />
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>
-                        {projectPerm === "管理" ? "期间消耗" : "我的期间消耗"}
-                      </span>
-                      <span className="ml-auto" style={{ fontSize: "16px", fontWeight: 600, color: "#E87322" }}>
-                        {(projectPerm === "管理" ? periodConsumed : (memberPeriodConsumed[0] ?? 0)).toLocaleString()}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>颗</span>
-                    </div>
-
-                    {/* Recharts Trend Chart */}
-                    <div className="rounded-lg px-1 pt-2 pb-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                      <div className="flex items-center justify-between px-3 mb-1">
-                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>消耗趋势</span>
-                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>
-                          {period === "week" ? "最近7天" : period === "month" ? "最近30天" : period === "year" ? "最近12月" : period === "all" ? "全部时段" : "自定义时段"}
-                        </span>
-                      </div>
-                      <ResponsiveContainer width="100%" height={110}>
-                        <AreaChart data={trendData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="trendGradFill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#E87322" stopOpacity={0.25} />
-                              <stop offset="95%" stopColor="#E87322" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                          <XAxis
-                            dataKey="date"
-                            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }}
-                            axisLine={false}
-                            tickLine={false}
-                            interval="preserveStartEnd"
-                          />
-                          <YAxis
-                            tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }}
-                            axisLine={false}
-                            tickLine={false}
-                            tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                          />
-                          <ReTooltip
-                            content={<TrendTooltip />}
-                            cursor={{ stroke: "rgba(232,115,34,0.3)", strokeWidth: 1, strokeDasharray: "4 3" }}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="value"
-                            stroke="#E87322"
-                            strokeWidth={2}
-                            fill="url(#trendGradFill)"
-                            dot={false}
-                            activeDot={{ r: 4, fill: "#E87322", stroke: "#140F09", strokeWidth: 2 }}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
                   <div className="grid grid-cols-2 gap-5">
                     {/* ── 按成员消耗 ── */}
                     <div>
@@ -2114,9 +2052,7 @@ export function ProjectHomePage() {
                             <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
                               {projectPerm === "管理" ? "按成员消耗" : "我的消耗"}
                             </span>
-                            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-                              总计 <span style={{ color: "#E87322", fontWeight: 500 }}>{totalConsumed.toLocaleString()}</span> 颗
-                            </span>
+                            
                           </div>
 
                           {/* Bar chart: image vs video per member */}
@@ -2166,9 +2102,7 @@ export function ProjectHomePage() {
                           <>
                           <div className="flex items-center justify-between mb-3">
                             <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>按分类消耗</span>
-                            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-                              总计 <span style={{ color: "#E87322", fontWeight: 500 }}>{catTotal.toLocaleString()}</span> 颗
-                            </span>
+                          
                           </div>
 
                           {/* Bar chart: image vs video per category */}
@@ -2204,7 +2138,7 @@ export function ProjectHomePage() {
                     </div>
 
                   </div>
-                </div>
+
               </div>
             )}
 
