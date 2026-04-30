@@ -14,8 +14,9 @@ import { SpaceContext, type SpaceId } from "../context/SpaceContext";
 const NAV_ITEMS = [
   { icon: Home, label: "主页", path: "/" },
   { icon: Box, label: "资产", path: "/assets" },
-  { icon: Zap, label: "生成", path: "/generate" },
   { icon: FolderOpen, label: "项目", path: "/projects" },
+  { icon: Zap, label: "生成", path: "/generate" },
+
   { icon: Layout, label: "画布", path: "/canvas" },
   { icon: Wrench, label: "工具库", path: "/tools" },
 ];

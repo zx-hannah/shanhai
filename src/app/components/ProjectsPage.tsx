@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { Plus, Clock, MoreHorizontal, Trash2, Edit2, FolderOpen, Film } from "lucide-react";
 import { PROJECTS_DATA, ProjectData } from "../data/projectsData";
 import { useSpace } from "../context/SpaceContext";
+import { CreateProjectDialog } from "./CreateProjectDialog";
 
 const PROJECT_STATUS = {
   IN_PROGRESS: "进行中",
@@ -197,8 +198,11 @@ export function ProjectsPage() {
   const isReadOnly = spaceId === "ent2";
 
   const handleNavigate = (id: string) => navigate(`/project/${id}`);
-  const handleNewProject = () => {
-    // TODO: Implement new project creation dialog
+  const [showNewProject, setShowNewProject] = useState(false);
+
+  const handleNewProject = (data: { name: string; tokenTotal: number; cover?: string }) => {
+    // TODO: persist to backend, for now just navigate
+    navigate(`/project/${PROJECTS_DATA.length + 1}`);
   };
 
   return (
@@ -225,12 +229,13 @@ export function ProjectsPage() {
         >
           {isReadOnly ? (
           <div
-            className="rounded-xl cursor-pointer flex flex-col items-center justify-center transition-all group relative"
+            className="rounded-xl relative group flex flex-col items-center justify-center"
             style={{
               border: "2px dashed rgba(255,255,255,0.08)",
               background: "rgba(255,255,255,0.02)",
               minHeight: "210px",
               opacity: 0.5,
+              cursor: "not-allowed",
             }}
           >
             <div
@@ -261,7 +266,7 @@ export function ProjectsPage() {
               background: "rgba(232,115,34,0.04)",
               minHeight: "210px",
             }}
-            onClick={handleNewProject}
+            onClick={() => setShowNewProject(true)}
           >
             <div
               className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
@@ -283,6 +288,14 @@ export function ProjectsPage() {
           ))}
         </div>
       </div>
+
+      {/* ── New Project Dialog ── */}
+      {showNewProject && (
+        <CreateProjectDialog
+          onClose={() => setShowNewProject(false)}
+          onSave={handleNewProject}
+        />
+      )}
     </div>
   );
 }
