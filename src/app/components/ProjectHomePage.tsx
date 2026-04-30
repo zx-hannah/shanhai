@@ -8,7 +8,7 @@ import {
   Info,
   Monitor, Zap, Layers, Video,
   Shield, Eye, Droplets, Trash2, X,
-  RefreshCw, FolderOpen, MessageCircle, Search, Pencil,
+  RefreshCw, FolderOpen, MessageCircle, Search,
   Image as LucideImage,
 } from "lucide-react";
 import {
@@ -1646,16 +1646,7 @@ export function ProjectHomePage() {
                     <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
                       {projectPerm === "管理" ? "成员管理" : "我的信息"}
                     </span>
-                    <div className="flex items-center gap-2">
-                      {projectPerm === "管理" && (
-                      <button
-                        onClick={() => setShowAllocateDialog(true)}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs hover:opacity-80"
-                        style={{ background: "rgba(155,89,182,0.12)", color: "#9B59B6", border: "1px solid rgba(155,89,182,0.2)", fontSize: "11px" }}>
-                        <RefreshCw size={9} />批量分配
-                      </button>
-                      )}
-                    </div>
+                   
                   </div>
 
                   {/* Filter Bar (only 管理) */}
@@ -2102,7 +2093,7 @@ export function ProjectHomePage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-5">
+                  <div className="grid grid-cols-2 gap-5">
                     {/* ── 按成员消耗 ── */}
                     <div>
                       {(() => {
@@ -2155,30 +2146,6 @@ export function ProjectHomePage() {
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
-
-                          {/* Member list */}
-                          <div className="flex flex-col gap-2.5" style={{ maxHeight: "180px", overflowY: "auto" }}>
-                            {visibleMembers.map(({ m, i }) => {
-                              const val = memberPeriodConsumed[i] ?? 0;
-                              const qd = memberQuotas[i] ?? memberQuotas[0];
-                              const qLabel = qd.type === "unlimited" ? "♾️" : `固定 ${qd.total.toLocaleString()}`;
-                              return (
-                                <div key={i} className="flex items-center justify-between py-1.5">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0"
-                                      style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "9px", fontWeight: 600 }}>
-                                      {m.avatar}
-                                    </div>
-                                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)" }}>{m.name}</span>
-                                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>{qLabel}</span>
-                                  </div>
-                                  <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 500 }}>
-                                    {val.toLocaleString()} 颗
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
                           </>
                         );
                       })()}
@@ -2230,33 +2197,6 @@ export function ProjectHomePage() {
                                 <Bar dataKey="videoTokens" fill="#9B59B6" stackId="tokens" radius={[0, 0, 3, 3]} />
                               </BarChart>
                             </ResponsiveContainer>
-                          </div>
-
-                          {/* Category list */}
-                          <div className="flex flex-col gap-1.5">
-                            {CATEGORY_CONSUMPTION.map((cat, i) => {
-                              const isFolder = "type" in cat;
-                              const imageTokens = isFolder ? sumCat(cat.children, "imageTokens") : (cat as CategoryLeaf).imageTokens;
-                              const videoTokens = isFolder ? sumCat(cat.children, "videoTokens") : (cat as CategoryLeaf).videoTokens;
-                              const total = imageTokens + videoTokens;
-                              const pct = catTotal > 0 ? Math.round((total / catTotal) * 100) : 0;
-                              return (
-                                <div key={i} className="flex items-center justify-between py-1">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: isFolder ? "#E87322" : "#4A9EE0" }} />
-                                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)" }}>{cat.name}</span>
-                                    <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>{pct}%</span>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    <span style={{ fontSize: "10px", color: "#4A9EE0" }}>{imageTokens}</span>
-                                    <span style={{ fontSize: "10px", color: "#9B59B6" }}>{videoTokens}</span>
-                                    <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 500, minWidth: "55px", textAlign: "right" }}>
-                                      {total.toLocaleString()}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
                           </div>
                           </>
                         );
