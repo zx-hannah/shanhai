@@ -23,23 +23,24 @@ interface AssetItem {
   collected: boolean;
   tab: string;
   projectId?: string;
+  memberId?: string;
 }
 
 // ─── My Assets ────────────────────────────────────────────────────────────────
 const MY_ASSETS: AssetItem[] = [
-  { id: "m1", name: "白发女侠_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?w=400&q=80", size: "2.3 MB", date: "今天", dateTs: 4, collected: true, tab: "generate" },
-  { id: "m2", name: "古城背景_v2.jpg", type: "image", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=400&q=80", size: "1.8 MB", date: "今天", dateTs: 4, collected: false, tab: "generate" },
-  { id: "m3", name: "山林场景_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=400&q=80", size: "3.1 MB", date: "今天", dateTs: 4, collected: true, tab: "generate" },
-  { id: "m4", name: "道具宝剑_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=400&q=80", size: "0.9 MB", date: "今天", dateTs: 4, collected: false, tab: "generate" },
-  { id: "m5", name: "主角设定_v3.jpg", type: "image", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=400&q=80", size: "2.7 MB", date: "今天", dateTs: 4, collected: false, tab: "generate" },
-  { id: "m6", name: "云雾山脉背景.jpg", type: "image", src: "https://images.unsplash.com/photo-1551264397-09c6f678a930?w=400&q=80", size: "4.2 MB", date: "今天", dateTs: 4, collected: true, tab: "generate" },
-  { id: "m7", name: "人物参考_古装.jpg", type: "image", src: "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?w=400&q=80", size: "1.5 MB", date: "昨天", dateTs: 3, collected: false, tab: "upload" },
-  { id: "m8", name: "角色立绘参考.jpg", type: "image", src: "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?w=400&q=80", size: "2.1 MB", date: "昨天", dateTs: 3, collected: true, tab: "upload" },
-  { id: "m9", name: "战场BGM.mp3", type: "audio", src: null, size: "4.2 MB", date: "3天前", dateTs: 2, collected: false, tab: "upload" },
-  { id: "m10", name: "角色出场动效.mp4", type: "video", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?w=400&q=80", size: "12 MB", date: "3天前", dateTs: 2, collected: false, tab: "generate" },
-  { id: "m11", name: "片头动画.mp4", type: "video", src: "https://images.unsplash.com/photo-1748838602679-32d82ccf188e?w=400&q=80", size: "28 MB", date: "一周前", dateTs: 1, collected: true, tab: "generate" },
-  { id: "m12", name: "第一集分镜脚本.json", type: "script", src: null, size: "0.3 MB", date: "今天", dateTs: 4, collected: false, tab: "generate" },
-  { id: "m13", name: "场景描述脚本.txt", type: "script", src: null, size: "0.1 MB", date: "昨天", dateTs: 3, collected: true, tab: "generate" },
+  { id: "m1", name: "白发女侠_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?w=400&q=80", size: "2.3 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", memberId: "2" },
+  { id: "m2", name: "古城背景_v2.jpg", type: "image", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=400&q=80", size: "1.8 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", memberId: "2" },
+  { id: "m3", name: "山林场景_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=400&q=80", size: "3.1 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", memberId: "3" },
+  { id: "m4", name: "道具宝剑_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=400&q=80", size: "0.9 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", memberId: "4" },
+  { id: "m5", name: "主角设定_v3.jpg", type: "image", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=400&q=80", size: "2.7 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", memberId: "5" },
+  { id: "m6", name: "云雾山脉背景.jpg", type: "image", src: "https://images.unsplash.com/photo-1551264397-09c6f678a930?w=400&q=80", size: "4.2 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", memberId: "2" },
+  { id: "m7", name: "人物参考_古装.jpg", type: "image", src: "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?w=400&q=80", size: "1.5 MB", date: "昨天", dateTs: 3, collected: false, tab: "upload", memberId: "3" },
+  { id: "m8", name: "角色立绘参考.jpg", type: "image", src: "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?w=400&q=80", size: "2.1 MB", date: "昨天", dateTs: 3, collected: true, tab: "upload", memberId: "5" },
+  { id: "m9", name: "战场BGM.mp3", type: "audio", src: null, size: "4.2 MB", date: "3天前", dateTs: 2, collected: false, tab: "upload", memberId: "2" },
+  { id: "m10", name: "角色出场动效.mp4", type: "video", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?w=400&q=80", size: "12 MB", date: "3天前", dateTs: 2, collected: false, tab: "generate", memberId: "3" },
+  { id: "m11", name: "片头动画.mp4", type: "video", src: "https://images.unsplash.com/photo-1748838602679-32d82ccf188e?w=400&q=80", size: "28 MB", date: "一周前", dateTs: 1, collected: true, tab: "generate", memberId: "4" },
+  { id: "m12", name: "第一集分镜脚本.json", type: "script", src: null, size: "0.3 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", memberId: "5" },
+  { id: "m13", name: "场景描述脚本.txt", type: "script", src: null, size: "0.1 MB", date: "昨天", dateTs: 3, collected: true, tab: "generate", memberId: "2" },
 ];
 
 // ── Project Assets ───────────────────────────────────────────────────────────
@@ -47,37 +48,37 @@ const MY_ASSETS: AssetItem[] = [
 
 const PROJECT_ASSETS: Record<string, AssetItem[]> = {
   "1": [
-    { id: "p1-1", name: "神话角色_灵狐.jpg", type: "image", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=400&q=80", size: "3.2 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "1" },
-    { id: "p1-2", name: "仙境云海背景.jpg", type: "image", src: "https://images.unsplash.com/photo-1551264397-09c6f678a930?w=400&q=80", size: "4.1 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "1" },
-    { id: "p1-3", name: "古城门楼.jpg", type: "image", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=400&q=80", size: "2.8 MB", date: "昨天", dateTs: 3, collected: true, tab: "generate", projectId: "1" },
-    { id: "p1-4", name: "神兽图鉴_龙.jpg", type: "image", src: "https://images.unsplash.com/photo-1748838602679-32d82ccf188e?w=400&q=80", size: "3.5 MB", date: "昨天", dateTs: 3, collected: false, tab: "generate", projectId: "1" },
-    { id: "p1-5", name: "主题曲_神话.mp3", type: "audio", src: null, size: "6.2 MB", date: "3天前", dateTs: 2, collected: true, tab: "upload", projectId: "1" },
-    { id: "p1-6", name: "片段_01.mp4", type: "video", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?w=400&q=80", size: "45 MB", date: "一周前", dateTs: 1, collected: false, tab: "generate", projectId: "1" },
+    { id: "p1-1", name: "神话角色_灵狐.jpg", type: "image", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=400&q=80", size: "3.2 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "1", memberId: "2" },
+    { id: "p1-2", name: "仙境云海背景.jpg", type: "image", src: "https://images.unsplash.com/photo-1551264397-09c6f678a930?w=400&q=80", size: "4.1 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "1", memberId: "3" },
+    { id: "p1-3", name: "古城门楼.jpg", type: "image", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=400&q=80", size: "2.8 MB", date: "昨天", dateTs: 3, collected: true, tab: "generate", projectId: "1", memberId: "2" },
+    { id: "p1-4", name: "神兽图鉴_龙.jpg", type: "image", src: "https://images.unsplash.com/photo-1748838602679-32d82ccf188e?w=400&q=80", size: "3.5 MB", date: "昨天", dateTs: 3, collected: false, tab: "generate", projectId: "1", memberId: "5" },
+    { id: "p1-5", name: "主题曲_神话.mp3", type: "audio", src: null, size: "6.2 MB", date: "3天前", dateTs: 2, collected: true, tab: "upload", projectId: "1", memberId: "4" },
+    { id: "p1-6", name: "片段_01.mp4", type: "video", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?w=400&q=80", size: "45 MB", date: "一周前", dateTs: 1, collected: false, tab: "generate", projectId: "1", memberId: "3" },
   ],
   "2": [
-    { id: "p2-1", name: "飞船概念图.jpg", type: "image", src: "https://images.unsplash.com/photo-1758930908621-550b64b0b1c1?w=400&q=80", size: "2.9 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "2" },
-    { id: "p2-2", name: "星际地图.jpg", type: "image", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=400&q=80", size: "1.7 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "2" },
-    { id: "p2-3", name: "外星文明参考.jpg", type: "image", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=400&q=80", size: "3.3 MB", date: "昨天", dateTs: 3, collected: false, tab: "upload", projectId: "2" },
-    { id: "p2-4", name: "主角立绘.jpg", type: "image", src: "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?w=400&q=80", size: "2.1 MB", date: "3天前", dateTs: 2, collected: true, tab: "generate", projectId: "2" },
-    { id: "p2-5", name: "宇宙BGM.mp3", type: "audio", src: null, size: "5.8 MB", date: "一周前", dateTs: 1, collected: false, tab: "upload", projectId: "2" },
+    { id: "p2-1", name: "飞船概念图.jpg", type: "image", src: "https://images.unsplash.com/photo-1758930908621-550b64b0b1c1?w=400&q=80", size: "2.9 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "2", memberId: "2" },
+    { id: "p2-2", name: "星际地图.jpg", type: "image", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=400&q=80", size: "1.7 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "2", memberId: "3" },
+    { id: "p2-3", name: "外星文明参考.jpg", type: "image", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=400&q=80", size: "3.3 MB", date: "昨天", dateTs: 3, collected: false, tab: "upload", projectId: "2", memberId: "5" },
+    { id: "p2-4", name: "主角立绘.jpg", type: "image", src: "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?w=400&q=80", size: "2.1 MB", date: "3天前", dateTs: 2, collected: true, tab: "generate", projectId: "2", memberId: "2" },
+    { id: "p2-5", name: "宇宙BGM.mp3", type: "audio", src: null, size: "5.8 MB", date: "一周前", dateTs: 1, collected: false, tab: "upload", projectId: "2", memberId: "4" },
   ],
   "3": [
-    { id: "p3-1", name: "神兽貔貅_v2.jpg", type: "image", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?w=400&q=80", size: "2.4 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "3" },
-    { id: "p3-2", name: "山海经插画.jpg", type: "image", src: "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?w=400&q=80", size: "3.8 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "3" },
-    { id: "p3-3", name: "治愈风场景.jpg", type: "image", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=400&q=80", size: "2.2 MB", date: "昨天", dateTs: 3, collected: false, tab: "generate", projectId: "3" },
-    { id: "p3-4", name: "片头.mp4", type: "video", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?w=400&q=80", size: "32 MB", date: "3天前", dateTs: 2, collected: false, tab: "generate", projectId: "3" },
-    { id: "p3-5", name: "背景参考集.jpg", type: "image", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=400&q=80", size: "1.9 MB", date: "一周前", dateTs: 1, collected: true, tab: "upload", projectId: "3" },
+    { id: "p3-1", name: "神兽貔貅_v2.jpg", type: "image", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?w=400&q=80", size: "2.4 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "3", memberId: "2" },
+    { id: "p3-2", name: "山海经插画.jpg", type: "image", src: "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?w=400&q=80", size: "3.8 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "3", memberId: "3" },
+    { id: "p3-3", name: "治愈风场景.jpg", type: "image", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=400&q=80", size: "2.2 MB", date: "昨天", dateTs: 3, collected: false, tab: "generate", projectId: "3", memberId: "5" },
+    { id: "p3-4", name: "片头.mp4", type: "video", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?w=400&q=80", size: "32 MB", date: "3天前", dateTs: 2, collected: false, tab: "generate", projectId: "3", memberId: "2" },
+    { id: "p3-5", name: "背景参考集.jpg", type: "image", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=400&q=80", size: "1.9 MB", date: "一周前", dateTs: 1, collected: true, tab: "upload", projectId: "3", memberId: "4" },
   ],
   "4": [
-    { id: "p4-1", name: "短片_概念稿.jpg", type: "image", src: "https://images.unsplash.com/photo-1748838602679-32d82ccf188e?w=400&q=80", size: "1.6 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "4" },
-    { id: "p4-2", name: "动画帧_001.jpg", type: "image", src: "https://images.unsplash.com/photo-1551264397-09c6f678a930?w=400&q=80", size: "0.8 MB", date: "昨天", dateTs: 3, collected: true, tab: "generate", projectId: "4" },
-    { id: "p4-3", name: "混音_beta.mp3", type: "audio", src: null, size: "3.1 MB", date: "3天前", dateTs: 2, collected: false, tab: "upload", projectId: "4" },
+    { id: "p4-1", name: "短片_概念稿.jpg", type: "image", src: "https://images.unsplash.com/photo-1748838602679-32d82ccf188e?w=400&q=80", size: "1.6 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "4", memberId: "2" },
+    { id: "p4-2", name: "动画帧_001.jpg", type: "image", src: "https://images.unsplash.com/photo-1551264397-09c6f678a930?w=400&q=80", size: "0.8 MB", date: "昨天", dateTs: 3, collected: true, tab: "generate", projectId: "4", memberId: "3" },
+    { id: "p4-3", name: "混音_beta.mp3", type: "audio", src: null, size: "3.1 MB", date: "3天前", dateTs: 2, collected: false, tab: "upload", projectId: "4", memberId: "5" },
   ],
   "5": [
-    { id: "p5-1", name: "龙族纹章_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1758930908621-550b64b0b1c1?w=400&q=80", size: "2.6 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "5" },
-    { id: "p5-2", name: "史诗场景.jpg", type: "image", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=400&q=80", size: "4.5 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "5" },
-    { id: "p5-3", name: "龙族圣地背景.jpg", type: "image", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=400&q=80", size: "3.7 MB", date: "昨天", dateTs: 3, collected: true, tab: "upload", projectId: "5" },
-    { id: "p5-4", name: "战斗音效.mp3", type: "audio", src: null, size: "2.4 MB", date: "3天前", dateTs: 2, collected: false, tab: "upload", projectId: "5" },
+    { id: "p5-1", name: "龙族纹章_v1.jpg", type: "image", src: "https://images.unsplash.com/photo-1758930908621-550b64b0b1c1?w=400&q=80", size: "2.6 MB", date: "今天", dateTs: 4, collected: true, tab: "generate", projectId: "5", memberId: "2" },
+    { id: "p5-2", name: "史诗场景.jpg", type: "image", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=400&q=80", size: "4.5 MB", date: "今天", dateTs: 4, collected: false, tab: "generate", projectId: "5", memberId: "4" },
+    { id: "p5-3", name: "龙族圣地背景.jpg", type: "image", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=400&q=80", size: "3.7 MB", date: "昨天", dateTs: 3, collected: true, tab: "upload", projectId: "5", memberId: "3" },
+    { id: "p5-4", name: "战斗音效.mp3", type: "audio", src: null, size: "2.4 MB", date: "3天前", dateTs: 2, collected: false, tab: "upload", projectId: "5", memberId: "5" },
   ],
 };
 
@@ -271,6 +272,20 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
   const [endDate, setEndDate] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
+  // Member filter
+  const [memberFilter, setMemberFilter] = useState<string[]>([]);
+  const [showMemberMenu, setShowMemberMenu] = useState(false);
+
+  // Collected filter
+  const [collectedFilter, setCollectedFilter] = useState(false);
+
+  const toggleMemberFilter = (memberId: string) => {
+    setMemberFilter(prev => {
+      if (prev.includes(memberId)) return prev.filter(id => id !== memberId);
+      return [...prev, memberId];
+    });
+  };
+
   // If a groupId is set, only show that group's sub-folders
   const currentGroup = groupId ? groups.find(g => g.id === groupId) : null;
   const displayGroupsForGroup = currentGroup ? [currentGroup] : [];
@@ -335,30 +350,24 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
     }))
     .filter((g) => g.folders.length > 0);
 
-  // Filter by tab
+  // Filter by tab + member + collected
   const tabFilteredGroups = dateFilteredGroups
     .map((group) => ({
       ...group,
       folders: group.folders.filter((f) => {
-        if (assetTab === "全部收藏") {
-          return f.assetIds.some((aid) => {
-            const asset = getProjectAsset(aid);
-            return asset?.collected ?? false;
-          });
-        }
-        if (assetTab === "历史上传") {
-          return f.assetIds.some((aid) => {
-            const asset = getProjectAsset(aid);
-            return asset?.tab === "upload";
-          });
-        }
-        if (assetTab === "主体资产") {
-          return f.assetIds.some((aid) => {
-            const asset = getProjectAsset(aid);
-            return asset?.tab === "subject";
-          });
-        }
-        return true;
+        return f.assetIds.some((aid) => {
+          const asset = getProjectAsset(aid);
+          if (!asset) return false;
+          // Tab filter
+          if (assetTab === "全部收藏" && !asset.collected) return false;
+          if (assetTab === "历史上传" && asset.tab !== "upload") return false;
+          if (assetTab === "主体资产" && asset.tab !== "subject") return false;
+          // Collected filter (only for 全部生成 and 历史上传)
+          if (collectedFilter && (assetTab === "全部生成" || assetTab === "历史上传") && !asset.collected) return false;
+          // Member filter
+          if (memberFilter.length > 0 && asset.memberId && !memberFilter.includes(asset.memberId)) return false;
+          return true;
+        });
       }),
     }))
     .filter((g) => g.folders.length > 0);
@@ -366,7 +375,7 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
   const displayGroups = tabFilteredGroups;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#140F09" }}>
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#140F09" }} onClick={() => setShowMemberMenu(false)}>
       {/* Group header with back arrow when inside a group */}
       {currentGroup && (
         <div className="flex items-center gap-3 px-6 py-4 flex-shrink-0"
@@ -418,6 +427,70 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
             placeholder="搜索文件夹..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.3)" }} /></button>}
         </div>
+
+        {/* Member filter */}
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => setShowMemberMenu(!showMemberMenu)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: memberFilter.length > 0 ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
+              border: memberFilter.length > 0 ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
+              color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.5)",
+            }}>
+            <User size={12} />
+            {memberFilter.length === 0 ? "全部成员" : `${memberFilter.length}人`}
+            <ChevronDown size={9} />
+          </button>
+          {showMemberMenu && (
+            <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+              style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "160px" }}
+              onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => setMemberFilter([])}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                style={{
+                  color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
+                  background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
+                }}>
+                <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
+                全部成员
+              </button>
+              <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+              {MEMBER_DATA.map((member) => {
+                const selected = memberFilter.includes(member.id);
+                return (
+                  <button key={member.id} onClick={() => toggleMemberFilter(member.id)}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                    style={{
+                      color: selected ? member.avatarColor : "rgba(255,255,255,0.6)",
+                      background: selected ? `${member.avatarColor}12` : "transparent",
+                    }}>
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ background: member.avatarColor, fontSize: "8px", fontWeight: 600, color: "#fff" }}>
+                      {member.letter}
+                    </div>
+                    <span className="flex-1">{member.name}</span>
+                    {selected && <Check size={9} style={{ color: member.avatarColor }} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Collected filter */}
+        {(assetTab === "全部生成" || assetTab === "历史上传") && (
+          <button onClick={() => setCollectedFilter(!collectedFilter)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: collectedFilter ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
+              border: collectedFilter ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
+              color: collectedFilter ? "#E87322" : "rgba(255,255,255,0.5)",
+            }}>
+            <Star size={12} style={{ fill: collectedFilter ? "#E87322" : "transparent" }} />
+            只看收藏
+          </button>
+        )}
 
         {/* Date filter: start/end */}
         <div className="flex items-center gap-1.5">
@@ -626,7 +699,7 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
 }
 
 // ─── Assets Content (grid/list) ──────────────────────────────────────────────
-function AssetsContent({ assets }: { assets: AssetItem[] }) {
+function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }: { assets: AssetItem[]; showMemberFilter?: boolean }) {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [typeFilter, setTypeFilter] = useState<AssetType>("all");
   const [showTypeMenu, setShowTypeMenu] = useState(false);
@@ -658,12 +731,23 @@ function AssetsContent({ assets }: { assets: AssetItem[] }) {
     return d;
   };
 
+  // Member filter: default to all members
+  const [memberFilter, setMemberFilter] = useState<string[]>([]);
+  const [showMemberMenu, setShowMemberMenu] = useState(false);
+
+  // Collected filter
+  const [collectedFilter, setCollectedFilter] = useState(false);
+
   const filtered = assets
     .filter((a) => {
       // Tab filter
       if (assetTab === "全部收藏" && !collectedIds.has(a.id)) return false;
       if (assetTab === "历史上传" && a.tab !== "upload") return false;
       if (assetTab === "主体资产" && a.tab !== "subject") return false;
+      // Collected filter (only for 全部生成 and 历史上传)
+      if (collectedFilter && (assetTab === "全部生成" || assetTab === "历史上传") && !collectedIds.has(a.id)) return false;
+      // Member filter (empty = all)
+      if (memberFilter.length > 0 && a.memberId && !memberFilter.includes(a.memberId)) return false;
       // Type filter
       if (typeFilter !== "all" && a.type !== typeFilter) return false;
       // Search
@@ -684,6 +768,16 @@ function AssetsContent({ assets }: { assets: AssetItem[] }) {
 
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const toggleMemberFilter = (memberId: string) => {
+    setMemberFilter(prev => {
+      if (prev.includes(memberId)) {
+        return prev.filter(id => id !== memberId);
+      } else {
+        return [...prev, memberId];
+      }
+    });
+  };
 
   const toggleCollect = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -801,7 +895,7 @@ function AssetsContent({ assets }: { assets: AssetItem[] }) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#140F09" }}
-      onClick={() => setShowTypeMenu(false)}>
+      onClick={() => { setShowTypeMenu(false); setShowMemberMenu(false); }}>
 
       {/* Tabs */}
       <div className="flex items-end gap-0 px-6 pt-3 flex-shrink-0"
@@ -852,6 +946,73 @@ function AssetsContent({ assets }: { assets: AssetItem[] }) {
             </div>
           )}
         </div>
+
+        {/* Member filter — only for shared assets */}
+        {enableMemberFilter && (
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => setShowMemberMenu(!showMemberMenu)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: memberFilter.length > 0 ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
+              border: memberFilter.length > 0 ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
+              color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.5)",
+            }}>
+            <User size={12} />
+            {memberFilter.length === 0 ? "全部成员" : `${memberFilter.length}人`}
+            <ChevronDown size={9} />
+          </button>
+          {showMemberMenu && (
+            <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+              style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "160px" }}
+              onClick={(e) => e.stopPropagation()}>
+              {/* All members button */}
+              <button
+                onClick={() => setMemberFilter([])}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                style={{
+                  color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
+                  background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
+                }}>
+                <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
+                全部成员
+              </button>
+              <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+              {MEMBER_DATA.map((member) => {
+                const selected = memberFilter.includes(member.id);
+                return (
+                  <button key={member.id} onClick={() => toggleMemberFilter(member.id)}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                    style={{
+                      color: selected ? member.avatarColor : "rgba(255,255,255,0.6)",
+                      background: selected ? `${member.avatarColor}12` : "transparent",
+                    }}>
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ background: member.avatarColor, fontSize: "8px", fontWeight: 600, color: "#fff" }}>
+                      {member.letter}
+                    </div>
+                    <span className="flex-1">{member.name}</span>
+                    {selected && <Check size={9} style={{ color: member.avatarColor }} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Collected filter — only for 全部生成 and 历史上传 */}
+        {(assetTab === "全部生成" || assetTab === "历史上传") && (
+          <button onClick={() => setCollectedFilter(!collectedFilter)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: collectedFilter ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
+              border: collectedFilter ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
+              color: collectedFilter ? "#E87322" : "rgba(255,255,255,0.5)",
+            }}>
+            <Star size={12} style={{ fill: collectedFilter ? "#E87322" : "transparent" }} />
+            只看收藏
+          </button>
+        )}
 
         {/* Date filter: start/end */}
         <div className="flex items-center gap-1.5">
@@ -1264,7 +1425,7 @@ export function GlobalAssetsPage() {
           {sel.section === "project" && sel.projectId !== "all" && !sel.folderId && !sel.flatFolderId ? (
             <ProjectFolderView key={sel.projectId + (sel.groupId ?? "")} projectId={sel.projectId} groupId={sel.groupId} setSel={setSel} />
           ) : (
-            <AssetsContent key={JSON.stringify(sel)} assets={panelAssets} />
+            <AssetsContent key={JSON.stringify(sel)} assets={panelAssets} showMemberFilter={sel.section === "project"} />
           )}
         </div>
       </div>

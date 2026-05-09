@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   ChevronDown, Coins, Users, FolderOpen, Calendar, X, Check,
   Search, AlertTriangle, TrendingDown, ArrowRightLeft,
-  Download, SendHorizonal, ChevronUp, Edit2, Wallet, User,
+  Download, SendHorizonal, ChevronUp, Edit2, Wallet, User, HelpCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { QuotaConfigDialog } from "./QuotaConfigDialog";
@@ -80,9 +80,20 @@ function TransferToEnterpriseDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="p-6 flex flex-col gap-4">
           <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-            <div className="flex flex-col items-center gap-0.5">
+            <div className="flex flex-col items-center gap-0.5 relative group/balance">
               <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>个人账户</span>
-              <span className="text-sm text-white">{personalBalance.toLocaleString()} 颗</span>
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-white">{personalBalance.toLocaleString()} 颗</span>
+                <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center cursor-help flex-shrink-0"
+                  style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <HelpCircle size={8} style={{ color: "rgba(255,255,255,0.4)" }} />
+                </div>
+              </div>
+              {/* Tooltip */}
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 rounded-lg text-[11px] opacity-0 group-hover/balance:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap"
+                style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
+                仅支持转移购买生产栗，不包含活动和赠送生产栗
+              </div>
             </div>
             <div className="flex-1 flex items-center justify-center">
               <div className="flex items-center gap-1.5">

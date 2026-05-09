@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Camera, Copy, Edit2, Info } from "lucide-react";
+import { Camera, Copy, Edit2, Info, Zap, ArrowUpCircle, Cloud, Users, Share2, Gift, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Inline Tooltip ─────────────────────────────────────────────────────────────
@@ -206,7 +206,8 @@ export function EnterpriseInfo() {
       </div>
 
       {/* Stats Cards — 4 metrics */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* 
+      <div className="grid grid-cols-2 gap-4 mb-8">
         {STATS.map(({ label, value, unit, tip, color }) => (
           <div
             key={label}
@@ -221,10 +222,81 @@ export function EnterpriseInfo() {
               <span className="text-2xl text-white">{value}</span>
               <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{unit}</span>
             </div>
-            {/* Accent underline */}
             <div className="mt-3 h-0.5 w-8 rounded-full" style={{ background: color, opacity: 0.5 }} />
           </div>
         ))}
+      </div>
+ */}
+      {/* Subscription Section */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white">套餐订阅</h3>
+          <button
+            onClick={() => toast.success("已提交套餐升级申请，等待审核")}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs text-white transition-opacity hover:opacity-80"
+            style={{ background: "#E87322" }}
+          >
+            <ArrowUpCircle size={12} />
+            升级套餐
+          </button>
+        </div>
+
+        <div className="p-6 rounded-2xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+          {/* Plan header */}
+          <div className="flex items-center gap-3 mb-4">
+            <Zap size={18} style={{ color: "#4A9EE0" }} />
+            <span className="text-base text-white font-medium">标准套餐</span>
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(34,197,94,0.12)", color: "#22c55e" }}>生效中</span>
+          </div>
+
+          {/* Dates */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            {[
+              { label: "生效日期", value: "2024-01-15" },
+              { label: "到期日期", value: "2025-01-15" },
+              { label: "剩余天数", value: "254 天" },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <div className="text-xs mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>{label}</div>
+                <div className="text-sm text-white">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Progress */}
+          <div className="mb-5">
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+              <div className="h-full rounded-full" style={{ width: "30%", background: "linear-gradient(90deg, #E87322, #F5A623)" }} />
+            </div>
+            <div className="flex justify-between mt-1.5">
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>已使用 111 天</span>
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>共 365 天</span>
+            </div>
+          </div>
+
+          {/* Benefits */}
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "用户排队分级", value: "高优先级", icon: Zap, color: "#4A9EE0" },
+              { label: "并发数", value: "8", icon: Zap, color: "#4A9EE0" },
+              { label: "云储存大小", value: "50 GB", icon: Cloud, color: "#4A9EE0" },
+              { label: "团队席位", value: "15 席", icon: Users, color: "#4A9EE0" },
+              { label: "资产共享", value: "完全共享", icon: Share2, color: "#4A9EE0" },
+              { label: "赠送积分数量", value: "2,000", icon: Gift, color: "#4A9EE0" },
+              { label: "充值金额", value: "399 元/月", icon: Wallet, color: "#4A9EE0" },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+                  <Icon size={14} style={{ color }} />
+                </div>
+                <div>
+                  <div className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{label}</div>
+                  <div className="text-sm text-white">{value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

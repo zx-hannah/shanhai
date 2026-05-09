@@ -10,6 +10,8 @@ import { ProjectAssetsPage } from "./components/ProjectAssetsPage";
 import { ProjectGeneratePage } from "./components/ProjectGeneratePage";
 import { ProjectCanvasPage } from "./components/ProjectCanvasPage";
 import { ProjectStoryboardPage } from "./components/ProjectStoryboardPage";
+import { ProjectSubjectsPage } from "./components/ProjectSubjectsPage";
+import { ProjectScriptPage } from "./components/ProjectScriptPage";
 import { CanvasFilesPage } from "./components/CanvasFilesPage";
 import { GlobalAssetsPage } from "./components/GlobalAssetsPage";
 import { getProjectById } from "./data/projectsData";
@@ -40,10 +42,12 @@ export const router = createBrowserRouter([
     Component: ProjectDetailLayout,
     children: [
       { index: true, element: <ProjectIndexPage /> },
+      { path: "subjects", Component: ProjectSubjectsPage },
       { path: "assets", Component: ProjectAssetsPage },
       { path: "generate", Component: ProjectGeneratePage },
       { path: "canvas", Component: ProjectCanvasPage },
       { path: "storyboard", Component: ProjectStoryboardPage },
+      { path: "script", Component: ProjectScriptPage },
     ],
   },
 ]);

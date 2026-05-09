@@ -1,9 +1,10 @@
 import { memo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Clock, MoreHorizontal, Trash2, Edit2, FolderOpen, Film } from "lucide-react";
+import { Plus, Clock, Trash2, FolderOpen, Users, Pencil } from "lucide-react";
 import { PROJECTS_DATA, ProjectData } from "../data/projectsData";
 import { useSpace } from "../context/SpaceContext";
-import { CreateProjectDialog } from "./CreateProjectDialog";
+import { toast } from "sonner";
+import { CreateProjectDialog, EditProjectDialog } from "./CreateProjectDialog";
 
 const PROJECT_STATUS = {
   IN_PROGRESS: "进行中",
@@ -34,47 +35,21 @@ const COLORS = {
   bgMenu: "#2A2018",
 };
 
-interface DropdownItemProps {
-  icon: typeof Edit2;
-  label: string;
-  color: string;
-  onClick?: () => void;
-}
-
-function DropdownItem({ icon: Icon, label, color, onClick }: DropdownItemProps) {
-  return (
-    <button
-      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors hover:bg-white/5"
-      style={{ color }}
-      onClick={onClick}
-    >
-      <Icon size={11} />
-      {label}
-    </button>
-  );
-}
-
 interface ProjectCardProps {
   project: ProjectData;
   onNavigate: (id: string) => void;
+  onEdit: (project: ProjectData) => void;
+  onDelete: (project: ProjectData) => void;
 }
 
-const ProjectCard = memo(function ProjectCard({ project, onNavigate }: ProjectCardProps) {
+const ProjectCard = memo(function ProjectCard({ project, onNavigate, onEdit, onDelete }: ProjectCardProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const statusStyle = STATUS_COLORS[project.status] ?? STATUS_COLORS[PROJECT_STATUS.PAUSED];
 
   const handleMouseEnter = () => setIsHovered(true);
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    setIsMenuOpen(false);
-  };
+  const handleMouseLeave = () => setIsHovered(false);
   const handleCardClick = () => onNavigate(project.id);
-  const handleMenuToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsMenuOpen(!isMenuOpen);
-  };
 
   return (
     <div
@@ -117,35 +92,28 @@ const ProjectCard = memo(function ProjectCard({ project, onNavigate }: ProjectCa
           <button
             className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
             style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-            onClick={handleMenuToggle}
-            title="更多操作"
+            onClick={(e) => { e.stopPropagation(); onEdit(project); }}
+            title="编辑项目"
           >
-            <MoreHorizontal size={12} style={{ color: COLORS.textPrimary }} />
+            <Pencil size={11} style={{ color: COLORS.textPrimary }} />
+          </button>
+          <button
+            className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+            onClick={(e) => { e.stopPropagation(); onDelete(project); }}
+            title="删除项目"
+          >
+            <Trash2 size={11} style={{ color: COLORS.danger }} />
           </button>
         </div>
 
-        {isMenuOpen && (
-          <div
-            className="absolute top-10 right-2 rounded-lg overflow-hidden z-10"
-            style={{
-              background: COLORS.bgMenu,
-              border: `1px solid ${COLORS.borderSubtle}`,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-              minWidth: "120px",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <DropdownItem icon={Edit2} label="重命名" color={COLORS.textPrimary} />
-            <div style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }} />
-            <DropdownItem icon={Trash2} label="删除项目" color={COLORS.danger} />
-          </div>
-        )}
-
         <div className="absolute bottom-0 left-0 right-0 px-3 pb-2">
           <div className="flex items-center justify-between mb-1">
+            {/*
             <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.55)" }}>
               {project.completedEpisodes}/{project.episodes} 集
             </span>
+            */}
             <span
               style={{
                 fontSize: "11px",
@@ -183,9 +151,15 @@ const ProjectCard = memo(function ProjectCard({ project, onNavigate }: ProjectCa
             <span style={{ fontSize: "10px" }}>{project.lastEdit}</span>
           </div>
           <div className="flex items-center gap-1">
+            <Users size={9} />
+            <span style={{ fontSize: "10px" }}>{project.members.length} 人</span>
+          </div>
+          {/*
+          <div className="flex items-center gap-1">
             <Film size={9} />
             <span style={{ fontSize: "10px" }}>{project.totalAssets} 资产</span>
           </div>
+          */}
         </div>
       </div>
     </div>
@@ -199,10 +173,25 @@ export function ProjectsPage() {
 
   const handleNavigate = (id: string) => navigate(`/project/${id}`);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
 
   const handleNewProject = (data: { name: string; tokenTotal: number; cover?: string }) => {
     // TODO: persist to backend, for now just navigate
     navigate(`/project/${PROJECTS_DATA.length + 1}`);
+  };
+
+  const handleEditProject = (project: ProjectData) => {
+    setEditingProject(project);
+  };
+
+  const handleDeleteProject = (project: ProjectData) => {
+    // TODO: implement delete, for now just toast
+    toast.success(`项目 "${project.name}" 已删除`);
+  };
+
+  const handleSaveEdit = (data: { name: string; tokenTotal: number; cover?: string }) => {
+    setEditingProject(null);
+    toast.success(`项目 "${data.name}" 已更新`);
   };
 
   return (
@@ -284,7 +273,13 @@ export function ProjectsPage() {
           )}
 
           {PROJECTS_DATA.map((project) => (
-            <ProjectCard key={project.id} project={project} onNavigate={handleNavigate} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              onNavigate={handleNavigate}
+              onEdit={handleEditProject}
+              onDelete={handleDeleteProject}
+            />
           ))}
         </div>
       </div>
@@ -294,6 +289,15 @@ export function ProjectsPage() {
         <CreateProjectDialog
           onClose={() => setShowNewProject(false)}
           onSave={handleNewProject}
+        />
+      )}
+
+      {/* ── Edit Project Dialog ── */}
+      {editingProject && (
+        <EditProjectDialog
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+          onSave={handleSaveEdit}
         />
       )}
     </div>

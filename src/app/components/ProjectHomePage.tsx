@@ -4,11 +4,11 @@ import {
   ChevronRight, ChevronDown, Check, Plus,
   Users, Film, AlertTriangle, TrendingDown, Coins,
   Clock, Edit2, BarChart2,
-  CheckCircle2, Circle, Loader2, Activity,
+  CheckCircle2, Circle, Loader2,
   Info,
   Monitor, Zap, Layers, Video,
   Shield, Eye, Droplets, Trash2, X,
-  RefreshCw, FolderOpen, MessageCircle, Search, Pencil,
+  RefreshCw, FolderOpen, MessageCircle, Search,
   Image as LucideImage,
 } from "lucide-react";
 import {
@@ -240,13 +240,82 @@ interface CategoryFolder {
 type CategoryNode = CategoryFolder | CategoryLeaf;
 
 function sumCat(nodes: CategoryNode[], field: keyof CategoryLeaf | "totalTokens"): number {
-  return nodes.reduce((s, n) => s + ("type" in n ? sumCat(n.children, field) : (n as CategoryLeaf)[field as keyof CategoryLeaf] ?? 0), 0);
+  return nodes.reduce((s, n) => s + ("type" in n ? sumCat(n.children, field) : Number((n as CategoryLeaf)[field as keyof CategoryLeaf] ?? 0)), 0);
 }
 
 function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}分${String(s).padStart(2, "0")}秒`;
+}
+
+// ─── Animated Number (count-up effect) ────────────────────────────────────────────
+function AnimatedNumber({ value, duration = 800 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    const start = display;
+    const end = value;
+    const startTime = performance.now();
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(start + (end - start) * eased));
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }, [value]);
+  return <span>{display.toLocaleString()}</span>;
+}
+
+// ─── Pulse Indicator (for critical states) ───────────────────────────────────────────
+function PulseIndicator({ color = "#E87322", size = 8 }: { color?: string; size?: number }) {
+  return (
+    <span
+      className="inline-block rounded-full"
+      style={{
+        width: size,
+        height: size,
+        background: color,
+        animation: "pulse 1.5s ease-in-out infinite",
+        boxShadow: `0 0 ${size * 2}px ${color}40`,
+      }}
+    />
+  );
+}
+
+// ─── Hover Card Wrapper ─────────────────────────────────────────────────────────────
+function HoverCard({
+  children,
+  className = "",
+  style = {},
+  onClick,
+  glowColor = "rgba(232,115,34,0.15)",
+}: {
+  children: React.ReactNode;
+  className?: string;
+  style?: CSSProperties;
+  onClick?: () => void;
+  glowColor?: string;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  return (
+    <div
+      className={className}
+      style={{
+        ...style,
+        transition: "all 0.25s ease",
+        boxShadow: isHovered ? `0 0 20px ${glowColor}, 0 4px 12px rgba(0,0,0,0.2)` : "none",
+        borderColor: isHovered ? "rgba(232,115,34,0.2)" : style.border?.toString() || "rgba(255,255,255,0.06)",
+        cursor: onClick ? "pointer" : "default",
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onClick}
+    >
+      {children}
+    </div>
+  );
 }
 
 const CATEGORY_CONSUMPTION: CategoryNode[] = [
@@ -1139,6 +1208,7 @@ export function ProjectHomePage() {
   // Total quota for the project (used in consumption section)
   const [localTokenTotal, setLocalTokenTotal] = useState(project?.tokenTotal ?? 50000);
   const [editingTotalQuota, setEditingTotalQuota] = useState(false);
+  const [showProjectStats, setShowProjectStats] = useState(true);
 
   // Watermark state
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
@@ -1150,6 +1220,7 @@ export function ProjectHomePage() {
   const [removeConfirmIndex, setRemoveConfirmIndex] = useState<number | null>(null);
   const [removedMembers, setRemovedMembers] = useState<Set<number>>(new Set());
   const [memberQuotas, setMemberQuotas] = useState<MemberQuota[]>(INITIAL_MEMBER_QUOTAS);
+  const [openPermDropdown, setOpenPermDropdown] = useState<number | null>(null);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<ProjectTab>("members");
@@ -1169,6 +1240,7 @@ export function ProjectHomePage() {
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
 
+  
   if (!project) {
     return (
       <div className="flex items-center justify-center h-full" style={{ color: "rgba(255,255,255,0.4)" }}>项目不存在</div>
@@ -1199,6 +1271,28 @@ export function ProjectHomePage() {
     阅读: activeMembers.filter(m => m.permission === "阅读").length,
   };
 
+  // Stats data for project statistics (no filtering)
+  const statsMembers = membersWithPerm;
+
+  const imageGenerated = statsMembers.reduce((s, m) => s + m.imageGenerated, 0);
+  const videoGenerated = statsMembers.reduce((s, m) => s + m.videoGenerated, 0);
+  const imageTokenUsed = statsMembers.reduce((s, m) => s + m.imageTokenUsed, 0);
+  const videoTokenUsed = statsMembers.reduce((s, m) => s + m.videoTokenUsed, 0);
+  const totalGenerated = imageGenerated + videoGenerated;
+  const totalTokenUsed = imageTokenUsed + videoTokenUsed;
+  const videoDurationSec = statsMembers.reduce((s, m) => {
+    const parts = m.videoDuration.match(/(\d+)分(\d+)秒/);
+    return s + (parts ? parseInt(parts[1]) * 60 + parseInt(parts[2]) : 0);
+  }, 0);
+
+  // Calculate gacha rates
+  const imgRates = statsMembers.map(m => m.gachaRate).filter(Boolean);
+  const vidRates = statsMembers.map(m => m.avgGachaRate).filter(Boolean);
+  const imgGachaAvg = imgRates.length > 0 ? (imgRates.reduce((a, b) => a + b, 0) / imgRates.length).toFixed(1) : "-";
+  const vidGachaAvg = vidRates.length > 0 ? (vidRates.reduce((a, b) => a + b, 0) / vidRates.length).toFixed(1) : "-";
+  const allRates = [...imgRates, ...vidRates];
+  const totalGachaAvg = allRates.length > 0 ? (allRates.reduce((a, b) => a + b, 0) / allRates.length).toFixed(1) : "-";
+
   const tokenPercent = Math.round((project.tokenUsed / localTokenTotal) * 100);
   const projectBalance = localTokenTotal - project.tokenUsed;
   const memberTotalBalance = Math.round(localTokenTotal * 0.12);
@@ -1209,7 +1303,6 @@ export function ProjectHomePage() {
     ? membersWithPerm.map((m) => m.tokenUsed)
     : (MEMBER_PERIOD_CONSUMED[period] ?? []);
   const contentProgress = project.progress;
-  const budgetEfficiency = tokenPercent - contentProgress;
   const statusStyle = STATUS_STYLE[status] ?? STATUS_STYLE["暂停"];
   const trendData = TREND_DATA[period] ?? TREND_DATA.month;
 
@@ -1401,203 +1494,505 @@ export function ProjectHomePage() {
           </div>
         </div>
 
-      {/* ── Stats Row: 4 unified cards ── */}
-        <div className={`grid gap-4 mb-6 ${projectPerm === "管理" ? "grid-cols-4" : "grid-cols-2"}`}>
+      {/* ── Premium Stats Dashboard ── */}
+        <div className="mb-6">
+          {/* Hero Row: Budget (primary) + Progress + Efficiency */}
+          <div className={`grid gap-4 mb-4 ${projectPerm === "管理" ? "grid-cols-1" : "grid-cols-2"}`}>
 
-          {/* ── 参与成员 ── */}
-          {projectPerm === "管理" && (
-          <div className="rounded-xl p-4 flex flex-col" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Users size={12} style={{ color: "rgba(232,115,34,0.7)" }} />
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>参与成员</span>
-                <StatTooltip text="当前参与此项目的活跃成员及其权限分布" />
-              </div>
-              {projectPerm === "管理" && (
-                <button
-                  onClick={() => setShowMemberModal(true)}
-                  className="px-2 py-1 rounded-lg text-xs transition-colors hover:opacity-80"
-                  style={{ background: "rgba(232,115,34,0.12)", color: "#E87322", border: "1px solid rgba(232,115,34,0.25)", fontSize: "10px" }}>
-                  管理成员
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2 mb-2.5">
-              <div className="flex items-center" style={{ marginLeft: "-4px" }}>
-                {activeMembers.slice(0, 5).map((m, i) => (
-                  <div key={i} className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0"
-                    style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "9px", fontWeight: 600, border: "2px solid #1A1510", marginLeft: i > 0 ? "-8px" : "4px", zIndex: 10 - i, position: "relative" }}>
-                    {m.avatar}
-                  </div>
-                ))}
-                {activeMembers.length > 5 && (
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ background: "rgba(255,255,255,0.08)", fontSize: "9px", color: "rgba(255,255,255,0.5)", border: "2px solid #1A1510", marginLeft: "-8px", zIndex: 3, position: "relative" }}>
-                    +{activeMembers.length - 5}
-                  </div>
-                )}
-              </div>
-              <span className="text-white" style={{ fontSize: "20px", fontWeight: 600 }}>{activeMembers.length}</span>
-              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap mt-auto">
-              {(Object.entries(permCounts) as [ProjectPermission, number][]).map(([perm, cnt]) => cnt > 0 && (
-                <div key={perm} className="flex items-center gap-1 px-1.5 py-0.5 rounded"
-                  style={{ background: `${PERM_COLORS[perm]}12`, border: `1px solid ${PERM_COLORS[perm]}25`, fontSize: "10px", color: PERM_COLORS[perm] }}>
-                  {perm} ×{cnt}
-                </div>
-              ))}
-            </div>
-          </div>
-          )}
+            {/* ── Hero Budget Card ── */}
+            <div className="relative rounded-2xl overflow-hidden" style={{ minHeight: "140px" }}>
+              {/* Ambient glow */}
+              <div className="absolute inset-0 opacity-30" style={{
+                background: `radial-gradient(ellipse 80% 50% at 30% 50%, rgba(232,115,34,0.4) 0%, transparent 70%)`,
+                filter: "blur(40px)"
+              }} />
+              {/* Base gradient */}
+              <div className="absolute inset-0" style={{
+                background: "linear-gradient(135deg, #1E1612 0%, #18120E 50%, #14110E 100%)"
+              }} />
+              {/* Decorative elements */}
+              <div className="absolute top-0 right-0 w-32 h-32 opacity-10" style={{
+                background: "radial-gradient(circle at 100% 0%, rgba(232,115,34,0.6) 0%, transparent 60%)"
+              }} />
 
-          {/* ── 生产栗消耗 ── */}
-          {projectPerm === "管理" ? (
-          <div className="rounded-xl p-4 flex flex-col" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Coins size={12} style={{ color: "rgba(232,115,34,0.7)" }} />
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>生产栗消耗</span>
-                <StatTooltip text="项目已消耗生产栗 / 总配额。超过 80% 时进入预警区间" />
-              </div>
-              <button
-                onClick={() => setEditingTotalQuota(!editingTotalQuota)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-xs hover:opacity-80 transition-opacity"
-                style={{
-                  background: editingTotalQuota ? "rgba(232,115,34,0.15)" : "rgba(76,73,252,0.12)",
-                  color: editingTotalQuota ? "#E87322" : "#4c49fc",
-                  border: `1px solid ${editingTotalQuota ? "rgba(232,115,34,0.3)" : "rgba(76,73,252,0.2)"}`,
-                  fontSize: "10px",
-                }}>
-                <Edit2 size={9} />{editingTotalQuota ? "收起" : "配额"}
-              </button>
-            </div>
-            <div className="flex items-end gap-1.5 mb-2">
-              <span className="text-white" style={{ fontSize: "20px", fontWeight: 600 }}>{project.tokenUsed.toLocaleString()}</span>
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginBottom: "2px" }}>/ {localTokenTotal.toLocaleString()} 颗</span>
-            </div>
-            {!editingTotalQuota && (
-              <>
-                <div className="w-full rounded-full overflow-hidden mb-1.5" style={{ height: "5px", background: "rgba(255,255,255,0.07)" }}>
-                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, tokenPercent)}%`, background: tokenPercent > 80 ? "linear-gradient(90deg,#ff6b6b,#ff9b9b)" : "linear-gradient(90deg,#E87322,#F5A623)", transition: "width 0.6s" }} />
-                </div>
-                <div className="text-xs mt-auto" style={{ color: tokenPercent > 80 ? "#ff6b6b" : "rgba(255,255,255,0.35)" }}>
-                  已消耗 {tokenPercent}% · 剩余 {projectBalance.toLocaleString()} 颗
-                </div>
-              </>
-            )}
-            {editingTotalQuota && (
-              <InlineTotalQuotaEditor
-                currentConsumed={project.tokenUsed}
-                currentTotal={localTokenTotal}
-                onSave={(v) => { setLocalTokenTotal(v); setEditingTotalQuota(false); }}
-                onCancel={() => setEditingTotalQuota(false)}
-              />
-            )}
-          </div>
-          ) : (() => {
-            const myUsed = membersWithPerm[0]?.tokenUsed ?? 0;
-            const myQuota = memberQuotas[0];
-            const myTotal = myQuota?.type === "unlimited" ? 0 : (myQuota?.total ?? 0);
-            const myRemaining = myQuota?.type === "unlimited" ? Infinity : (myQuota?.remaining ?? 0);
-            const myPct = myTotal > 0 ? Math.round((myUsed / myTotal) * 100) : 0;
-            return (
-              <div className="rounded-xl p-4 flex flex-col" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center gap-1.5 mb-3">
-                  <Coins size={12} style={{ color: "rgba(232,115,34,0.7)" }} />
-                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>我的消耗</span>
-                  <StatTooltip text="当前时间段内你的生产栗消耗 / 分配配额" />
-                </div>
-                <div className="flex items-end gap-1.5 mb-2">
-                  <span className="text-white" style={{ fontSize: "20px", fontWeight: 600 }}>{myUsed.toLocaleString()}</span>
-                  {myQuota?.type !== "unlimited" && myTotal > 0 && (
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginBottom: "2px" }}>/ {myTotal.toLocaleString()} 颗</span>
-                  )}
-                  {myQuota?.type === "unlimited" && (
-                    <span style={{ fontSize: "11px", color: "#4AC678", marginBottom: "2px" }}>颗 · 无限制</span>
-                  )}
-                </div>
-                {myQuota?.type !== "unlimited" && myTotal > 0 && (
-                  <>
-                    <div className="w-full rounded-full overflow-hidden mb-1.5" style={{ height: "5px", background: "rgba(255,255,255,0.07)" }}>
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, myPct)}%`, background: myPct > 80 ? "linear-gradient(90deg,#ff6b6b,#ff9b9b)" : "linear-gradient(90deg,#E87322,#F5A623)", transition: "width 0.6s" }} />
+              <div className="relative p-5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{
+                      background: "rgba(232,115,34,0.2)",
+                      boxShadow: "0 2px 8px rgba(232,115,34,0.3)"
+                    }}>
+                      <Coins size={14} style={{ color: "#E87322" }} />
                     </div>
-                    <div className="text-xs mt-auto" style={{ color: myPct > 80 ? "#ff6b6b" : "rgba(255,255,255,0.35)" }}>
-                      已消耗 {myPct}% · 剩余 {isFinite(myRemaining) ? myRemaining.toLocaleString() : "∞"} 颗
+                    <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.55)", fontWeight: 500 }}>生产栗预算</span>
+                    <StatTooltip text="项目已消耗生产栗 / 总配额。超过 80% 时进入预警区间" />
+                  </div>
+                  {projectPerm === "管理" && (
+                    <button
+                      onClick={() => setEditingTotalQuota(!editingTotalQuota)}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:opacity-90 transition-all"
+                      style={{
+                        background: editingTotalQuota ? "rgba(232,115,34,0.25)" : "rgba(255,255,255,0.08)",
+                        color: editingTotalQuota ? "#E87322" : "rgba(255,255,255,0.7)",
+                        border: `1px solid ${editingTotalQuota ? "rgba(232,115,34,0.4)" : "rgba(255,255,255,0.15)"}`,
+                        fontSize: "11px",
+                        fontWeight: 500,
+                      }}>
+                      <Edit2 size={12} />{editingTotalQuota ? "取消" : "配额"}
+                    </button>
+                  )}
+                </div>
+
+                {!editingTotalQuota && (
+                  <>
+                    {/* Large typography */}
+                    <div className="flex items-baseline gap-2 mb-3">
+                      <span style={{
+                        fontSize: "42px",
+                        fontWeight: 700,
+                        color: "rgba(255,255,255,0.95)",
+                        letterSpacing: "-1px",
+                        lineHeight: 1
+                      }}>{project.tokenUsed.toLocaleString()}</span>
+                      <span style={{
+                        fontSize: "14px",
+                        color: "rgba(255,255,255,0.4)",
+                        marginBottom: "6px"
+                      }}>已消耗</span>
+                      <span className="mx-2" style={{ color: "rgba(255,255,255,0.2)" }}>·</span>
+                      <span style={{
+                        fontSize: "18px",
+                        color: "rgba(255,255,255,0.6)",
+                        marginBottom: "4px"
+                      }}>{localTokenTotal.toLocaleString()}</span>
+                      <span style={{
+                        fontSize: "12px",
+                        color: "rgba(255,255,255,0.35)",
+                        marginBottom: "3px"
+                      }}>总配额</span>
+                    </div>
+
+                    {/* Animated progress bar */}
+                    <div className="relative w-full rounded-full overflow-hidden" style={{ height: "8px", background: "rgba(255,255,255,0.08)" }}>
+                      <div className="absolute inset-0 rounded-full" style={{
+                        width: `${Math.min(100, tokenPercent)}%`,
+                        background: tokenPercent > 80
+                          ? "linear-gradient(90deg, #ff6b6b 0%, #ff8e8e 50%, #ff6b6b 100%)"
+                          : "linear-gradient(90deg, #E87322 0%, #F5A623 50%, #E87322 100%)",
+                        boxShadow: tokenPercent > 80
+                          ? "0 0 20px rgba(255,107,107,0.5)"
+                          : "0 0 20px rgba(232,115,34,0.5)",
+                        transition: "width 0.8s cubic-bezier(0.4, 0, 0.2, 1)"
+                      }} />
+                      {/* Shimmer effect */}
+                      <div className="absolute inset-0 opacity-60" style={{
+                        background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%)",
+                        animation: "shimmer 2s infinite",
+                        width: "100%"
+                      }} />
+                    </div>
+
+                    {/* Status indicators */}
+                    <div className="flex items-center gap-3 mt-3">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full" style={{
+                          background: tokenPercent > 80 ? "#ff6b6b" : "#4AC678",
+                          boxShadow: tokenPercent > 80 ? "0 0 6px #ff6b6b" : "0 0 6px #4AC678"
+                        }} />
+                        <span style={{
+                          fontSize: "11px",
+                          color: tokenPercent > 80 ? "#ff6b6b" : "rgba(255,255,255,0.5)"
+                        }}>
+                          剩余 {projectBalance.toLocaleString()} 颗 ({100 - tokenPercent}%)
+                        </span>
+                      </div>
                     </div>
                   </>
                 )}
-                {(myQuota?.type === "unlimited" || myTotal === 0) && (
-                  <div className="text-xs mt-auto" style={{ color: "rgba(255,255,255,0.35)" }}>无消耗额度限制</div>
+
+                {editingTotalQuota && (
+                  <InlineTotalQuotaEditor
+                    currentConsumed={project.tokenUsed}
+                    currentTotal={localTokenTotal}
+                    onSave={(v) => { setLocalTokenTotal(v); setEditingTotalQuota(false); }}
+                    onCancel={() => setEditingTotalQuota(false)}
+                  />
                 )}
               </div>
-            );
-          })()}
+            </div>
 
-          {/* ── 项目进度 ── */}
-          <div className="rounded-xl p-4 flex flex-col" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <BarChart2 size={12} style={{ color: "rgba(232,115,34,0.7)" }} />
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>项目进度</span>
-                <StatTooltip text="按集数统计的内容完成度（已完成集数/总集数），每集完成需通过全部分镜审核" />
-              </div>
-              <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "10px", background: contentProgress === 100 ? "rgba(74,198,120,0.12)" : "rgba(232,115,34,0.1)", color: contentProgress === 100 ? "#4AC678" : "#E87322", border: `1px solid ${contentProgress === 100 ? "rgba(74,198,120,0.25)" : "rgba(232,115,34,0.2)"}` }}>
-                {contentProgress === 100 ? "已完成" : "进行中"}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="relative flex-shrink-0">
-                <MiniRing pct={contentProgress} size={52} stroke={4} color={contentProgress === 100 ? "#4AC678" : "#E87322"} />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: contentProgress === 100 ? "#4AC678" : "#E87322" }}>{contentProgress}%</span>
+
+            {/* ── Member Card for non-admin ── */}
+            {projectPerm !== "管理" && (() => {
+              const myUsed = membersWithPerm[0]?.tokenUsed ?? 0;
+              const myQuota = memberQuotas[0];
+              const myTotal = myQuota?.type === "unlimited" ? 0 : (myQuota?.total ?? 0);
+              const myRemaining = myQuota?.type === "unlimited" ? Infinity : (myQuota?.remaining ?? 0);
+              const myPct = myTotal > 0 ? Math.round((myUsed / myTotal) * 100) : 0;
+              return (
+                <div className="relative rounded-2xl p-5 flex flex-col" style={{
+                  background: "linear-gradient(180deg, #1A1510 0%, #161210 100%)",
+                  border: "1px solid rgba(255,255,255,0.06)"
+                }}>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Coins size={11} style={{ color: "rgba(232,115,34,0.6)" }} />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>我的消耗</span>
+                  </div>
+                  <div className="flex items-baseline gap-2 mb-3">
+                    <span style={{ fontSize: "28px", fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>{myUsed.toLocaleString()}</span>
+                    {myQuota?.type !== "unlimited" && myTotal > 0 && (
+                      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>/{myTotal.toLocaleString()}</span>
+                    )}
+                    {myQuota?.type === "unlimited" && (
+                      <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "10px", background: "rgba(74,198,120,0.12)", color: "#4AC678" }}>无限制</span>
+                    )}
+                  </div>
+                  {myQuota?.type !== "unlimited" && myTotal > 0 && (
+                    <div className="w-full rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.08)" }}>
+                      <div className="h-full rounded-full" style={{
+                        width: `${Math.min(100, myPct)}%`,
+                        background: myPct > 80 ? "#ff6b6b" : "#E87322",
+                        transition: "width 0.6s"
+                      }} />
+                    </div>
+                  )}
+                  <div className="text-xs mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    {myQuota?.type === "unlimited" ? "无额度限制" : `剩余 ${myRemaining.toLocaleString()} 颗`}
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div className="text-white" style={{ fontSize: "20px", fontWeight: 600 }}>
-                  {project.completedEpisodes}/{project.episodes}
-                </div>
-                
-              </div>
-            </div>
-            <div className="text-xs mt-auto" style={{ color: "rgba(255,255,255,0.3)" }}>
-              {project.episodes - project.completedEpisodes > 0 ? `${project.episodes - project.completedEpisodes} 集待完成` : "全部集数已完成"}
-            </div>
+              );
+            })()}
           </div>
 
-          {/* ── 效率诊断 ── */}
+          {/* Secondary Row: Members (full width for admin) + Project Stats (full width) */}
           {projectPerm === "管理" && (
-          <div className="rounded-xl p-4 flex flex-col"
-            style={{
-              background: budgetEfficiency > 15 ? "rgba(255,100,100,0.06)" : budgetEfficiency < -10 ? "rgba(74,198,120,0.06)" : "#1A1510",
-              border: `1px solid ${budgetEfficiency > 15 ? "rgba(255,100,100,0.2)" : budgetEfficiency < -10 ? "rgba(74,198,120,0.2)" : "rgba(255,255,255,0.06)"}`,
+          <>
+            {/* ── Members Overview ── */}
+            <div className="rounded-2xl p-4 flex flex-col mb-4" style={{
+              background: "#1A1510",
+              border: "1px solid rgba(255,255,255,0.06)"
             }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Activity size={12} style={{ color: budgetEfficiency > 15 ? "#ff6b6b" : budgetEfficiency < -10 ? "#4AC678" : "rgba(232,115,34,0.7)" }} />
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>效率诊断</span>
-                <StatTooltip text="对比内容完成度与预算消耗率差值。差值 > 15% 为预算超耗，< -10% 为高效节约" />
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(232,115,34,0.15)" }}>
+                    <Users size={11} style={{ color: "#E87322" }} />
+                  </div>
+                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>参与成员</span>
+                </div>
+                <button
+                  onClick={() => setShowMemberModal(true)}
+                  className="px-2 py-1 rounded-lg hover:opacity-80 transition-opacity"
+                  style={{ background: "rgba(232,115,34,0.1)", color: "#E87322", fontSize: "10px", fontWeight: 500 }}>
+                  管理成员
+                </button>
               </div>
-              <span style={{ fontSize: "11px", fontWeight: 600, color: budgetEfficiency > 15 ? "#ff6b6b" : budgetEfficiency < -10 ? "#4AC678" : "#E87322" }}>
-                {budgetEfficiency > 0 ? "+" : ""}{budgetEfficiency}%
-              </span>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center" style={{ marginLeft: "-6px" }}>
+                  {activeMembers.slice(0, 5).map((m, i) => (
+                    <div key={i} className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{
+                        background: MEMBER_COLORS[i % MEMBER_COLORS.length],
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        color: "#fff",
+                        border: "2px solid #1A1510",
+                        marginLeft: i > 0 ? "-10px" : "0",
+                        zIndex: 10 - i,
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+                      }}>
+                      {m.avatar}
+                    </div>
+                  ))}
+                  {activeMembers.length > 5 && (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={{
+                        background: "rgba(255,255,255,0.1)",
+                        fontSize: "10px",
+                        color: "rgba(255,255,255,0.5)",
+                        border: "2px solid #1A1510",
+                        marginLeft: "-10px",
+                        zIndex: 3
+                      }}>
+                      +{activeMembers.length - 5}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span style={{ fontSize: "24px", fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>{activeMembers.length}</span>
+                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-3">
+                {(Object.entries(permCounts) as [ProjectPermission, number][]).map(([perm, cnt]) => cnt > 0 && (
+                  <span key={perm} className="flex items-center gap-1 px-2 py-0.5 rounded-lg"
+                    style={{
+                      background: `${PERM_COLORS[perm]}15`,
+                      color: PERM_COLORS[perm],
+                      fontSize: "10px",
+                      fontWeight: 500
+                    }}>
+                    {perm}<span style={{ opacity: 0.7 }}>×{cnt}</span>
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="inline-flex items-center gap-1.5 mb-3 px-2.5 py-1 rounded-full self-start"
-              style={{
-                background: budgetEfficiency > 15 ? "rgba(255,100,100,0.15)" : budgetEfficiency < -10 ? "rgba(74,198,120,0.15)" : "rgba(232,115,34,0.12)",
-                color: budgetEfficiency > 15 ? "#ff6b6b" : budgetEfficiency < -10 ? "#4AC678" : "#E87322",
-                fontSize: "11px",
-              }}>
-              {budgetEfficiency > 15 ? "⚠️ 预算超耗" : budgetEfficiency < -10 ? "✅ 高效节约" : "ℹ️ 正常进度"}
+
+            {/* ── Project Statistics (Full Width) ── */}
+            <div className="rounded-2xl overflow-hidden" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <button
+                onClick={() => setShowProjectStats(!showProjectStats)}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(232,115,34,0.15)" }}>
+                    <BarChart2 size={11} style={{ color: "#E87322" }} />
+                  </div>
+                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>项目统计</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }}>
+                    {showProjectStats ? <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.5)" }} /> : <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.5)" }} />}
+                  </div>
+                </div>
+              </button>
+
+              {showProjectStats && (
+              <div className="px-4 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                {/* Summary Row: 总生成资产数、总消耗、总抽卡率 - 改进样式 */}
+                <div className="grid grid-cols-3 gap-4 mb-5">
+                  {/* 总生成资产数 */}
+                  <div className="relative flex flex-col gap-2 p-4 rounded-2xl overflow-hidden" style={{
+                    background: "linear-gradient(145deg, rgba(232,115,34,0.18) 0%, rgba(232,115,34,0.08) 50%, rgba(232,115,34,0.03) 100%)",
+                    border: "1px solid rgba(232,115,34,0.25)",
+                    boxShadow: "0 4px 20px rgba(232,115,34,0.08)"
+                  }}>
+                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full" style={{
+                      background: "radial-gradient(circle, rgba(232,115,34,0.15) 0%, transparent 70%)",
+                      transform: "translate(30%, -30%)"
+                    }} />
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(232,115,34,0.2)" }}>
+                        <Layers size={14} style={{ color: "#E87322" }} />
+                      </div>
+                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>总生成资产数</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-1">
+                      <span style={{ fontSize: "36px", color: "#E87322", fontWeight: 700, lineHeight: 1 }}>
+                        {totalGenerated}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1" style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>
+                      <span className="flex items-center gap-1">
+                        <LucideImage size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
+                        {imageGenerated}图
+                      </span>
+                      <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
+                      <span className="flex items-center gap-1">
+                        <Film size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
+                        {videoGenerated}视
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 总消耗 */}
+                  <div className="relative flex flex-col gap-2 p-4 rounded-2xl overflow-hidden" style={{
+                    background: "linear-gradient(145deg, rgba(74,158,224,0.18) 0%, rgba(74,158,224,0.08) 50%, rgba(74,158,224,0.03) 100%)",
+                    border: "1px solid rgba(74,158,224,0.25)",
+                    boxShadow: "0 4px 20px rgba(74,158,224,0.08)"
+                  }}>
+                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full" style={{
+                      background: "radial-gradient(circle, rgba(74,158,224,0.15) 0%, transparent 70%)",
+                      transform: "translate(30%, -30%)"
+                    }} />
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(74,158,224,0.2)" }}>
+                        <Coins size={14} style={{ color: "#4A9EE0" }} />
+                      </div>
+                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>总消耗</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-1">
+                      <span style={{ fontSize: "36px", color: "#4A9EE0", fontWeight: 700, lineHeight: 1 }}>
+                        {totalTokenUsed.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1" style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>
+                      <span className="flex items-center gap-1">
+                        <LucideImage size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
+                        {imageTokenUsed.toLocaleString()}图
+                      </span>
+                      <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
+                      <span className="flex items-center gap-1">
+                        <Film size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
+                        {videoTokenUsed.toLocaleString()}视
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 总抽卡率 */}
+                  <div className="relative flex flex-col gap-2 p-4 rounded-2xl overflow-hidden" style={{
+                    background: "linear-gradient(145deg, rgba(74,198,120,0.18) 0%, rgba(74,198,120,0.08) 50%, rgba(74,198,120,0.03) 100%)",
+                    border: "1px solid rgba(74,198,120,0.25)",
+                    boxShadow: "0 4px 20px rgba(74,198,120,0.08)"
+                  }}>
+                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full" style={{
+                      background: "radial-gradient(circle, rgba(74,198,120,0.15) 0%, transparent 70%)",
+                      transform: "translate(30%, -30%)"
+                    }} />
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(74,198,120,0.2)" }}>
+                        <Check size={14} style={{ color: "#4AC678" }} />
+                      </div>
+                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>总抽卡率</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 mt-1">
+                      <span style={{ fontSize: "36px", color: "#4AC678", fontWeight: 700, lineHeight: 1 }}>
+                        {totalGachaAvg === "-" ? "-" : `${totalGachaAvg}%`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1" style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>
+                      <span className="flex items-center gap-1">
+                        <LucideImage size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
+                        图片{imgGachaAvg}%
+                      </span>
+                      <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
+                      <span className="flex items-center gap-1">
+                        <Film size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
+                        视频{vidGachaAvg}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Project Progress Ring — moved from hero row */}
+                <div className="mb-4 rounded-2xl p-4 flex items-center gap-5" style={{
+                  background: "linear-gradient(180deg, rgba(232,115,34,0.06) 0%, rgba(232,115,34,0.02) 100%)",
+                  border: "1px solid rgba(232,115,34,0.12)"
+                }}>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <BarChart2 size={11} style={{ color: "rgba(232,115,34,0.6)" }} />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>项目进度</span>
+                  </div>
+                  <div className="relative flex-shrink-0">
+                    <svg width="48" height="48" className="transform -rotate-90">
+                      <circle cx="24" cy="24" r="19" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+                      <circle
+                        cx="24" cy="24" r="19"
+                        fill="none"
+                        stroke={contentProgress === 100 ? "#4AC678" : "#E87322"}
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeDasharray={`${contentProgress * 1.19} 119`}
+                        style={{
+                          transition: "stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+                          filter: `drop-shadow(0 0 6px ${contentProgress === 100 ? "rgba(74,198,120,0.4)" : "rgba(232,115,34,0.4)"})`
+                        }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: contentProgress === 100 ? "#4AC678" : "#E87322" }}>
+                        {contentProgress}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span style={{ fontSize: "18px", fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>{project.completedEpisodes}</span>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>/{project.episodes} 集</span>
+                    <span className="px-1.5 py-0.5 rounded-full" style={{
+                      fontSize: "10px",
+                      background: contentProgress === 100 ? "rgba(74,198,120,0.12)" : "rgba(232,115,34,0.1)",
+                      color: contentProgress === 100 ? "#4AC678" : "#E87322",
+                      border: `1px solid ${contentProgress === 100 ? "rgba(74,198,120,0.2)" : "rgba(232,115,34,0.2)"}`,
+                      fontWeight: 500
+                    }}>
+                      {contentProgress === 100 ? "已完结" : "进行中"}
+                    </span>
+                    {project.episodes - project.completedEpisodes > 0 && (
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
+                        · {project.episodes - project.completedEpisodes}集待完成
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Detail Stats Grid */}
+                <div className="grid grid-cols-4 gap-3">
+                  {/* Image Generated */}
+                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(74,158,224,0.08)" }}>
+                    <div className="flex items-center gap-1">
+                      <LucideImage size={10} style={{ color: "rgba(74,158,224,0.8)" }} />
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片生成</span>
+                    </div>
+                    <span style={{ fontSize: "16px", color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
+                      {imageGenerated}
+                    </span>
+                  </div>
+                  {/* Image Token */}
+                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(74,158,224,0.08)" }}>
+                    <div className="flex items-center gap-1">
+                      <Coins size={10} style={{ color: "#4A9EE0" }} />
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片消耗</span>
+                    </div>
+                    <span style={{ fontSize: "16px", color: "#4A9EE0", fontWeight: 600 }}>
+                      {imageTokenUsed.toLocaleString()}
+                    </span>
+                  </div>
+                  {/* Video Generated */}
+                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(155,89,182,0.08)" }}>
+                    <div className="flex items-center gap-1">
+                      <Film size={10} style={{ color: "rgba(155,89,182,0.8)" }} />
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频生成</span>
+                    </div>
+                    <span style={{ fontSize: "16px", color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
+                      {videoGenerated}
+                    </span>
+                  </div>
+                  {/* Video Token */}
+                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(155,89,182,0.08)" }}>
+                    <div className="flex items-center gap-1">
+                      <Coins size={10} style={{ color: "#9B59B6" }} />
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频消耗</span>
+                    </div>
+                    <span style={{ fontSize: "16px", color: "#9B59B6", fontWeight: 600 }}>
+                      {videoTokenUsed.toLocaleString()}
+                    </span>
+                  </div>
+                  {/* Video Duration */}
+                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
+                    <div className="flex items-center gap-1">
+                      <Clock size={10} style={{ color: "rgba(255,255,255,0.5)" }} />
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频时长</span>
+                    </div>
+                    <span style={{ fontSize: "16px", color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
+                      {formatDuration(videoDurationSec)}
+                    </span>
+                  </div>
+                  {/* Image Gacha Rate */}
+                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(74,198,120,0.08)" }}>
+                    <div className="flex items-center gap-1">
+                      <Check size={10} style={{ color: "#4AC678" }} />
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片抽卡率</span>
+                    </div>
+                    <span style={{ fontSize: "16px", color: "#4AC678", fontWeight: 600 }}>
+                      {imgGachaAvg === "-" ? "-" : `${imgGachaAvg}%`}
+                    </span>
+                  </div>
+                  {/* Video Gacha Rate */}
+                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(232,115,34,0.08)" }}>
+                    <div className="flex items-center gap-1">
+                      <Check size={10} style={{ color: "#E87322" }} />
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频抽卡率</span>
+                    </div>
+                    <span style={{ fontSize: "16px", color: "#E87322", fontWeight: 600 }}>
+                      {vidGachaAvg === "-" ? "-" : `${vidGachaAvg}%`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              )}
             </div>
-            <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", lineHeight: 1.6 }} className="mt-auto">
-              {budgetEfficiency > 15
-                ? `预算 ${tokenPercent}% vs 内容 ${contentProgress}%，差值 +${budgetEfficiency}%`
-                : budgetEfficiency < -10
-                ? `内容 ${contentProgress}% vs 预算 ${tokenPercent}%，领先 ${Math.abs(budgetEfficiency)}%`
-                : `内容 ${contentProgress}% / 预算 ${tokenPercent}%，差值 ${budgetEfficiency > 0 ? "+" : ""}${budgetEfficiency}%`}
-            </p>
-          </div>
+          </>
           )}
         </div>
         {/* ══════════════════════════════════════════════════════════════════════
@@ -1760,124 +2155,161 @@ export function ProjectHomePage() {
                   </div>
                   )}
 
-                  {/* Member List */}
-                  <div className="flex flex-col gap-1">
+                  {/* Table Header */}
+                  <div className="grid px-4 py-2.5 rounded-lg"
+                    style={{ gridTemplateColumns: "120px 140px 85px 85px 85px 85px 80px  80px 80px 90px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员</span>
+                    <MetricHeader label="消耗/配额" tooltip="点击可修改配额模式（无限制/固定额度）" />
+                    <MetricHeader label="图片生成" tooltip="生成的图片数量" />
+                    <MetricHeader label="图片消耗" tooltip="生成图片消耗的生产栗" />
+                    <MetricHeader label="视频生成" tooltip="生成的视频数量" />
+                    <MetricHeader label="视频消耗" tooltip="生成视频消耗的生产栗" />
+                    <MetricHeader label="视频时长" tooltip="累计生成的视频总时长" />
+                     <MetricHeader label="图片抽卡率" tooltip="xx/生产的内容数" />
+                     <MetricHeader label="视频抽卡率" tooltip="xx/生产的内容数" />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>操作</span>
+                  </div>
+
+                  {/* Member Rows */}
+                  <div className="flex flex-col gap-1 mt-2">
                     {/* ── 总计 Row ── */}
+                    {/*
                     {(() => {
                       const ti = filteredMembersIndexed;
                       const totalConsumed = ti.reduce((s, { i }) => s + (memberPeriodConsumed[i] ?? 0), 0);
-                      const pct = localTokenTotal > 0 ? Math.round((totalConsumed / localTokenTotal) * 100) : 0;
+                      const totalImageGen = ti.reduce((s, { m }) => s + m.imageGenerated, 0);
+                      const totalImageTok = ti.reduce((s, { m }) => s + m.imageTokenUsed, 0);
+                      const totalVidGen = ti.reduce((s, { m }) => s + m.videoGenerated, 0);
+                      const totalVidTok = ti.reduce((s, { m }) => s + m.videoTokenUsed, 0);
+                      const totalDuration = ti.reduce((s, { m }) => {
+                        const parts = m.videoDuration.match(/(\d+)分(\d+)秒/);
+                        return s + (parts ? parseInt(parts[1]) * 60 + parseInt(parts[2]) : 0);
+                      }, 0);
                       return (
-                        <div className="flex items-center gap-4 px-5 py-3 rounded-lg"
-                          style={{ background: "rgba(232,115,34,0.06)", border: "1px solid rgba(232,115,34,0.12)" }}>
-                          {/* 成员 */}
-                          <div className="flex items-center gap-2 flex-shrink-0" style={{ width: "100px" }}>
-                            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(232,115,34,0.2)", fontSize: "11px", fontWeight: 700, color: "#E87322" }}>Σ</div>
-                            <span style={{ fontSize: "13px", color: "#E87322", fontWeight: 600 }}>总计</span>
+                        <div className="grid px-5 py-2.5 rounded-lg"
+                          style={{ gridTemplateColumns: "120px 140px 85px 85px 85px 75px 70px 90px", alignItems: "center", background: "rgba(232,115,34,0.04)", border: "1px solid rgba(232,115,34,0.1)" }}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(232,115,34,0.2)", fontSize: "10px", fontWeight: 700, color: "#E87322" }}>Σ</div>
+                            <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600 }}>总计</span>
                           </div>
-                          {/* 消耗/配额 */}
-                          <div className="flex-1 flex items-center gap-3">
-                            <div className="flex-1 rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.07)" }}>
-                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct > 80 ? "linear-gradient(90deg,#ff6b6b,#ff9b9b)" : "linear-gradient(90deg,#E87322,#F5A623)" }} />
+                          <button
+                            className="text-left rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors relative group/edit-total"
+                            onClick={() => setQuotaEditorIndex(-1)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-full rounded-full overflow-hidden" style={{ height: "5px", background: "rgba(255,255,255,0.07)", flex: 1 }}>
+                                <div className="h-full rounded-full" style={{ width: `${tokenPercent}%`, background: tokenPercent > 80 ? "linear-gradient(90deg,#ff6b6b,#ff9b9b)" : "linear-gradient(90deg,#E87322,#F5A623)" }} />
+                              </div>
+                              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)" }}>
+                                {tokenPercent}%
+                              </span>
                             </div>
-                            <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600, minWidth: "36px" }}>{pct}%</span>
-                            <button
-                              onClick={() => setQuotaEditorIndex(-1)}
-                              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-                              style={{ color: "#E87322" }}
-                            >
-                              <Pencil size={12} />
-                            </button>
-                            <span style={{ fontSize: "12px", color: "#E87322", fontWeight: 600, fontFamily: "monospace", minWidth: "80px" }}>
-                              {totalConsumed.toLocaleString()}/{localTokenTotal.toLocaleString()}
-                            </span>
-                          </div>
-                          {/* 操作 */}
-                          <div style={{ width: "60px" }} />
+                            <span style={{ fontSize: "10px", color: "#E87322" }} onClick={() => setEditingTotalQuota(!editingTotalQuota)}>编辑配额</span>
+                          </button>
+                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalImageGen}</div>
+                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalImageTok.toLocaleString()}</div>
+                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalVidGen}</div>
+                          <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalVidTok.toLocaleString()}</div>
+                          <div className="text-right" style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{formatDuration(totalDuration)}</div>
+                          <div />
                         </div>
                       );
                     })()}
-
+*/}
                     {/* Member Rows */}
                     {filteredMembersIndexed.map(({ m, i }) => {
                       const qd = memberQuotas[i] ?? memberQuotas[0];
                       const totalTok = memberPeriodConsumed[i] ?? 0;
-                      const quotaPct = qd.type === "fixed" && qd.total > 0 ? Math.min(100, Math.round((totalTok / qd.total) * 100)) : 0;
+                      const quotaPct = qd.type === "fixed" && qd.total > 0 ? Math.min(100, (totalTok / qd.total) * 100) : 0;
                       const isExpanded = expandedDetailMember === m.name;
                       const memberTxns = MEMBER_TRANSACTIONS.filter(t => t.memberName === m.name);
 
                       return (
                         <Fragment key={i}>
                           <div
-                            className="flex items-center gap-4 px-5 py-3 rounded-lg hover:bg-white/[0.02] transition-colors"
-                            style={{ border: "1px solid rgba(255,255,255,0.04)" }}
+                            className="grid px-5 py-3 hover:bg-white/[0.02] transition-colors group/row"
+                            style={{ gridTemplateColumns: "120px 140px 75px 75px 75px 75px 70px 70px 70px 90px", alignItems: "center" }}
                           >
-                            {/* 成员 */}
-                            <div className="flex items-center gap-2 flex-shrink-0" style={{ width: "100px" }}>
-                              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                            {/* Member Info */}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                                 style={{ background: MEMBER_COLORS[i % MEMBER_COLORS.length], fontSize: "10px", fontWeight: 600, color: "#fff" }}>
                                 {m.avatar}
                               </div>
                               <div className="min-w-0">
+                              
                                 <div className="flex items-center gap-1.5">
-                                  <span className="truncate" style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{m.name}</span>
+                                  <span className="truncate" style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{m.name}</span>
                                   {i === 0 && (
                                     <span className="px-1 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(232,115,34,0.1)", color: "#E87322", fontSize: "9px" }}>你</span>
                                   )}
                                 </div>
-                                <div className="truncate" style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{m.role}</div>
+                             
                               </div>
                             </div>
-                            {/* 消耗/配额 */}
-                            <div className="flex-1 flex flex-col gap-1">
-                              <div className="w-full rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.07)" }}>
+
+                            {/* Quota — progress bar + edit额度 */}
+                            <div className="flex flex-col gap-0.2">
+                              <div className="w-full rounded-full overflow-hidden" style={{ height: "4px", background: "rgba(255,255,255,0.07)" }}>
                                 <div className="h-full rounded-full transition-all" style={{
-                                  width: qd.type === "unlimited" ? "100%" : `${quotaPct}%`,
+                                  width: qd.type === "unlimited" ? "100%" : `${Math.min(100, quotaPct)}%`,
                                   background: qd.type === "unlimited" ? "#4AC678" : quotaPct > 90 ? "#ff6b6b" : "#9B59B6",
                                 }} />
                               </div>
                               <div className="flex items-center justify-between">
-                                {qd.type === "unlimited" ? (
-                                  <>
-                                    <span style={{ fontSize: "11px", color: "#4AC678", fontWeight: 500 }}>无额度限制</span>
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => setEditQuotaIndex(i)}
-                                        className="p-1 rounded hover:bg-white/10 transition-colors"
-                                        style={{ color: "#4AC678" }}
-                                      >
-                                        <Pencil size={12} />
-                                      </button>
-                                      <span style={{ fontSize: "11px", color: "#4AC678" }}>∞</span>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span style={{ fontSize: "11px", color: "#9B59B6", fontWeight: 500 }}>固定额度</span>
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => setEditQuotaIndex(i)}
-                                        className="p-1 rounded hover:bg-white/10 transition-colors"
-                                        style={{ color: "rgba(255,255,255,0.4)" }}
-                                      >
-                                        <Pencil size={12} />
-                                      </button>
-                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", fontFamily: "monospace" }}>
-                                        {totalTok.toLocaleString()}/{qd.total.toLocaleString()}
-                                      </span>
-                                    </div>
-                                  </>
-                                )}
+                                <button
+                                  className="text-xs transition-all hover:opacity-80"
+                                  style={{
+                                    color: qd.type === "unlimited" ? "#4AC678" : "rgba(255,255,255,0.55)",
+                                    fontSize: "10px",
+                                  }}
+                                  onClick={() => setEditQuotaIndex(i)}
+                                >
+                                  {qd.type === "unlimited" ? "无额度限制" : "固定"}
+                                </button>
+                                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", flexShrink: 0 }}>
+                                  {qd.type === "unlimited" ? "∞" : `${totalTok.toLocaleString()} / ${qd.total.toLocaleString()}`}
+                                </span>
                               </div>
                             </div>
-                            {/* 操作 */}
-                            <div className="flex items-center gap-1 justify-end flex-shrink-0" style={{ width: "60px" }}>
+
+                            {/* Image count */}
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.imageGenerated}张</div>
+
+                            {/* Image tokens */}
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.imageTokenUsed}颗</div>
+
+                            {/* Video count */}
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoGenerated}个</div>
+
+                            {/* Video tokens */}
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoTokenUsed}颗</div>
+
+                            {/* Video duration */}
+                            <div className="text-right" style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{m.videoDuration}</div>
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoGenerated}%</div>
+
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoGenerated}%</div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-1 justify-end">
                               <button
                                 onClick={() => toggleDetailMember(m.name)}
-                                className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-                                style={{ color: isExpanded ? "#E87322" : "rgba(255,255,255,0.4)" }}
+                                className="px-1.5 py-0.5 rounded text-xs transition-all"
+                                style={{
+                                  color: isExpanded ? "#E87322" : "rgba(255,255,255,0.4)",
+                                  fontSize: "10px",
+                                }}
                               >
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                明细
+                              </button>
+                              <span style={{ color: "rgba(255,255,255,0.1)" }}>|</span>
+                              <button
+                                onClick={() => setRemoveConfirmIndex(i)}
+                                className="px-1.5 py-0.5 rounded text-xs transition-all hover:text-red-400"
+                                style={{ color: "rgba(255,100,100,0.5)", fontSize: "10px" }}
+                              >
+                                删除
                               </button>
                             </div>
                           </div>
@@ -1956,7 +2388,7 @@ export function ProjectHomePage() {
                   
                   <div className="overflow-auto rounded-lg" style={{ maxHeight: "380px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
                     {/* Header */}
-                    <div className="grid grid-cols-7 gap-2 px-4 py-2 text-xs sticky top-0 z-10"
+                    <div className="grid grid-cols-9 gap-2 px-4 py-2 text-xs sticky top-0 z-10"
                       style={{ background: "rgba(30,26,20,0.95)", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}>
                       <span className="col-span-1 flex items-center gap-1">类别</span>
                       <MetricHeader label="总消耗" tooltip="该分类下所有生成消耗的总生产栗数" />
@@ -1965,6 +2397,9 @@ export function ProjectHomePage() {
                       <MetricHeader label="视频生成" tooltip="生成的视频数量" />
                       <MetricHeader label="视频时长" tooltip="生成视频的总时长" />
                       <MetricHeader label="视频消耗" tooltip="生成视频消耗的生产栗" />
+                      <MetricHeader label="图片抽卡率" tooltip="xx/xx" />
+                      <MetricHeader label="视频抽卡率" tooltip="xx/xx" />
+
                     </div>
                     {/* Rows */}
                     <div className="flex flex-col">
@@ -2003,12 +2438,13 @@ export function ProjectHomePage() {
                               <MetricCell value={videoCount.toString()} tooltip={`视频生成: ${videoCount} 个`} />
                               <MetricCell value={formatDuration(videoDuration)} tooltip={`视频时长: ${videoDuration}秒`} />
                               <MetricCell value={videoTokens.toLocaleString()} tooltip={`视频消耗: ${videoTokens} 颗`} />
+
                             </button>
                             {/* Expanded children */}
                             {isExp && isFolder && (cat as { children: CategoryNode[] }).children.map((child, cIdx) => {
                               const cl = child as CategoryLeaf;
                               return (
-                                <div key={cIdx} className="grid grid-cols-7 gap-2 px-4 pl-8 py-2 text-xs"
+                                <div key={cIdx} className="grid grid-cols-9 gap-2 px-4 pl-8 py-2 text-xs"
                                   style={{ background: "rgba(255,255,255,0.015)", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                                   <span className="col-span-1 flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.55)", fontSize: "11px" }}>
                                     <MessageCircle size={9} style={{ color: "rgba(74,158,224,0.5)", flexShrink: 0 }} />
@@ -2020,6 +2456,11 @@ export function ProjectHomePage() {
                                   <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoCount}</span>
                                   <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{formatDuration(cl.videoDurationSec)}</span>
                                   <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoTokens.toLocaleString()}</span>
+                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{formatDuration(cl.videoDurationSec)}</span>
+                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoTokens.toLocaleString()}</span>
+                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoCount}%</span>
+                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoCount}%</span>
+
                                 </div>
                               );
                             })}
@@ -2052,7 +2493,7 @@ export function ProjectHomePage() {
                             <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
                               {projectPerm === "管理" ? "按成员消耗" : "我的消耗"}
                             </span>
-                            
+                           
                           </div>
 
                           {/* Bar chart: image vs video per member */}
@@ -2404,6 +2845,14 @@ export function ProjectHomePage() {
           onConfirm={() => handleRemoveMember(removeConfirmEntry.i)}
         />
       )}
+
+      {/* ── Shimmer Animation CSS ── */}
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
 
     </div>
   );

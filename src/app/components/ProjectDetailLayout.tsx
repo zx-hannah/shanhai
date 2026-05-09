@@ -2,28 +2,30 @@
 
 import { useState } from "react";
 import { useNavigate, useLocation, Outlet, useParams } from "react-router";
-import { Layers, Sparkles, Film, ArrowLeft, Home, RefreshCw } from "lucide-react";
+import { Layers, Sparkles, Film, Home, RefreshCw, Users, ChevronRight, BookOpen } from "lucide-react";
 import { getProjectById } from "../data/projectsData";
 import { TokenModal, ENTERPRISE_ALLOC, GIFT_TOKENS, TOTAL_TOKENS, ALL_PROJECT_ALLOC } from "./TokenModal";
 import { PROJECTS_DATA } from "../data/projectsData";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { EnterpriseSettings } from "./enterprise/EnterpriseSettings";
 
-type NavKey = "home" | "assets" | "generate" | "canvas" | "storyboard";
+type NavKey = "home" | "assets" | "generate" | "canvas" | "storyboard" | "subjects" | "script";
 type PermLevel = "管理" | "编辑" | "阅读";
 
 interface NavItemDef { icon: typeof Layers; label: string; path: string; key: NavKey }
 
 const ALL_NAV_ITEMS: NavItemDef[] = [
+  { icon: BookOpen, label: "剧本", path: "script", key: "script" },
+  { icon: Users, label: "主体", path: "subjects", key: "subjects" },
   { icon: Sparkles, label: "生成", path: "generate", key: "generate" },
   { icon: Film, label: "分镜", path: "storyboard", key: "storyboard" },
 ];
 
 // Permission → allowed nav keys
 const PERM_NAV: Record<PermLevel, NavKey[]> = {
-  "管理": ["generate", "storyboard"],
-  "编辑": ["generate", "storyboard"],
-  "阅读": ["storyboard"],
+  "管理": ["script", "subjects", "generate", "storyboard"],
+  "编辑": ["script", "subjects", "generate", "storyboard"],
+  "阅读": ["script", "subjects", "storyboard"],
 };
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -64,6 +66,7 @@ export function ProjectDetailLayout() {
 
   const activeKey = getActiveKey();
   const isOnHome = activeKey === "home";
+  const activeModule = ALL_NAV_ITEMS.find(n => n.key === activeKey)?.label ?? "";
 
   // Filter nav items by permission
   const perm = project?.permission ?? "编辑";
@@ -95,18 +98,6 @@ export function ProjectDetailLayout() {
           </span>
         </button>
 
-        {/* ── 返回按钮 (always shown) ── */}
-        <button
-          title="返回项目列表"
-          onClick={() => navigate("/projects")}
-          className="flex flex-col items-center gap-0.5 py-2 rounded-lg transition-all w-full relative group mb-0.5"
-          style={{ color: "rgba(255,255,255,0.4)" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.75)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.4)"; }}
-        >
-          <ArrowLeft size={15} />
-          <span style={{ fontSize: "8px", lineHeight: 1.2 }}>返回</span>
-        </button>
 
         {/* ── 总览按钮 (always shown, active on home) ── */}
         <button
@@ -222,13 +213,23 @@ export function ProjectDetailLayout() {
 
       {/* ── Main Content ──────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Project info header — shown only when NOT on home page */}
-        {!isOnHome && project && (
+        {/* Unified breadcrumb header - always visible */}
+        {project && (
           <div
-            className="flex items-center gap-4 px-5 py-2 flex-shrink-0"
+            className="flex items-center gap-4 px-5 py-2.5 flex-shrink-0"
             style={{ background: "#0D0A06", borderBottom: "1px solid rgba(255,255,255,0.05)" }}
           >
-            <div className="flex items-center gap-2 min-w-0">
+            {/* Breadcrumb: 所有项目 > 项目名称 */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => navigate("/projects")}
+                className="flex items-center gap-1 text-xs transition-colors hover:opacity-80"
+                style={{ color: "rgba(255,255,255,0.5)" }}
+              >
+                <Layers size={12} />
+                所有项目
+              </button>
+              <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.25)" }} />
               <span className="text-sm text-white truncate" style={{ maxWidth: "200px" }}>
                 {project.name}
               </span>
@@ -246,20 +247,17 @@ export function ProjectDetailLayout() {
               </span>
             </div>
 
-            <div style={{ width: "1px", height: "16px", background: "rgba(255,255,255,0.08)" }} />
-
-            
+              {/* Module name as breadcrumb — only when a module is active */}
+              {!isOnHome && activeModule && (
+                <>
+                  <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.25)" }} />
+                  <span className="text-sm font-medium" style={{ color: "#E87322" }}>
+                    {activeModule}
+                  </span>
+                </>
+              )}
 
             <div className="flex-1" />
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: "rgba(232,115,34,0.1)" }}>
-                <span style={{ fontSize: "10px", color: "#E87322" }}>
-                  进度 {project.completedEpisodes}/{project.episodes} 集
-                </span>
-              </div>
-              
-            </div>
           </div>
         )}
 

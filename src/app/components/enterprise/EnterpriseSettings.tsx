@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { X, Users, Coins, ClipboardCheck, FolderOpen, Building2 } from "lucide-react";
+import { X, Users, Coins, ClipboardCheck, FolderOpen, Building2, CreditCard } from "lucide-react";
 import { MemberManagement } from "./MemberManagement";
 import { ConsumptionManagement } from "./ConsumptionManagement";
 import { ApprovalManagement } from "./ApprovalManagement";
 import { ProjectManagement } from "./ProjectManagement";
 import { EnterpriseInfo } from "./EnterpriseInfo";
+import { OrderManagement } from "./OrderManagement";
 
-type TabKey = "info" | "members" | "projects" | "consumption" | "approval";
+type TabKey = "info" | "members" | "projects" | "orders" | "consumption" | "approval";
 
 const PENDING_APPROVAL_COUNT = 2;
 
@@ -22,6 +23,7 @@ export function EnterpriseSettings({ onClose }: EnterpriseSettingsProps) {
     { key: "members",     label: "成员管理", icon: Users },
     { key: "projects",    label: "项目管理", icon: FolderOpen },
     { key: "consumption", label: "成本管理", icon: Coins },
+    { key: "orders",      label: "订单管理", icon: CreditCard },
     { key: "approval",    label: "审批管理", icon: ClipboardCheck, badge: PENDING_APPROVAL_COUNT },
   ];
 
@@ -115,6 +117,7 @@ export function EnterpriseSettings({ onClose }: EnterpriseSettingsProps) {
             {activeTab === "info"        && <EnterpriseInfo />}
             {activeTab === "members"     && <MemberManagement />}
             {activeTab === "projects"    && <ProjectManagement />}
+            {activeTab === "orders"     && <OrderManagement />}
             {activeTab === "consumption" && <ConsumptionManagement />}
             {activeTab === "approval"    && <ApprovalManagement />}
           </div>

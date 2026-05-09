@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router";
 import type { ReactNode } from "react";
 import {
   Folder, FolderOpen, MessageSquare, ChevronRight, Plus, Image as LucideImage, Video, Music,
   Star, Upload, Package, Send, Sparkles, MoreHorizontal, Download, RefreshCw,
   Search, Pencil, Trash2, X, Check, ChevronDown, Film, AlignLeft, Copy, Play,
-  ChevronLeft, Users, Filter,
+  ChevronLeft, Users, Filter, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useParams } from "react-router";
@@ -16,6 +17,8 @@ import { getProjectById } from "../data/projectsData";
 type SidebarTab = "files" | "assets" | "storyboard";
 type AssetSubTab = "generate" | "upload" | "subject" | "collect";
 type AssetTypeFilter = "all" | "image" | "video" | "audio";
+type GenerateTypeFilter = "all" | "image" | "video";
+type TimeFilter = "all" | "today" | "week" | "month" | "custom";
 
 interface Session {
   id: string;
@@ -44,13 +47,22 @@ const PROJECT_MEMBERS = [
   { id: "4", name: "Dave", avatar: "Da", color: "#C42A6F", role: "道具" },
 ];
 
+// Current logged-in user (mock)
+const CURRENT_USER = PROJECT_MEMBERS[0]; // Alice
+
 // ─── Chat Messages ────────────────────────────────────────────────────────────
+// Added timestamp and type for filtering
 const CHAT_MESSAGES = [
-  { id: "m1", type: "user" as const, content: "帮我设计主角：古风女侠，白发飞扬，身着月白色长袍，腰悬宝剑，气质冷峻仙气，画面风格参考敦煌壁画，高清质感", time: "14:28", sender: PROJECT_MEMBERS[0] },
-  { id: "m2", type: "ai" as const, images: ["https://images.unsplash.com/photo-1743951896798-2936f661f939?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80"], model: "Seedream 3.0", time: "14:32", seed: "1024×1024 · 4张" },
-  { id: "m3", type: "user" as const, content: "调整第3张，让她的服装更华丽，增加金色刺绣纹样和宽袖披帛，保持仙气飘逸的整体风格", time: "14:35", sender: PROJECT_MEMBERS[1] },
-  { id: "m4", type: "ai" as const, images: ["https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80"], model: "Seedream 3.0", time: "14:37", seed: "1024×1024 · 2张" },
-  { id: "m5", type: "user" as const, content: "生成山林背景，云雾缭绕，仙气飘渺", time: "14:40", sender: PROJECT_MEMBERS[2] },
+  { id: "m1", type: "user" as const, content: "帮我设计主角：古风女侠，白发飞扬，身着月白色长袍，腰悬宝剑，气质冷峻仙气，画面风格参考敦煌壁画，高清质感", time: "14:28", timestamp: "2026-05-01T14:28:00", sender: PROJECT_MEMBERS[0] },
+  { id: "m2", type: "ai" as const, generateType: "image" as const, images: ["https://images.unsplash.com/photo-1743951896798-2936f661f939?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80"], model: "Seedream 3.0", time: "14:32", timestamp: "2026-05-01T14:32:00", seed: "1024×1024 · 4张" },
+  { id: "m3", type: "user" as const, content: "调整第3张，让她的服装更华丽，增加金色刺绣纹样和宽袖披帛，保持仙气飘逸的整体风格", time: "14:35", timestamp: "2026-05-01T14:35:00", sender: PROJECT_MEMBERS[1] },
+  { id: "m4", type: "ai" as const, generateType: "image" as const, images: ["https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80"], model: "Seedream 3.0", time: "14:37", timestamp: "2026-05-01T14:37:00", seed: "1024×1024 · 2张" },
+  { id: "m5", type: "user" as const, content: "生成山林背景，云雾缭绕，仙气飘渺", time: "14:40", timestamp: "2026-05-01T14:40:00", sender: PROJECT_MEMBERS[2] },
+  { id: "m6", type: "ai" as const, generateType: "video" as const, videoUrl: "sample.mp4", videoThumbnail: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", model: "Seedream 3.0 Video", time: "14:45", timestamp: "2026-05-01T14:45:00", seed: "5秒 · 720p" },
+  { id: "m7", type: "user" as const, content: "生成女侠战斗动画，剑气飞舞", time: "15:00", timestamp: "2026-04-30T15:00:00", sender: PROJECT_MEMBERS[0] },
+  { id: "m8", type: "ai" as const, generateType: "video" as const, videoUrl: "sample2.mp4", videoThumbnail: "https://images.unsplash.com/photo-1636075219672-a422660ce589?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80", model: "Seedream 3.0 Video", time: "15:05", timestamp: "2026-04-30T15:05:00", seed: "8秒 · 1080p" },
+  { id: "m9", type: "user" as const, content: "生成古城楼全景图", time: "10:20", timestamp: "2026-04-28T10:20:00", sender: PROJECT_MEMBERS[3] },
+  { id: "m10", type: "ai" as const, generateType: "image" as const, images: ["https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400&q=80"], model: "Seedream 3.0", time: "10:25", timestamp: "2026-04-28T10:25:00", seed: "1920×1080 · 1张" },
 ];
 
 // ─── Storyboard panels ────────────────────────────────────────────────────────
@@ -125,11 +137,26 @@ function StoryboardDetailModal({ panel, onClose }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function ProjectGeneratePage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const epParam = searchParams.get("ep");
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("files");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [fileTree, setFileTree] = useState<FileFolder[]>(INITIAL_FILE_TREE);
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({ art: true });
-  const [activeSession, setActiveSession] = useState("chars");
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>(() => {
+    if (epParam) {
+      return { [epParam]: true };
+    }
+    return { art: true };
+  });
+  const [activeSession, setActiveSession] = useState(() => {
+    if (epParam) {
+      const epFolder = INITIAL_FILE_TREE.find(f => f.id === epParam);
+      if (epFolder && epFolder.sessions.length > 0) {
+        return epFolder.sessions[0].id;
+      }
+    }
+    return "chars";
+  });
   const [assetSubTab, setAssetSubTab] = useState<AssetSubTab>("generate");
   const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>("all");
   const [showAssetTypeMenu, setShowAssetTypeMenu] = useState(false);
@@ -139,9 +166,7 @@ export function ProjectGeneratePage() {
   const [collectedAssets, setCollectedAssets] = useState<Set<string>>(new Set());
 
   // File/session editing
-  const [folderMenuId, setFolderMenuId] = useState<string | null>(null);
   const [sessionMenuId, setSessionMenuId] = useState<string | null>(null);
-  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [creatingSessionInFolder, setCreatingSessionInFolder] = useState<string | null>(null);
@@ -158,7 +183,14 @@ export function ProjectGeneratePage() {
 
   // Member filter state
   const [memberFilter, setMemberFilter] = useState<string[]>([]);
-  const [showMemberFilter, setShowMemberFilter] = useState(false);
+
+  // Generate filter states
+  const [generateTypeFilter, setGenerateTypeFilter] = useState<GenerateTypeFilter>("all");
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
 
   // Root sessions (not inside any folder)
   const [rootSessions, setRootSessions] = useState<Session[]>([
@@ -190,31 +222,86 @@ export function ProjectGeneratePage() {
     );
   };
 
-  // Filter messages by selected members
-  const filteredMessages = memberFilter.length === 0
-    ? CHAT_MESSAGES
-    : CHAT_MESSAGES.filter((msg) => {
-        if (msg.type === "ai") return true;
-        return "sender" in msg && memberFilter.includes(msg.sender.id);
-      });
+  // Time filter helper
+  const getTimeRange = (filter: TimeFilter): { from: Date; to: Date } | null => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    switch (filter) {
+      case "today":
+        return { from: today, to: now };
+      case "week":
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return { from: weekAgo, to: now };
+      case "month":
+        const monthAgo = new Date(today);
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        return { from: monthAgo, to: now };
+      case "custom":
+        if (customDateFrom && customDateTo) {
+          return { from: new Date(customDateFrom), to: new Date(customDateTo + "T23:59:59") };
+        }
+        return null;
+      default:
+        return null;
+    }
+  };
+
+  // Filter messages by all criteria
+  const filteredMessages = CHAT_MESSAGES.filter((msg) => {
+    // Member filter - only applies to user messages
+    if (memberFilter.length > 0 && msg.type === "user") {
+      if (!("sender" in msg) || !memberFilter.includes(msg.sender.id)) return false;
+    }
+
+    // Type filter - only applies to AI messages
+    if (generateTypeFilter !== "all" && msg.type === "ai") {
+      if ("generateType" in msg && msg.generateType !== generateTypeFilter) return false;
+    }
+
+    // Time filter
+    const timeRange = getTimeRange(timeFilter);
+    if (timeRange && "timestamp" in msg) {
+      const msgTime = new Date(msg.timestamp);
+      if (msgTime < timeRange.from || msgTime > timeRange.to) return false;
+    }
+
+    // Keyword search - search in content, sender name, model name
+    if (searchKeyword) {
+      const keyword = searchKeyword.toLowerCase();
+      if (msg.type === "user") {
+        if (!msg.content.toLowerCase().includes(keyword)) {
+          if ("sender" in msg && !msg.sender.name.toLowerCase().includes(keyword)) return false;
+          return false;
+        }
+      } else if (msg.type === "ai") {
+        if (!("model" in msg && msg.model.toLowerCase().includes(keyword))) {
+          if (!("seed" in msg && msg.seed.toLowerCase().includes(keyword))) return false;
+        }
+      }
+    }
+
+    return true;
+  });
+
+  // Count active filters
+  const activeFilterCount =
+    (memberFilter.length > 0 ? 1 : 0) +
+    (generateTypeFilter !== "all" ? 1 : 0) +
+    (timeFilter !== "all" ? 1 : 0) +
+    (searchKeyword ? 1 : 0);
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setMemberFilter([]);
+    setGenerateTypeFilter("all");
+    setTimeFilter("all");
+    setCustomDateFrom("");
+    setCustomDateTo("");
+    setSearchKeyword("");
+  };
 
   // ── File tree CRUD ───────────────────────────────────────────────────────────
-  const startRenameFolder = (id: string) => {
-    const folder = fileTree.find((f) => f.id === id);
-    if (folder) { setRenamingFolderId(id); setRenameValue(folder.name); setFolderMenuId(null); }
-  };
-
-  const confirmRenameFolder = (id: string) => {
-    if (renameValue.trim())
-      setFileTree((prev) => prev.map((f) => f.id === id ? { ...f, name: renameValue.trim() } : f));
-    setRenamingFolderId(null);
-  };
-
-  const deleteFolder = (id: string) => {
-    setFileTree((prev) => prev.filter((f) => f.id !== id));
-    setFolderMenuId(null);
-    toast.success("已删除文件夹");
-  };
 
   const startRenameSession = (folderId: string, sessionId: string) => {
     const folder = fileTree.find((f) => f.id === folderId);
@@ -244,14 +331,6 @@ export function ProjectGeneratePage() {
     setNewSessionName("");
   };
 
-  const createFolder = () => {
-    const newFolder: FileFolder = { id: `folder${Date.now()}`, name: "新文件夹", sessions: [] };
-    setFileTree((prev) => [...prev, newFolder]);
-    setExpandedFolders((prev) => ({ ...prev, [newFolder.id]: true }));
-    setRenamingFolderId(newFolder.id);
-    setRenameValue("新文件夹");
-  };
-
   // ── Storyboard CRUD ──────────────────────────────────────────────────────────
   const addPanel = () => {
     const newPanel = { id: `p${Date.now()}`, no: String(storyboardPanels.length + 1).padStart(2, "0"), desc: "新分镜", src: "", script: "请填写脚本文字", hasVideo: false };
@@ -265,8 +344,49 @@ export function ProjectGeneratePage() {
   };
 
   // ── AI message renderer ──────────────────────────────────────────────────────
-  const renderAIMessage = (msg: { id: string; type: "ai"; images: string[]; model: string; time: string; seed: string }) => {
-    const cols = msg.images.length <= 2 ? msg.images.length : 2;
+  const renderAIMessage = (msg: typeof CHAT_MESSAGES[number]) => {
+    if (msg.type !== "ai") return null;
+
+    // Video message
+    if ("generateType" in msg && msg.generateType === "video") {
+      return (
+        <div key={msg.id} className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(155,89,182,0.2)", border: "1px solid rgba(155,89,182,0.3)" }}>
+              <Video size={11} style={{ color: "#9B59B6" }} />
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(155,89,182,0.12)", color: "#9B59B6" }}>{msg.model}</span>
+            <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{msg.seed}</span>
+            <span className="ml-auto text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>{msg.time}</span>
+          </div>
+          <div className="relative rounded-xl overflow-hidden group cursor-pointer" style={{ aspectRatio: "16/9", background: "#1A1510", maxWidth: "400px" }}>
+            <img src={msg.videoThumbnail} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)", border: "2px solid rgba(255,255,255,0.3)" }}>
+                <Play size={20} className="text-white" style={{ marginLeft: "3px" }} />
+              </div>
+            </div>
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2"
+              style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%)" }}>
+              <div className="flex justify-end gap-1">
+                <button className="w-6 h-6 rounded-lg flex items-center justify-center hover:opacity-80" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+                  <Download size={11} className="text-white" />
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:opacity-80" style={{ background: "#9B59B6", color: "white" }}>
+                  <RefreshCw size={9} />变体
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Image message
+    const images = msg.images || [];
+    const cols = images.length <= 2 ? images.length : 2;
     return (
       <div key={msg.id} className="mb-6">
         <div className="flex items-center gap-2 mb-2">
@@ -278,7 +398,7 @@ export function ProjectGeneratePage() {
           <span className="ml-auto text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>{msg.time}</span>
         </div>
         <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
-          {msg.images.map((src, i) => (
+          {images.map((src, i) => (
             <div key={i} className="relative rounded-xl overflow-hidden group cursor-pointer" style={{ aspectRatio: "1", background: "#1A1510" }}>
               <img src={src} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2"
@@ -325,7 +445,7 @@ export function ProjectGeneratePage() {
 
   // ── Sidebar: Files Tab ───────────────────────────────────────────────────────
   const renderFilesTab = () => (
-    <div className="flex flex-col h-full" onClick={() => { setFolderMenuId(null); setSessionMenuId(null); }}>
+    <div className="flex flex-col h-full" onClick={() => { setSessionMenuId(null); }}>
       {/* Action buttons */}
       <div className="flex items-center gap-1.5 px-2 py-2 flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
         <button
@@ -334,13 +454,6 @@ export function ProjectGeneratePage() {
           style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", border: "1px solid rgba(232,115,34,0.25)" }}
         >
           <MessageSquare size={10} />新建对话
-        </button>
-        <button
-          onClick={createFolder}
-          className="flex items-center gap-1 flex-1 justify-center py-1.5 rounded-md text-xs transition-colors hover:opacity-80"
-          style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.08)" }}
-        >
-          <Plus size={10} />新建文件夹
         </button>
       </div>
 
@@ -389,65 +502,46 @@ export function ProjectGeneratePage() {
         )}
 
         {/* Folder tree */}
-        {fileTree.map((folder) => {
+        {/* Fixed category sections */}
+        {fileTree.map((folder, folderIdx) => {
           const isExpanded = expandedFolders[folder.id];
-          const isRenamingFolder = renamingFolderId === folder.id;
-          const showFolderMenu = folderMenuId === folder.id;
           return (
-            <div key={folder.id} className="mb-0.5">
-              <div className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-colors hover:bg-white/5 group relative">
-                <button onClick={() => toggleFolder(folder.id)} className="flex-1 flex items-center gap-1.5 text-left min-w-0">
-                  <ChevronRight size={11} style={{ color: "rgba(255,255,255,0.35)", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }} />
-                  {isExpanded ? <FolderOpen size={13} style={{ color: "#E87322", flexShrink: 0 }} /> : <Folder size={13} style={{ color: "rgba(255,255,255,0.45)", flexShrink: 0 }} />}
-                  {isRenamingFolder ? (
-                    <input autoFocus className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded min-w-0"
-                      style={{ border: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      onBlur={() => confirmRenameFolder(folder.id)}
-                      onKeyDown={(e) => { if (e.key === "Enter") confirmRenameFolder(folder.id); if (e.key === "Escape") setRenamingFolderId(null); }}
-                    />
-                  ) : (
-                    <span className="text-xs truncate flex-1" style={{ color: isExpanded ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.6)" }}>{folder.name}</span>
-                  )}
-                </button>
-                <button
-                  className="opacity-0 group-hover:opacity-100 flex-shrink-0"
-                  onClick={(e) => { e.stopPropagation(); setFolderMenuId(showFolderMenu ? null : folder.id); }}
-                >
-                  <MoreHorizontal size={11} style={{ color: "rgba(255,255,255,0.35)" }} />
-                </button>
-                {showFolderMenu && (
-                  <div className="absolute right-0 top-full z-20 rounded-xl overflow-hidden" style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", minWidth: "130px" }} onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => { setCreatingSessionInFolder(folder.id); setFolderMenuId(null); if (!isExpanded) toggleFolder(folder.id); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-white/5" style={{ color: "rgba(255,255,255,0.7)" }}>
-                      <Plus size={10} />新建 Session
-                    </button>
-                    <button onClick={() => startRenameFolder(folder.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-white/5" style={{ color: "rgba(255,255,255,0.7)" }}>
-                      <Pencil size={10} />重命名
-                    </button>
-                    <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-                    <button onClick={() => deleteFolder(folder.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-red-900/20" style={{ color: "#ff6b6b" }}>
-                      <Trash2 size={10} />删除
-                    </button>
-                  </div>
-                )}
-              </div>
+            <div key={folder.id}>
+              {folderIdx > 0 && (
+                <div className="mx-2 my-2" style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+              )}
+              {/* Section header */}
+              <button
+                onClick={() => toggleFolder(folder.id)}
+                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition-colors"
+                style={{ color: "rgba(255,255,255,0.4)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+              >
+                <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.3)", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }} />
+                {isExpanded ? <FolderOpen size={13} style={{ color: "rgba(255,255,255,0.5)", flexShrink: 0 }} /> : <Folder size={13} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />}
+                <span className="flex-1 text-left font-medium" style={{ fontSize: "11px", letterSpacing: "0.02em" }}>{folder.name}</span>
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{folder.sessions.length}</span>
+              </button>
 
+              {/* Session items */}
               {isExpanded && (
-                <div className="ml-4 mt-0.5">
+                <div className="mt-0.5">
                   {folder.sessions.map((session) => {
                     const isActive = session.id === activeSession;
                     const isRenamingSession = renamingSessionId === session.id;
                     const showSessionMenu = sessionMenuId === session.id;
                     return (
-                      <div key={session.id} className="flex items-center group relative">
+                      <div key={session.id} className="flex items-center group relative mx-1.5">
                         <button
                           className="flex-1 flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-colors min-w-0"
-                          style={{ background: isActive ? "rgba(232,115,34,0.12)" : "transparent", color: isActive ? "#E87322" : "rgba(255,255,255,0.5)" }}
+                          style={{
+                            background: isActive ? "rgba(232,115,34,0.12)" : "transparent",
+                            color: isActive ? "#E87322" : "rgba(255,255,255,0.55)",
+                          }}
                           onClick={() => setActiveSession(session.id)}
                         >
-                          <MessageSquare size={11} style={{ flexShrink: 0 }} />
+                          <MessageSquare size={11} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.5 }} />
                           {isRenamingSession ? (
                             <input autoFocus className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded min-w-0"
                               style={{ border: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
@@ -458,7 +552,7 @@ export function ProjectGeneratePage() {
                               onKeyDown={(e) => { if (e.key === "Enter") confirmRenameSession(folder.id, session.id); if (e.key === "Escape") setRenamingSessionId(null); }}
                             />
                           ) : (
-                            <span className="text-xs truncate flex-1">{session.name}</span>
+                            <span className="text-xs truncate flex-1" style={{ fontSize: "12px" }}>{session.name}</span>
                           )}
                         </button>
                         <button
@@ -482,9 +576,9 @@ export function ProjectGeneratePage() {
                     );
                   })}
 
-                  {/* New session input */}
+                  {/* New session button / input */}
                   {creatingSessionInFolder === folder.id ? (
-                    <div className="flex items-center gap-1 px-2 py-1.5">
+                    <div className="flex items-center gap-1 px-2 py-1.5 mx-1.5">
                       <MessageSquare size={11} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
                       <input autoFocus
                         className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded"
@@ -497,7 +591,15 @@ export function ProjectGeneratePage() {
                       />
                     </div>
                   ) : (
-                    null
+                    <button
+                      onClick={() => setCreatingSessionInFolder(folder.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors mx-1.5 w-[calc(100%-12px)]"
+                      style={{ color: "rgba(255,255,255,0.25)", background: "transparent" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.6)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.25)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                    >
+                      <Plus size={10} />新建 Session
+                    </button>
                   )}
                 </div>
               )}
@@ -530,26 +632,31 @@ export function ProjectGeneratePage() {
 
   return (
     <>
-      <div className="flex h-full" onClick={() => { setFolderMenuId(null); setSessionMenuId(null); setShowAssetTypeMenu(false); setShowFieldMenu(false); setShowEpisodeMenu(false); }}>
-        {/* ── Secondary Sidebar ─────────────────────────────────────────────── */}
+      <div className="flex h-full overflow-hidden relative" onClick={() => { setSessionMenuId(null); setShowAssetTypeMenu(false); setShowFieldMenu(false); setShowEpisodeMenu(false); }}>
+        {/* ── Secondary Sidebar (absolute, full height to top) ─────────────────────────────────────────────── */}
         <div
           className="flex flex-col flex-shrink-0 relative"
           style={{
-            width: sidebarCollapsed ? "28px" : "240px",
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: sidebarCollapsed ? "0px" : "240px",
             background: "#110E0A",
-            borderRight: "1px solid rgba(255,255,255,0.05)",
+            borderRight: sidebarCollapsed ? "none" : "1px solid rgba(255,255,255,0.05)",
             transition: "width 0.2s ease",
-            overflow: "hidden",
+            overflow: "visible",
+            zIndex: 20,
           }}
         >
           {/* Collapse toggle */}
           <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="absolute top-2 right-1 z-10 w-5 h-5 rounded flex items-center justify-center hover:bg-white/10"
-            style={{ color: "rgba(255,255,255,0.35)", flexShrink: 0 }}
+            onClick={(e) => { e.stopPropagation(); setSidebarCollapsed(!sidebarCollapsed); }}
+            className="absolute top-2.5 -right-5 z-10 w-5 h-5 rounded flex items-center justify-center hover:bg-white/10"
+            style={{ color: "rgba(255,255,255,0.35)" }}
             title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
           >
-            {sidebarCollapsed ? <ChevronRight size={11} /> : <ChevronLeft size={11} />}
+            <ChevronLeft size={11} style={{ transform: sidebarCollapsed ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
           </button>
 
           {!sidebarCollapsed && (
@@ -572,58 +679,269 @@ export function ProjectGeneratePage() {
         </div>
 
         {/* ── Main Chat Area ─────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: "#140F09" }}>
-          {/* Header with Member Filter */}
-          <div className="flex items-center justify-between px-6 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-            <div className="flex items-center gap-2">
-              <Users size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
-              <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                {memberFilter.length === 0 ? "所有成员" : `${memberFilter.length} 位成员`}
-              </span>
-            </div>
+        <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: "#140F09", marginLeft: sidebarCollapsed ? "0px" : "240px", transition: "margin-left 0.2s ease" }}>
+          {/* Header with Visible Filter Tags */}
+          <div className="px-6 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+            {/* Top row: Filter tags and toggle button */}
+            <div className="flex items-center justify-between">
+              {/* Left: Filter tags always visible */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Users size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+                  生成记录
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+                  {filteredMessages.length} 条
+                </span>
 
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => setShowMemberFilter(!showMemberFilter)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
-                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.08)" }}
-              >
-                <Filter size={11} />
-                筛选成员
-                <ChevronDown size={10} />
-              </button>
-
-              {showMemberFilter && (
-                <div
-                  className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-30 shadow-2xl"
-                  style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", minWidth: "180px" }}
-                >
-                  <button
-                    onClick={() => setMemberFilter([])}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-left hover:bg-white/5"
-                    style={{ color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.7)" }}
-                  >
-                    <span>所有成员</span>
-                    {memberFilter.length === 0 && <Check size={11} style={{ color: "#E87322" }} />}
-                  </button>
-                  <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-                  {PROJECT_MEMBERS.map((member) => (
+                {/* Active filter tags - always visible */}
+                {activeFilterCount > 0 && (
+                  <>
+                    <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "10px" }}>|</span>
+                    {/* Member filter tags */}
+                    {memberFilter.length > 0 && memberFilter.map((memberId) => {
+                      const member = PROJECT_MEMBERS.find(m => m.id === memberId);
+                      if (!member) return null;
+                      return (
+                        <span
+                          key={memberId}
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
+                          style={{ background: `${member.color}20`, color: member.color, border: `1px solid ${member.color}30` }}
+                        >
+                          <div className="w-3 h-3 rounded-full flex items-center justify-center" style={{ background: member.color, fontSize: "7px", color: "#fff" }}>
+                            {member.avatar}
+                          </div>
+                          {member.name}
+                          <button onClick={() => toggleMemberFilter(memberId)} className="ml-0.5 hover:opacity-70">
+                            <X size={10} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                    {/* Type filter tag */}
+                    {generateTypeFilter !== "all" && (
+                      <span
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
+                        style={{
+                          background: generateTypeFilter === "image" ? "rgba(74,158,224,0.15)" : "rgba(155,89,182,0.15)",
+                          color: generateTypeFilter === "image" ? "#4A9EE0" : "#9B59B6",
+                          border: generateTypeFilter === "image" ? "1px solid rgba(74,158,224,0.3)" : "1px solid rgba(155,89,182,0.3)"
+                        }}
+                      >
+                        {generateTypeFilter === "image" ? <LucideImage size={12} /> : <Video size={12} />}
+                        {generateTypeFilter === "image" ? "图片" : "视频"}
+                        <button onClick={() => setGenerateTypeFilter("all")} className="ml-0.5 hover:opacity-70">
+                          <X size={10} />
+                        </button>
+                      </span>
+                    )}
+                    {/* Time filter tag */}
+                    {timeFilter !== "all" && (
+                      <span
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
+                        style={{ background: "rgba(74,198,120,0.15)", color: "#4AC678", border: "1px solid rgba(74,198,120,0.3)" }}
+                      >
+                        <Clock size={12} />
+                        {timeFilter === "today" ? "今天" : timeFilter === "week" ? "近7天" : timeFilter === "month" ? "近30天" : `${customDateFrom} ~ ${customDateTo}`}
+                        <button onClick={() => { setTimeFilter("all"); setCustomDateFrom(""); setCustomDateTo(""); }} className="ml-0.5 hover:opacity-70">
+                          <X size={10} />
+                        </button>
+                      </span>
+                    )}
+                    {/* Search keyword tag */}
+                    {searchKeyword && (
+                      <span
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
+                        style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", border: "1px solid rgba(232,115,34,0.3)" }}
+                      >
+                        <Search size={12} />
+                        "{searchKeyword}"
+                        <button onClick={() => setSearchKeyword("")} className="ml-0.5 hover:opacity-70">
+                          <X size={10} />
+                        </button>
+                      </span>
+                    )}
+                    {/* Clear all button */}
                     <button
-                      key={member.id}
-                      onClick={() => toggleMemberFilter(member.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                      onClick={clearAllFilters}
+                      className="px-2 py-0.5 rounded-lg text-xs hover:opacity-80"
+                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}
                     >
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-white flex-shrink-0"
-                        style={{ background: member.color, fontSize: "9px" }}>
-                        {member.avatar}
-                      </div>
-                      <span className="flex-1" style={{ color: "rgba(255,255,255,0.7)" }}>{member.name}</span>
-                      {memberFilter.includes(member.id) && <Check size={11} style={{ color: "#E87322" }} />}
+                      清除全部
                     </button>
-                  ))}
-                </div>
-              )}
+                  </>
+                )}
+              </div>
+
+              {/* Right: Add filter button */}
+              <button
+                onClick={() => setShowFilterPanel(!showFilterPanel)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                style={{
+                  background: showFilterPanel ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.06)",
+                  color: showFilterPanel ? "#E87322" : "rgba(255,255,255,0.6)",
+                  border: showFilterPanel ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)"
+                }}
+              >
+                <Plus size={11} />
+                添加筛选
+                <ChevronDown size={10} style={{ transform: showFilterPanel ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s" }} />
+              </button>
             </div>
+
+            {/* Expanded Filter Panel (for adding filters) */}
+            {showFilterPanel && (
+              <div className="flex flex-col gap-3 pt-3 pb-2 mt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} onClick={(e) => e.stopPropagation()}>
+                {/* Row 1: Member Filter */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>成员</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setMemberFilter([])}
+                      className="px-2.5 py-1 rounded-lg text-xs transition-colors"
+                      style={{
+                        background: memberFilter.length === 0 ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.06)",
+                        color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.5)",
+                        border: memberFilter.length === 0 ? "1px solid rgba(232,115,34,0.3)" : "1px solid transparent"
+                      }}
+                    >
+                      全部
+                    </button>
+                    {/* Only Me Button */}
+                    <button
+                      onClick={() => setMemberFilter([CURRENT_USER.id])}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors"
+                      style={{
+                        background: memberFilter.length === 1 && memberFilter[0] === CURRENT_USER.id ? `${CURRENT_USER.color}20` : "rgba(255,255,255,0.06)",
+                        color: memberFilter.length === 1 && memberFilter[0] === CURRENT_USER.id ? CURRENT_USER.color : "rgba(255,255,255,0.5)",
+                        border: memberFilter.length === 1 && memberFilter[0] === CURRENT_USER.id ? `1px solid ${CURRENT_USER.color}40` : "1px solid transparent"
+                      }}
+                    >
+                      <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: CURRENT_USER.color, fontSize: "8px", color: "#fff" }}>
+                        {CURRENT_USER.avatar}
+                      </div>
+                      只看我的
+                    </button>
+                    {PROJECT_MEMBERS.map((member) => (
+                      <button
+                        key={member.id}
+                        onClick={() => toggleMemberFilter(member.id)}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors"
+                        style={{
+                          background: memberFilter.includes(member.id) ? `${member.color}20` : "rgba(255,255,255,0.06)",
+                          color: memberFilter.includes(member.id) ? member.color : "rgba(255,255,255,0.5)",
+                          border: memberFilter.includes(member.id) ? `1px solid ${member.color}40` : "1px solid transparent"
+                        }}
+                      >
+                        <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: member.color, fontSize: "8px", color: "#fff" }}>
+                          {member.avatar}
+                        </div>
+                        {member.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Row 2: Type Filter */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>类型</span>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { key: "all", label: "全部", Icon: null, color: "#E87322" },
+                      { key: "image", label: "图片", Icon: LucideImage, color: "#4A9EE0" },
+                      { key: "video", label: "视频", Icon: Video, color: "#9B59B6" },
+                    ].map(({ key, label, Icon, color }) => (
+                      <button
+                        key={key}
+                        onClick={() => setGenerateTypeFilter(key as GenerateTypeFilter)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors"
+                        style={{
+                          background: generateTypeFilter === key ? `${color}15` : "rgba(255,255,255,0.06)",
+                          color: generateTypeFilter === key ? color : "rgba(255,255,255,0.5)",
+                          border: generateTypeFilter === key ? `1px solid ${color}30` : "1px solid transparent"
+                        }}
+                      >
+                        {Icon && <Icon size={12} />}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Row 3: Time Filter */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>时间</span>
+                  <div className="flex items-center gap-1">
+                    {[
+                      { key: "all", label: "全部" },
+                      { key: "today", label: "今天" },
+                      { key: "week", label: "近7天" },
+                      { key: "month", label: "近30天" },
+                      { key: "custom", label: "自定义" },
+                    ].map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => setTimeFilter(key as TimeFilter)}
+                        className="px-2.5 py-1 rounded-lg text-xs transition-colors"
+                        style={{
+                          background: timeFilter === key ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.06)",
+                          color: timeFilter === key ? "#E87322" : "rgba(255,255,255,0.5)",
+                          border: timeFilter === key ? "1px solid rgba(232,115,34,0.3)" : "1px solid transparent"
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    {timeFilter === "custom" && (
+                      <div className="flex items-center gap-1.5 ml-2">
+                        <input
+                          type="date"
+                          value={customDateFrom}
+                          onChange={(e) => setCustomDateFrom(e.target.value)}
+                          className="px-2 py-1 rounded-lg text-xs outline-none"
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }}
+                        />
+                        <span style={{ color: "rgba(255,255,255,0.3)" }}>至</span>
+                        <input
+                          type="date"
+                          value={customDateTo}
+                          onChange={(e) => setCustomDateTo(e.target.value)}
+                          className="px-2 py-1 rounded-lg text-xs outline-none"
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 4: Keyword Search */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>搜索</span>
+                  <div className="flex items-center gap-2 flex-1">
+                    <div className="relative flex-1 max-w-[280px]">
+                      <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(255,255,255,0.3)" }} />
+                      <input
+                        type="text"
+                        value={searchKeyword}
+                        onChange={(e) => setSearchKeyword(e.target.value)}
+                        placeholder="搜索内容、成员、模型..."
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none"
+                        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}
+                      />
+                      {searchKeyword && (
+                        <button
+                          onClick={() => setSearchKeyword("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+                          style={{ color: "rgba(255,255,255,0.5)" }}
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Messages */}
@@ -658,7 +976,7 @@ export function ProjectGeneratePage() {
                     </div>
                   );
                 }
-                return renderAIMessage(msg as typeof CHAT_MESSAGES[1]);
+                return renderAIMessage(msg);
               })}
               <div ref={messagesEndRef} />
             </div>
