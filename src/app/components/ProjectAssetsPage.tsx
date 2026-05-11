@@ -1,12 +1,14 @@
 import { useState } from "react";
 import {
   Image as LucideImage, Video, Music, Download, Star, Trash2, Check, Search,
-  ChevronDown, X, Grid3X3, LayoutList, Pencil, ArrowDown, ArrowUp,
+  ChevronDown, X, Grid3X3, LayoutList, ArrowDown, ArrowUp, Users, User, TreePalm, Package, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
 type AssetTab = "generate" | "upload" | "subject" | "collect";
 type AssetType = "all" | "image" | "video" | "audio";
+type SubjectType = "sd_ip" | "character" | "scene" | "prop";
+type ReviewStatus = "pending" | "approved" | "rejected" | "expired";
 
 interface AssetItem {
   id: string;
@@ -18,6 +20,16 @@ interface AssetItem {
   dateTs: number;
   collected: boolean;
   tab: string;
+}
+
+interface SubjectItem {
+  id: string;
+  name: string;
+  type: SubjectType;
+  image: string;
+  updatedAt: string;
+  reviewStatus?: ReviewStatus;
+  assetType?: "image" | "video" | "audio";
 }
 
 /* ─── Mock Data ─────────────────────────────────────────────────────────────── */
@@ -46,6 +58,30 @@ const TAB_LABELS: { key: AssetTab; label: string }[] = [
 const TYPE_ICONS = { image: LucideImage, video: Video, audio: Music };
 const TYPE_LABELS: Record<AssetType, string> = { all: "全部类型", image: "图片", video: "视频", audio: "音频" };
 const TYPE_CLR: Record<AssetType, string> = { all: "rgba(255,255,255,0.45)", image: "#3b82f6", video: "#a78bfa", audio: "#22c55e" };
+const SUBJECT_TYPE_CONFIG: Record<SubjectType, { label: string; icon: typeof Users; color: string }> = {
+  sd_ip: { label: "SD虚拟IP", icon: Sparkles, color: "#E87322" },
+  character: { label: "人物", icon: User, color: "#7B3FC4" },
+  scene: { label: "场景", icon: TreePalm, color: "#2A6FC4" },
+  prop: { label: "道具", icon: Package, color: "#C42A6F" },
+};
+const SUBJECT_STATUS_CONFIG: Record<ReviewStatus, { bg: string; text: string; label: string }> = {
+  pending: { bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.6)", label: "审核中" },
+  approved: { bg: "rgba(74,198,120,0.15)", text: "#4AC678", label: "审核通过" },
+  rejected: { bg: "rgba(255,107,107,0.15)", text: "#ff6b6b", label: "审核失败" },
+  expired: { bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.35)", label: "已过期" },
+};
+const SUBJECTS: SubjectItem[] = [
+  { id: "sd1", name: "周星驰", type: "sd_ip", image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=200&fit=crop", updatedAt: "2026-01-12", reviewStatus: "approved", assetType: "image" },
+  { id: "sd2", name: "成龙", type: "sd_ip", image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&h=200&fit=crop", updatedAt: "2026-01-12", reviewStatus: "pending", assetType: "video" },
+  { id: "sd3", name: "古风琴师", type: "sd_ip", image: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?w=300&h=200&fit=crop", updatedAt: "2026-01-10", reviewStatus: "approved", assetType: "audio" },
+  { id: "sd4", name: "山神·青帝", type: "sd_ip", image: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=300&h=200&fit=crop", updatedAt: "2026-01-08", reviewStatus: "rejected", assetType: "image" },
+  { id: "char1", name: "女主角·林月", type: "character", image: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=300&h=200&fit=crop", updatedAt: "2026-01-11" },
+  { id: "char2", name: "男主角·风清扬", type: "character", image: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=300&h=200&fit=crop", updatedAt: "2026-01-10" },
+  { id: "scene1", name: "仙山·昆仑", type: "scene", image: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=300&h=200&fit=crop", updatedAt: "2026-01-12" },
+  { id: "scene2", name: "古城镇·青云", type: "scene", image: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=300&h=200&fit=crop", updatedAt: "2026-01-09" },
+  { id: "prop1", name: "法宝·流云剑", type: "prop", image: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=300&h=200&fit=crop", updatedAt: "2026-01-10" },
+  { id: "prop2", name: "神器·天音琴", type: "prop", image: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=300&h=200&fit=crop", updatedAt: "2026-01-08" },
+];
 
 /* ─── Asset Detail Modal ─────────────────────────────────────────────────────── */
 function AssetDetailModal({ asset, onClose }: { asset: AssetItem; onClose: () => void }) {
@@ -98,6 +134,7 @@ function AssetDetailModal({ asset, onClose }: { asset: AssetItem; onClose: () =>
 /* ─── Main Component ─────────────────────────────────────────────────────────── */
 export function ProjectAssetsPage() {
   const [activeTab, setActiveTab] = useState<AssetTab>("generate");
+  const [activeSubjectType, setActiveSubjectType] = useState<SubjectType>("sd_ip");
   const [typeFilter, setTypeFilter] = useState<AssetType>("all");
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
@@ -122,6 +159,14 @@ export function ProjectAssetsPage() {
       return true;
     })
     .sort((a, b) => sortOrder === "desc" ? b.dateTs - a.dateTs : a.dateTs - b.dateTs);
+
+  const filteredSubjects = SUBJECTS
+    .filter((subject) => {
+      if (subject.type !== activeSubjectType) return false;
+      if (searchText && !subject.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -247,6 +292,56 @@ export function ProjectAssetsPage() {
     );
   };
 
+  const renderSubjectCard = (subject: SubjectItem) => {
+    const config = SUBJECT_TYPE_CONFIG[subject.type];
+    const TypeIcon = config.icon;
+    const subjectAssetType = subject.assetType ?? "image";
+    const AssetTypeIcon = TYPE_ICONS[subjectAssetType];
+    const statusCfg = subject.reviewStatus ? SUBJECT_STATUS_CONFIG[subject.reviewStatus] : null;
+    const showOverlay = subject.type === "sd_ip" && subject.reviewStatus && (subject.reviewStatus === "pending" || subject.reviewStatus === "rejected");
+
+    return (
+      <div
+        key={subject.id}
+        className="rounded-xl overflow-hidden relative group cursor-pointer"
+        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+      >
+        {statusCfg && (
+          <div className="absolute top-2.5 left-2.5 z-10">
+            <span className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: statusCfg.bg, color: statusCfg.text }}>
+              {statusCfg.label}
+            </span>
+          </div>
+        )}
+        <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+          <span className="px-1.5 py-0.5 rounded text-[8px]" style={{ background: config.color + "20", color: config.color }}>
+            {config.label}
+          </span>
+          <div className="px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: "rgba(0,0,0,0.55)", color: "rgba(255,255,255,0.78)" }}>
+            <AssetTypeIcon size={8} />
+            <span style={{ fontSize: "8px" }}>{subjectAssetType === "image" ? "图片" : subjectAssetType === "video" ? "视频" : "音频"}</span>
+          </div>
+        </div>
+        {showOverlay && statusCfg && (
+          <div className="absolute inset-0 z-[5] flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }}>
+            <div className="text-3xl mb-2">{subject.reviewStatus === "pending" ? "⏳" : "❌"}</div>
+            <span className="text-sm font-medium" style={{ color: statusCfg.text }}>{statusCfg.label}</span>
+          </div>
+        )}
+        <img src={subject.image} alt={subject.name} className="w-full object-cover" style={{ height: "160px" }} />
+        <div className="px-3 py-2.5 flex items-center gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+          <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: config.color + "18" }}>
+            <TypeIcon size={12} style={{ color: config.color }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate" style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{subject.name}</div>
+            <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{subject.updatedAt}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: "#140F09" }}
       onClick={() => { setShowTypeMenu(false); }}>
@@ -284,51 +379,79 @@ export function ProjectAssetsPage() {
           {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.3)" }} /></button>}
         </div>
 
-        {/* Type filter */}
-        <div className="relative">
-          <button onClick={() => setShowTypeMenu(!showTypeMenu)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
-            style={{ background: typeFilter !== "all" ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: typeFilter !== "all" ? TYPE_CLR[typeFilter] : "rgba(255,255,255,0.45)", border: typeFilter !== "all" ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.07)" }}>
-            {typeFilter === "image" && <LucideImage size={10} />}{typeFilter === "video" && <Video size={10} />}{typeFilter === "audio" && <Music size={10} />}
-            {TYPE_LABELS[typeFilter]}<ChevronDown size={9} />
-          </button>
-          {showTypeMenu && (
-            <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
-              style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "120px" }}
-              onClick={(e) => e.stopPropagation()}>
-              {(["all", "image", "video", "audio"] as AssetType[]).map((t) => (
-                <button key={t} onClick={() => { setTypeFilter(t); setShowTypeMenu(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
-                  style={{ color: typeFilter === t ? "#E87322" : "rgba(255,255,255,0.6)" }}>
-                  {t === "image" && <LucideImage size={10} />}{t === "video" && <Video size={10} />}{t === "audio" && <Music size={10} />}
-                  {TYPE_LABELS[t]}{typeFilter === t && <Check size={9} className="ml-auto" />}
+        {activeTab === "subject" ? (
+          <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            {(Object.entries(SUBJECT_TYPE_CONFIG) as [SubjectType, typeof SUBJECT_TYPE_CONFIG[SubjectType]][]).map(([type, config]) => {
+              const Icon = config.icon;
+              const count = SUBJECTS.filter((subject) => subject.type === type).length;
+              const isActive = activeSubjectType === type;
+              return (
+                <button
+                  key={type}
+                  onClick={() => setActiveSubjectType(type)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{
+                    background: isActive ? config.color + "18" : "transparent",
+                    color: isActive ? config.color : "rgba(255,255,255,0.45)",
+                  }}
+                >
+                  <Icon size={11} />
+                  <span>{config.label}</span>
+                  <span style={{ fontSize: "10px", opacity: 0.65 }}>{count}</span>
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="relative">
+            <button onClick={() => setShowTypeMenu(!showTypeMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
+              style={{ background: typeFilter !== "all" ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: typeFilter !== "all" ? TYPE_CLR[typeFilter] : "rgba(255,255,255,0.45)", border: typeFilter !== "all" ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.07)" }}>
+              {typeFilter === "image" && <LucideImage size={10} />}{typeFilter === "video" && <Video size={10} />}{typeFilter === "audio" && <Music size={10} />}
+              {TYPE_LABELS[typeFilter]}<ChevronDown size={9} />
+            </button>
+            {showTypeMenu && (
+              <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "120px" }}
+                onClick={(e) => e.stopPropagation()}>
+                {(["all", "image", "video", "audio"] as AssetType[]).map((t) => (
+                  <button key={t} onClick={() => { setTypeFilter(t); setShowTypeMenu(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                    style={{ color: typeFilter === t ? "#E87322" : "rgba(255,255,255,0.6)" }}>
+                    {t === "image" && <LucideImage size={10} />}{t === "video" && <Video size={10} />}{t === "audio" && <Music size={10} />}
+                    {TYPE_LABELS[t]}{typeFilter === t && <Check size={9} className="ml-auto" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Sort toggle */}
-        <button onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          {sortOrder === "desc" ? <ArrowDown size={10} /> : <ArrowUp size={10} />}
-        </button>
+        {activeTab !== "subject" && (
+          <button onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
+            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            {sortOrder === "desc" ? <ArrowDown size={10} /> : <ArrowUp size={10} />}
+          </button>
+        )}
 
         {/* Batch mode toggle */}
-        <button onClick={() => { setBatchMode(!batchMode); if (batchMode) setSelectedIds(new Set()); }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
-          style={{ background: batchMode ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: batchMode ? "#E87322" : "rgba(255,255,255,0.45)", border: batchMode ? "1px solid rgba(232,115,34,0.3)" : "1px solid transparent" }}>
-          <Check size={11} />批量
-        </button>
+        {activeTab !== "subject" && (
+          <button onClick={() => { setBatchMode(!batchMode); if (batchMode) setSelectedIds(new Set()); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
+            style={{ background: batchMode ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: batchMode ? "#E87322" : "rgba(255,255,255,0.45)", border: batchMode ? "1px solid rgba(232,115,34,0.3)" : "1px solid transparent" }}>
+            <Check size={11} />批量
+          </button>
+        )}
 
         <span className="ml-auto text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
-          共 {filteredAssets.length} 项
+          共 {activeTab === "subject" ? filteredSubjects.length : filteredAssets.length} 项
         </span>
       </div>
 
       {/* ── Batch Bar ── */}
-      {batchMode && selectedIds.size > 0 && (
+      {activeTab !== "subject" && batchMode && selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-6 py-2.5 flex-shrink-0"
           style={{ background: "rgba(232,115,34,0.08)", borderBottom: "1px solid rgba(232,115,34,0.2)" }}>
           <button onClick={selectAll} className="flex items-center gap-2 text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
@@ -358,7 +481,18 @@ export function ProjectAssetsPage() {
 
       {/* ── Asset Content ── */}
       <div className="flex-1 overflow-auto px-6 py-4">
-        {viewMode === "grid" ? (
+        {activeTab === "subject" ? (
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            {filteredSubjects.map((subject) => renderSubjectCard(subject))}
+            {filteredSubjects.length === 0 && (
+              <div className="col-span-full flex flex-col items-center justify-center h-48 rounded-2xl"
+                style={{ border: "1px dashed rgba(255,255,255,0.08)" }}>
+                <Package size={32} style={{ color: "rgba(255,255,255,0.1)" }} />
+                <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>暂无主体资产</p>
+              </div>
+            )}
+          </div>
+        ) : viewMode === "grid" ? (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
             {filteredAssets.map((asset) => renderGridCard(asset))}
             {filteredAssets.length === 0 && (

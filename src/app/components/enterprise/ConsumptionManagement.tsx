@@ -1441,29 +1441,7 @@ export function ConsumptionManagement() {
               </div>
               <div className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>颗</div>
             </div>
-            <div className="px-3 py-2.5 rounded-xl"
-              style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
-              <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                {(personalDateFrom || personalDateTo) ? "时间段回收" : "回收总额"}
-              </div>
-              <div className="text-lg text-white font-semibold">
-                {(() => {
-                  let sum = 0;
-                  for (const m of filteredMembers) {
-                    const history = MEMBER_TOKEN_HISTORY[m.id] ?? [];
-                    const filtered = history.filter(tx => {
-                      const txDate = tx.time.slice(0, 10);
-                      if (personalDateFrom && txDate < personalDateFrom) return false;
-                      if (personalDateTo && txDate > personalDateTo) return false;
-                      return tx.type === "回收";
-                    });
-                    sum += Math.abs(filtered.reduce((s, tx) => s + tx.amount, 0));
-                  }
-                  return sum;
-                })().toLocaleString()}
-              </div>
-              <div className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>颗</div>
-            </div>
+            
             <div className="px-3 py-2.5 rounded-xl"
               style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
               <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
@@ -1479,6 +1457,29 @@ export function ConsumptionManagement() {
                       if (personalDateFrom && txDate < personalDateFrom) return false;
                       if (personalDateTo && txDate > personalDateTo) return false;
                       return tx.type === "消费";
+                    });
+                    sum += Math.abs(filtered.reduce((s, tx) => s + tx.amount, 0));
+                  }
+                  return sum;
+                })().toLocaleString()}
+              </div>
+              <div className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>颗</div>
+            </div>
+            <div className="px-3 py-2.5 rounded-xl"
+              style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
+              <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+                {(personalDateFrom || personalDateTo) ? "时间段回收" : "回收总额"}
+              </div>
+              <div className="text-lg text-white font-semibold">
+                {(() => {
+                  let sum = 0;
+                  for (const m of filteredMembers) {
+                    const history = MEMBER_TOKEN_HISTORY[m.id] ?? [];
+                    const filtered = history.filter(tx => {
+                      const txDate = tx.time.slice(0, 10);
+                      if (personalDateFrom && txDate < personalDateFrom) return false;
+                      if (personalDateTo && txDate > personalDateTo) return false;
+                      return tx.type === "回收";
                     });
                     sum += Math.abs(filtered.reduce((s, tx) => s + tx.amount, 0));
                   }
@@ -1515,12 +1516,13 @@ export function ConsumptionManagement() {
           {/* Member list table with expandable detail rows */}
           <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
             <div className="grid text-xs px-4 py-3"
-              style={{ gridTemplateColumns: "1.2fr 0.9fr 0.9fr 0.9fr 0.8fr", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              style={{ gridTemplateColumns: "1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 0.8fr", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <div>成员</div>
-              <div>个人总分配</div>
               <div>个人生产栗余额</div>
+              <div>个人总分配</div>
               <div>个人总消费</div>
-              <div>操作</div>
+              <div>个人总回收</div>
+              <div>个人总退款</div>
               <div>操作</div>
             </div>
             {filteredMembers.length === 0 ? (
@@ -1533,11 +1535,13 @@ export function ConsumptionManagement() {
                 if (personalDateTo && txDate > personalDateTo) return false;
                 return true;
               });
-              const totalAllocated = dateFiltered.filter(tx => tx.type === "分配").reduce((s, tx) => s + tx.amount, 0);
-              const totalConsumed = Math.abs(dateFiltered.filter(tx => tx.type === "消费").reduce((s, tx) => s + tx.amount, 0));
               const totalBalance = personalDateFrom || personalDateTo
                 ? dateFiltered.reduce((s, tx) => s + tx.amount, 0)
                 : m.enterpriseBalance;
+              const totalAllocated = dateFiltered.filter(tx => tx.type === "分配").reduce((s, tx) => s + tx.amount, 0);
+              const totalConsumed = Math.abs(dateFiltered.filter(tx => tx.type === "消费").reduce((s, tx) => s + tx.amount, 0));
+              const totalRecovered = Math.abs(dateFiltered.filter(tx => tx.type === "回收").reduce((s, tx) => s + tx.amount, 0));
+              const totalRefunded = dateFiltered.filter(tx => tx.type === "退款").reduce((s, tx) => s + tx.amount, 0);
               const isDetailExpanded = expandedPersonalMemberDetailId === m.id;
               const detailTx = [...dateFiltered]
                 .filter(tx => tx.type === "分配" || tx.type === "回收" || tx.type === "消费" || tx.type === "退款")
@@ -1554,19 +1558,25 @@ export function ConsumptionManagement() {
               return (
                 <div key={m.id}>
                   <div className="grid items-center px-4 py-3 text-sm"
-                    style={{ gridTemplateColumns: "1.2fr 0.9fr 0.9fr 0.9fr 0.8fr", background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)", borderBottom: isDetailExpanded ? "none" : "1px solid rgba(255,255,255,0.04)" }}>
+                    style={{ gridTemplateColumns: "1.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 0.8fr", background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)", borderBottom: isDetailExpanded ? "none" : "1px solid rgba(255,255,255,0.04)" }}>
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white flex-shrink-0" style={{ background: m.avatarColor }}>{m.letter}</div>
                       <span className="text-white">{m.name}</span>
                     </div>
-                    <div className="text-sm" style={{ color: totalAllocated > 0 ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
-                      {totalAllocated.toLocaleString()} 颗
-                    </div>
                     <div className="text-sm" style={{ color: totalBalance > 0 ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
                       {totalBalance.toLocaleString()} 颗
                     </div>
+                    <div className="text-sm" style={{ color: totalAllocated > 0 ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
+                      {totalAllocated.toLocaleString()} 颗
+                    </div>
                     <div className="text-sm" style={{ color: totalConsumed > 0 ? "#ef4444" : "rgba(255,255,255,0.3)" }}>
                       {totalConsumed.toLocaleString()} 颗
+                    </div>
+                    <div className="text-sm" style={{ color: totalRecovered > 0 ? "#f59e0b" : "rgba(255,255,255,0.3)" }}>
+                      {totalRecovered.toLocaleString()} 颗
+                    </div>
+                    <div className="text-sm" style={{ color: totalRefunded > 0 ? "#3b82f6" : "rgba(255,255,255,0.3)" }}>
+                      {totalRefunded.toLocaleString()} 颗
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => setExpandedPersonalMemberDetailId(isDetailExpanded ? null : m.id)}

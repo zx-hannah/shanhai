@@ -33,9 +33,9 @@ interface FileFolder {
 
 // ─── File tree data ───────────────────────────────────────────────────────────
 const INITIAL_FILE_TREE: FileFolder[] = [
-  { id: "art", name: "美术设定", sessions: [{ id: "chars", name: "人物设定" }, { id: "scenes", name: "场景设定" }, { id: "props", name: "道具设定" }] },
-  { id: "ep1", name: "第一集", sessions: [{ id: "sb1", name: "分镜1-5" }, { id: "sb2", name: "分镜6-10" }] },
-  { id: "ep2", name: "第二集", sessions: [{ id: "still", name: "静帧" }, { id: "motion", name: "动态" }] },
+  { id: "art", name: "主体", sessions: [{ id: "chars", name: "人物" }, { id: "scenes", name: "场景" }, { id: "props", name: "道具" }] },
+  { id: "ep1", name: "第一集", sessions: [{ id: "sb1", name: "未命名" }, { id: "sb2", name: "分镜6-10" }] },
+  { id: "ep2", name: "第二集", sessions: [{ id: "still", name: "静帧镜头" }, { id: "motion", name: "动态镜头" }] },
 ];
 
 // ─── Mock Members ─────────────────────────────────────────────────────────────
@@ -75,6 +75,19 @@ const INITIAL_STORYBOARD_PANELS = [
 
 // ─── Storyboard field key type ────────────────────────────────────────────────
 type StoryboardField = "script" | "image" | "video";
+type ApplyTargetType = "subject" | "storyboard";
+
+interface ApplyAssetState {
+  type: "image" | "video";
+  src: string;
+  anchorId: string;
+}
+
+interface DeleteSessionState {
+  folderId: string;
+  sessionId: string;
+  sessionName: string;
+}
 
 // ─── Storyboard Detail Modal ─────────────────────────────────────────────────
 function StoryboardDetailModal({ panel, onClose }: {
@@ -134,11 +147,294 @@ function StoryboardDetailModal({ panel, onClose }: {
   );
 }
 
+function ApplyCascadeMenu({
+  asset,
+  fileTree,
+  targetType,
+  setTargetType,
+  subjectCategory,
+  setSubjectCategory,
+  selectedEpisode,
+  setSelectedEpisode,
+  selectedShot,
+  setSelectedShot,
+  onConfirm,
+}: {
+  asset: ApplyAssetState;
+  fileTree: FileFolder[];
+  targetType: ApplyTargetType;
+  setTargetType: (value: ApplyTargetType) => void;
+  subjectCategory: string;
+  setSubjectCategory: (value: string) => void;
+  selectedEpisode: string;
+  setSelectedEpisode: (value: string) => void;
+  selectedShot: string;
+  setSelectedShot: (value: string) => void;
+  onConfirm: () => void;
+}) {
+  const subjectFolder = fileTree.find((folder) => folder.id === "art");
+  const episodeFolders = fileTree.filter((folder) => folder.name.startsWith("第"));
+  const currentEpisode = episodeFolders.find((folder) => folder.id === selectedEpisode) ?? episodeFolders[0];
+  const subjectItems = (subjectFolder?.sessions ?? []).map((session) => ({
+    id: `${session.id}-item-1`,
+    name: `${session.name}A`,
+    preview: asset.src,
+  }));
+  const shotItems = (currentEpisode?.sessions ?? []).map((session) => ({
+    id: `${session.id}-item-1`,
+    name: session.name,
+    preview: asset.src,
+  }));
+  const menuPanelStyle = {
+    background: "rgba(26, 21, 16, 0.98)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 16px 36px rgba(0,0,0,0.34)",
+  } as const;
+  const selectedMenuItemStyle = {
+    background: "rgba(232,115,34,0.16)",
+    color: "#FFFFFF",
+  } as const;
+  const menuItemStyle = {
+    background: "transparent",
+    color: "rgba(255,255,255,0.88)",
+  } as const;
+
+  return (
+    <div className="absolute left-0 bottom-11 z-30 flex items-start gap-1 overflow-x-auto pb-1">
+          <div className="w-36 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
+            {[
+              { key: "subject", label: "主体" },
+              { key: "storyboard", label: "分镜" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setTargetType(item.key as ApplyTargetType)}
+                className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
+                style={targetType === item.key ? selectedMenuItemStyle : menuItemStyle}
+              >
+                <span>{item.label}</span>
+                <ChevronRight size={14} style={{ opacity: 0.75 }} />
+              </button>
+            ))}
+          </div>
+
+          {targetType === "subject" && (
+            <>
+            <div className="w-36 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
+              {(subjectFolder?.sessions ?? []).map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => setSubjectCategory(session.id)}
+                  className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
+                  style={subjectCategory === session.id ? selectedMenuItemStyle : menuItemStyle}
+                >
+                  <span>{session.name}</span>
+                  <ChevronRight size={14} style={{ opacity: 0.65 }} />
+                </button>
+              ))}
+            </div>
+            <div className="w-44 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
+              {subjectItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={onConfirm}
+                  className="w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-left"
+                  style={menuItemStyle}
+                >
+                  <div className="w-11 h-11 rounded-lg flex-shrink-0" style={{ background: `url(${item.preview}) center / cover no-repeat` }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm truncate">{item.name}</div>
+                    <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>{subjectFolder?.sessions.find((session) => session.id === subjectCategory)?.name}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            </>
+          )}
+
+          {targetType === "storyboard" && (
+            <>
+              <div className="w-36 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
+                {episodeFolders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    onClick={() => {
+                      setSelectedEpisode(folder.id);
+                      setSelectedShot(folder.sessions[0]?.id ?? "");
+                    }}
+                    className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
+                    style={selectedEpisode === folder.id ? selectedMenuItemStyle : menuItemStyle}
+                  >
+                    <span>{folder.name}</span>
+                    <ChevronRight size={14} style={{ opacity: 0.75 }} />
+                  </button>
+                ))}
+              </div>
+
+              <div className="w-40 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
+                {(currentEpisode?.sessions ?? []).map((session) => (
+                  <button
+                    key={session.id}
+                    onClick={() => setSelectedShot(session.id)}
+                    className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
+                    style={selectedShot === session.id ? selectedMenuItemStyle : menuItemStyle}
+                  >
+                    <span>{session.name}</span>
+                    <ChevronRight size={14} style={{ opacity: selectedShot === session.id ? 0.95 : 0.55 }} />
+                  </button>
+                ))}
+              </div>
+
+              <div className="w-44 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
+                {shotItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={onConfirm}
+                    className="w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-left"
+                    style={menuItemStyle}
+                  >
+                    <div className="w-11 h-11 rounded-lg flex-shrink-0" style={{ background: `url(${item.preview}) center / cover no-repeat` }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm truncate">{item.name}</div>
+                      <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>{currentEpisode?.name}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+    </div>
+  );
+}
+
+function DeleteSessionModal({
+  sessionName,
+  moveTargetId,
+  setMoveTargetId,
+  moveMode,
+  setMoveMode,
+  availableTargets,
+  onClose,
+  onConfirm,
+}: {
+  sessionName: string;
+  moveTargetId: string;
+  setMoveTargetId: (value: string) => void;
+  moveMode: "delete" | "move";
+  setMoveMode: (value: "delete" | "move") => void;
+  availableTargets: { id: string; sessionName: string; folderId: string; folderName: string }[];
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const folderGroups = Array.from(
+    availableTargets.reduce((map, t) => {
+      if (!map.has(t.folderId)) map.set(t.folderId, { folderName: t.folderName, sessions: [] as typeof availableTargets });
+      map.get(t.folderId)!.sessions.push(t);
+      return map;
+    }, new Map<string, { folderName: string; sessions: typeof availableTargets }>())
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.72)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl p-5"
+        style={{ background: "#17110D", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 24px 80px rgba(0,0,0,0.5)" }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-sm font-medium text-white">删除对话</span>
+          <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10">
+            <X size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-4"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.38)" }}>即将删除</span>
+          <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>「{sessionName}」</span>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          {([
+            { key: "delete" as const, title: "直接删除", desc: "删除对话及其全部历史生成记录，不可撤销" },
+            { key: "move" as const, title: "迁移记录后删除", desc: "历史生成记录迁移到其他对话后再删除" },
+          ]).map(({ key, title, desc }) => (
+            <button
+              key={key}
+              onClick={() => setMoveMode(key)}
+              className="w-full rounded-xl px-4 py-3 text-left transition-colors"
+              style={{
+                background: moveMode === key ? "rgba(232,115,34,0.1)" : "rgba(255,255,255,0.03)",
+                border: `1px solid ${moveMode === key ? "rgba(232,115,34,0.28)" : "rgba(255,255,255,0.07)"}`,
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                  style={{ borderColor: moveMode === key ? "#E87322" : "rgba(255,255,255,0.25)" }}>
+                  {moveMode === key && <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#E87322" }} />}
+                </div>
+                <span className="text-xs font-medium"
+                  style={{ color: moveMode === key ? "#E87322" : "rgba(255,255,255,0.78)" }}>{title}</span>
+              </div>
+              <p className="text-[10px] mt-1.5 pl-6" style={{ color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{desc}</p>
+            </button>
+          ))}
+        </div>
+
+        {moveMode === "move" && (
+          <div className="mb-4">
+            <div className="text-[10px] mb-2" style={{ color: "rgba(255,255,255,0.38)" }}>选择迁移目标</div>
+            <div className="rounded-xl overflow-y-auto" style={{ border: "1px solid rgba(255,255,255,0.07)", maxHeight: "200px" }}>
+              {folderGroups.map(([folderId, { folderName, sessions }]) => (
+                <div key={folderId}>
+                  <div className="px-3 py-1.5 text-[9px] uppercase sticky top-0"
+                    style={{ background: "#1E1612", color: "rgba(255,255,255,0.3)", letterSpacing: "0.1em" }}>
+                    {folderName}
+                  </div>
+                  {sessions.map((session) => (
+                    <button
+                      key={session.id}
+                      onClick={() => setMoveTargetId(session.id)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-left hover:bg-white/5 transition-colors"
+                      style={{
+                        background: moveTargetId === session.id ? "rgba(232,115,34,0.08)" : "transparent",
+                        color: moveTargetId === session.id ? "#E87322" : "rgba(255,255,255,0.65)",
+                      }}
+                    >
+                      <span>{session.sessionName}</span>
+                      {moveTargetId === session.id && <Check size={11} style={{ color: "#E87322" }} />}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-xs"
+            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)" }}>
+            取消
+          </button>
+          <button onClick={onConfirm} className="px-4 py-2 rounded-xl text-xs font-medium"
+            style={{ background: moveMode === "delete" ? "rgba(239,68,68,0.85)" : "#E87322", color: "#fff" }}>
+            {moveMode === "delete" ? "确认删除" : "迁移并删除"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function ProjectGeneratePage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const epParam = searchParams.get("ep");
+  const project = getProjectById(id ?? "1");
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("files");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [fileTree, setFileTree] = useState<FileFolder[]>(INITIAL_FILE_TREE);
@@ -180,9 +476,13 @@ export function ProjectGeneratePage() {
   const [showFieldMenu, setShowFieldMenu] = useState(false);
   const [selectedEpisode, setSelectedEpisode] = useState("ep1");
   const [showEpisodeMenu, setShowEpisodeMenu] = useState(false);
+  const [applyAsset, setApplyAsset] = useState<ApplyAssetState | null>(null);
+  const [applyTargetType, setApplyTargetType] = useState<ApplyTargetType>("subject");
+  const [subjectCategory, setSubjectCategory] = useState("chars");
+  const [selectedShot, setSelectedShot] = useState("sb1");
 
   // Member filter state
-  const [memberFilter, setMemberFilter] = useState<string[]>([]);
+  const [memberFilter, setMemberFilter] = useState<string[]>([CURRENT_USER.id]);
 
   // Generate filter states
   const [generateTypeFilter, setGenerateTypeFilter] = useState<GenerateTypeFilter>("all");
@@ -190,14 +490,17 @@ export function ProjectGeneratePage() {
   const [customDateFrom, setCustomDateFrom] = useState("");
   const [customDateTo, setCustomDateTo] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showTimeMenu, setShowTimeMenu] = useState(false);
+  const [showGenerateTypeMenu, setShowGenerateTypeMenu] = useState(false);
+  const [showMemberMenu, setShowMemberMenu] = useState(false);
 
   // Root sessions (not inside any folder)
-  const [rootSessions, setRootSessions] = useState<Session[]>([
-    { id: "root1", name: "主线剧情讨论" },
-  ]);
+  const [rootSessions, setRootSessions] = useState<Session[]>([]);
   const [creatingRootSession, setCreatingRootSession] = useState(false);
   const [newRootSessionName, setNewRootSessionName] = useState("");
+  const [deleteSessionState, setDeleteSessionState] = useState<DeleteSessionState | null>(null);
+  const [deleteMode, setDeleteMode] = useState<"delete" | "move">("delete");
+  const [moveTargetSessionId, setMoveTargetSessionId] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, []);
@@ -213,7 +516,10 @@ export function ProjectGeneratePage() {
     return { folder: "", session: "" };
   };
 
-  const { folder: activeFolder, session: activeSessionName } = getActiveSessionName();
+  const { folder: activeFolderName, session: activeSessionName } = getActiveSessionName();
+  const currentEpisodeLabel = activeFolderName.startsWith("第")
+    ? activeFolderName
+    : (epParam ? fileTree.find((folder) => folder.id === epParam)?.name : undefined) ?? "第一集";
 
   // Toggle member filter
   const toggleMemberFilter = (memberId: string) => {
@@ -284,23 +590,6 @@ export function ProjectGeneratePage() {
     return true;
   });
 
-  // Count active filters
-  const activeFilterCount =
-    (memberFilter.length > 0 ? 1 : 0) +
-    (generateTypeFilter !== "all" ? 1 : 0) +
-    (timeFilter !== "all" ? 1 : 0) +
-    (searchKeyword ? 1 : 0);
-
-  // Clear all filters
-  const clearAllFilters = () => {
-    setMemberFilter([]);
-    setGenerateTypeFilter("all");
-    setTimeFilter("all");
-    setCustomDateFrom("");
-    setCustomDateTo("");
-    setSearchKeyword("");
-  };
-
   // ── File tree CRUD ───────────────────────────────────────────────────────────
 
   const startRenameSession = (folderId: string, sessionId: string) => {
@@ -315,11 +604,41 @@ export function ProjectGeneratePage() {
     setRenamingSessionId(null);
   };
 
-  const deleteSession = (folderId: string, sessionId: string) => {
-    setFileTree((prev) => prev.map((f) => f.id === folderId ? { ...f, sessions: f.sessions.filter((s) => s.id !== sessionId) } : f));
+  const requestDeleteSession = (folderId: string, sessionId: string) => {
+    const folder = fileTree.find((item) => item.id === folderId);
+    const session = folder?.sessions.find((item) => item.id === sessionId);
+    if (!folder || !session) return;
+
+    const fallbackTarget = fileTree
+      .filter((item) => item.id !== "art")
+      .flatMap((item) => item.sessions.map((child) => ({ folderId: item.id, folderName: item.name, ...child })))
+      .find((item) => item.id !== sessionId);
+
+    setDeleteSessionState({ folderId, sessionId, sessionName: session.name });
+    setDeleteMode("delete");
+    setMoveTargetSessionId(fallbackTarget?.id ?? "");
     setSessionMenuId(null);
+  };
+
+  const confirmDeleteSessionAction = () => {
+    if (!deleteSessionState) return;
+    const { folderId, sessionId, sessionName } = deleteSessionState;
+    if (deleteMode === "move" && !moveTargetSessionId) {
+      toast.error("请选择要迁移到的 session");
+      return;
+    }
+
+    setFileTree((prev) => prev.map((f) => f.id === folderId ? { ...f, sessions: f.sessions.filter((s) => s.id !== sessionId) } : f));
     if (activeSession === sessionId) setActiveSession("");
-    toast.success("已删除 Session");
+    if (deleteMode === "move" && moveTargetSessionId) {
+      const target = fileTree
+        .flatMap((folder) => folder.sessions.map((session) => ({ folderName: folder.name, ...session })))
+        .find((session) => session.id === moveTargetSessionId);
+      toast.success(`已删除对话，历史生成记录已移动到「${target?.name ?? "目标 session"}」`);
+    } else {
+      toast.success(`已删除「${sessionName}」及其全部生成记录`);
+    }
+    setDeleteSessionState(null);
   };
 
   const createSession = (folderId: string) => {
@@ -373,7 +692,44 @@ export function ProjectGeneratePage() {
                   <Download size={11} className="text-white" />
                 </button>
               </div>
-              <div className="flex justify-end">
+              <div className="flex items-end justify-between">
+                <button
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hover:opacity-80"
+                  style={{ background: "rgba(0,0,0,0.52)", backdropFilter: "blur(10px)", color: "white", border: "1px solid rgba(255,255,255,0.08)" }}
+                  onClick={() => {
+                    setApplyAsset({ type: "video", src: msg.videoThumbnail, anchorId: msg.id });
+                    setApplyTargetType("storyboard");
+                    setSelectedEpisode("ep1");
+                    setSelectedShot("sb1");
+                  }}
+                >
+                  <Upload size={11} />
+                  <span className="text-[10px]">应用</span>
+                </button>
+                {applyAsset?.anchorId === msg.id && (
+                  <ApplyCascadeMenu
+                    asset={applyAsset}
+                    fileTree={fileTree}
+                    targetType={applyTargetType}
+                    setTargetType={setApplyTargetType}
+                    subjectCategory={subjectCategory}
+                    setSubjectCategory={setSubjectCategory}
+                    selectedEpisode={selectedEpisode}
+                    setSelectedEpisode={setSelectedEpisode}
+                    selectedShot={selectedShot}
+                    setSelectedShot={setSelectedShot}
+                    onConfirm={() => {
+                      const folder = applyTargetType === "subject"
+                        ? fileTree.find((item) => item.id === "art")
+                        : fileTree.find((item) => item.id === selectedEpisode);
+                      const targetName = applyTargetType === "subject"
+                        ? folder?.sessions.find((item) => item.id === subjectCategory)?.name
+                        : folder?.sessions.find((item) => item.id === selectedShot)?.name;
+                      toast.success(`已应用到${applyTargetType === "subject" ? "主体" : "分镜"} / ${targetName ?? "未命名"}`);
+                      setApplyAsset(null);
+                    }}
+                  />
+                )}
                 <button className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:opacity-80" style={{ background: "#9B59B6", color: "white" }}>
                   <RefreshCw size={9} />变体
                 </button>
@@ -426,7 +782,43 @@ export function ProjectGeneratePage() {
                     <Download size={11} className="text-white" />
                   </button>
                 </div>
-                <div className="flex justify-end">
+                <div className="flex items-end justify-between relative">
+                  <button
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hover:opacity-80"
+                    style={{ background: "rgba(0,0,0,0.52)", backdropFilter: "blur(10px)", color: "white", border: "1px solid rgba(255,255,255,0.08)" }}
+                    onClick={() => {
+                      setApplyAsset({ type: "image", src, anchorId: `${msg.id}-${i}` });
+                      setApplyTargetType("subject");
+                      setSubjectCategory("chars");
+                    }}
+                  >
+                    <Upload size={11} />
+                    <span className="text-[10px]">应用</span>
+                  </button>
+                  {applyAsset?.anchorId === `${msg.id}-${i}` && (
+                    <ApplyCascadeMenu
+                      asset={applyAsset}
+                      fileTree={fileTree}
+                      targetType={applyTargetType}
+                      setTargetType={setApplyTargetType}
+                      subjectCategory={subjectCategory}
+                      setSubjectCategory={setSubjectCategory}
+                      selectedEpisode={selectedEpisode}
+                      setSelectedEpisode={setSelectedEpisode}
+                      selectedShot={selectedShot}
+                      setSelectedShot={setSelectedShot}
+                      onConfirm={() => {
+                        const folder = applyTargetType === "subject"
+                          ? fileTree.find((item) => item.id === "art")
+                          : fileTree.find((item) => item.id === selectedEpisode);
+                        const targetName = applyTargetType === "subject"
+                          ? folder?.sessions.find((item) => item.id === subjectCategory)?.name
+                          : folder?.sessions.find((item) => item.id === selectedShot)?.name;
+                        toast.success(`已应用到${applyTargetType === "subject" ? "主体" : "分镜"} / ${targetName ?? "未命名"}`);
+                        setApplyAsset(null);
+                      }}
+                    />
+                  )}
                   <button
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:opacity-80"
                     style={{ background: "#E87322", color: "white" }}
@@ -446,102 +838,131 @@ export function ProjectGeneratePage() {
   // ── Sidebar: Files Tab ───────────────────────────────────────────────────────
   const renderFilesTab = () => (
     <div className="flex flex-col h-full" onClick={() => { setSessionMenuId(null); }}>
-      {/* Action buttons */}
-      <div className="flex items-center gap-1.5 px-2 py-2 flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-        <button
-          onClick={() => { setCreatingRootSession(true); setNewRootSessionName(""); }}
-          className="flex items-center gap-1 flex-1 justify-center py-1.5 rounded-md text-xs transition-colors hover:opacity-80"
-          style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", border: "1px solid rgba(232,115,34,0.25)" }}
+      <div className="px-3 pt-3 pb-2 flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+        <div
+          className="flex items-center gap-2 px-3 h-9 rounded-xl"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+          }}
         >
-          <MessageSquare size={10} />新建对话
-        </button>
+          <Search size={13} style={{ color: "rgba(255,255,255,0.35)" }} />
+          <input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="搜索剧集、分组、会话"
+            className="flex-1 bg-transparent text-xs outline-none"
+            style={{ color: "rgba(255,255,255,0.78)" }}
+          />
+          {searchText && (
+            <button onClick={() => setSearchText("")} className="w-4 h-4 flex items-center justify-center rounded hover:bg-white/10">
+              <X size={10} style={{ color: "rgba(255,255,255,0.3)" }} />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-1.5 pb-4">
-        {/* Root sessions */}
-        {rootSessions.map((session) => {
-          const isActive = session.id === activeSession;
-          return (
-            null
-          );
-        })}
-
-        {/* New root session input */}
-        {creatingRootSession && (
-          <div className="flex items-center gap-1 px-2 py-1.5 mb-1">
-            <MessageSquare size={11} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-            <input autoFocus className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded"
-              style={{ border: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
-              value={newRootSessionName}
-              onChange={(e) => setNewRootSessionName(e.target.value)}
-              placeholder="对话名称..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newRootSessionName.trim()) {
-                  const s: Session = { id: `root${Date.now()}`, name: newRootSessionName.trim() };
-                  setRootSessions((prev) => [...prev, s]);
-                  setActiveSession(s.id);
-                  setNewRootSessionName("");
-                  setCreatingRootSession(false);
-                }
-                if (e.key === "Escape") { setCreatingRootSession(false); setNewRootSessionName(""); }
-              }}
-              onBlur={() => {
-                if (newRootSessionName.trim()) {
-                  const s: Session = { id: `root${Date.now()}`, name: newRootSessionName.trim() };
-                  setRootSessions((prev) => [...prev, s]);
-                  setActiveSession(s.id);
-                }
-                setNewRootSessionName(""); setCreatingRootSession(false);
-              }}
-            />
+      <div className="flex-1 overflow-auto px-2.5 py-3 space-y-4">
+        {rootSessions.length > 0 && (
+          <div className="px-1">
+            <div className="flex items-center justify-between px-1.5 mb-2">
+              <span className="text-[11px] tracking-[0.18em] uppercase" style={{ color: "rgba(255,255,255,0.28)" }}>
+                最近对话
+              </span>
+              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+                {rootSessions.length}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {rootSessions
+                .filter((session) => !searchText || session.name.toLowerCase().includes(searchText.toLowerCase()))
+                .map((session) => {
+                  const isActive = session.id === activeSession;
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => setActiveSession(session.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-colors"
+                      style={{
+                        background: isActive ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.025)",
+                        border: `1px solid ${isActive ? "rgba(232,115,34,0.2)" : "rgba(255,255,255,0.04)"}`,
+                        color: isActive ? "#F1A66C" : "rgba(255,255,255,0.62)",
+                      }}
+                    >
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.05)" }}>
+                        <MessageSquare size={11} />
+                      </div>
+                      <span className="text-xs truncate">{session.name}</span>
+                    </button>
+                  );
+                })}
+            </div>
           </div>
         )}
 
-        {(rootSessions.length > 0 || creatingRootSession) && (
-          <div className="my-1.5 mx-2" style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-        )}
-
-        {/* Folder tree */}
-        {/* Fixed category sections */}
-        {fileTree.map((folder, folderIdx) => {
+        {fileTree.map((folder) => {
           const isExpanded = expandedFolders[folder.id];
+          const isSubjectFolder = folder.id === "art";
+          const visibleSessions = folder.sessions.filter((session) => {
+            if (!searchText) return true;
+            const keyword = searchText.toLowerCase();
+            return folder.name.toLowerCase().includes(keyword) || session.name.toLowerCase().includes(keyword);
+          });
+
+          if (searchText && visibleSessions.length === 0) {
+            return null;
+          }
+
           return (
-            <div key={folder.id}>
-              {folderIdx > 0 && (
-                <div className="mx-2 my-2" style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-              )}
-              {/* Section header */}
+            <div
+              key={folder.id}
+              className="rounded-2xl overflow-hidden"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
+                border: "1px solid rgba(255,255,255,0.05)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+              }}
+            >
               <button
                 onClick={() => toggleFolder(folder.id)}
-                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition-colors"
-                style={{ color: "rgba(255,255,255,0.4)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                className="w-full flex items-center gap-2 px-3 py-3 text-xs transition-colors"
+                style={{ color: "rgba(255,255,255,0.78)" }}
               >
-                <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.3)", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }} />
-                {isExpanded ? <FolderOpen size={13} style={{ color: "rgba(255,255,255,0.5)", flexShrink: 0 }} /> : <Folder size={13} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />}
-                <span className="flex-1 text-left font-medium" style={{ fontSize: "11px", letterSpacing: "0.02em" }}>{folder.name}</span>
-                <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{folder.sessions.length}</span>
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(232,115,34,0.1)", border: "1px solid rgba(232,115,34,0.14)" }}>
+                  {isExpanded ? <FolderOpen size={13} style={{ color: "#E87322" }} /> : <Folder size={13} style={{ color: "#D68A4E" }} />}
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="text-[13px] font-medium truncate">{folder.name}</div>
+                  <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.28)" }}>
+                    {visibleSessions.length} 个内容
+                  </div>
+                </div>
+                <div className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}>
+                  {visibleSessions.length}
+                </div>
+                <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.28)", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }} />
               </button>
 
-              {/* Session items */}
               {isExpanded && (
-                <div className="mt-0.5">
-                  {folder.sessions.map((session) => {
+                <div className="px-2 pb-2">
+                  {visibleSessions.map((session) => {
                     const isActive = session.id === activeSession;
                     const isRenamingSession = renamingSessionId === session.id;
                     const showSessionMenu = sessionMenuId === session.id;
                     return (
-                      <div key={session.id} className="flex items-center group relative mx-1.5">
+                      <div key={session.id} className="flex items-center group relative">
                         <button
-                          className="flex-1 flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-colors min-w-0"
+                          className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition-colors min-w-0"
                           style={{
                             background: isActive ? "rgba(232,115,34,0.12)" : "transparent",
-                            color: isActive ? "#E87322" : "rgba(255,255,255,0.55)",
+                            color: isActive ? "#F3AB72" : "rgba(255,255,255,0.62)",
                           }}
                           onClick={() => setActiveSession(session.id)}
                         >
-                          <MessageSquare size={11} style={{ flexShrink: 0, opacity: isActive ? 1 : 0.5 }} />
+                          <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: isActive ? "rgba(232,115,34,0.16)" : "rgba(255,255,255,0.05)" }}>
+                            <MessageSquare size={11} style={{ opacity: isActive ? 1 : 0.7 }} />
+                          </div>
                           {isRenamingSession ? (
                             <input autoFocus className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded min-w-0"
                               style={{ border: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
@@ -555,19 +976,21 @@ export function ProjectGeneratePage() {
                             <span className="text-xs truncate flex-1" style={{ fontSize: "12px" }}>{session.name}</span>
                           )}
                         </button>
-                        <button
-                          className="opacity-0 group-hover:opacity-100 flex-shrink-0 w-5 h-5 flex items-center justify-center"
-                          onClick={(e) => { e.stopPropagation(); setSessionMenuId(showSessionMenu ? null : session.id); }}
-                        >
-                          <MoreHorizontal size={10} style={{ color: "rgba(255,255,255,0.35)" }} />
-                        </button>
-                        {showSessionMenu && (
+                        {!isSubjectFolder && (
+                          <button
+                            className="opacity-0 group-hover:opacity-100 flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5"
+                            onClick={(e) => { e.stopPropagation(); setSessionMenuId(showSessionMenu ? null : session.id); }}
+                          >
+                            <MoreHorizontal size={10} style={{ color: "rgba(255,255,255,0.35)" }} />
+                          </button>
+                        )}
+                        {!isSubjectFolder && showSessionMenu && (
                           <div className="absolute right-0 top-full z-20 rounded-xl overflow-hidden" style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", minWidth: "130px" }} onClick={(e) => e.stopPropagation()}>
                             <button onClick={() => startRenameSession(folder.id, session.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-white/5" style={{ color: "rgba(255,255,255,0.7)" }}>
                               <Pencil size={10} />重命名
                             </button>
                             <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-                            <button onClick={() => deleteSession(folder.id, session.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-red-900/20" style={{ color: "#ff6b6b" }}>
+                            <button onClick={() => requestDeleteSession(folder.id, session.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-red-900/20" style={{ color: "#ff6b6b" }}>
                               <Trash2 size={10} />删除
                             </button>
                           </div>
@@ -576,16 +999,15 @@ export function ProjectGeneratePage() {
                     );
                   })}
 
-                  {/* New session button / input */}
-                  {creatingSessionInFolder === folder.id ? (
-                    <div className="flex items-center gap-1 px-2 py-1.5 mx-1.5">
+                  {isSubjectFolder ? null : creatingSessionInFolder === folder.id ? (
+                    <div className="flex items-center gap-2 px-3 py-2.5">
                       <MessageSquare size={11} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
                       <input autoFocus
                         className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded"
                         style={{ border: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
                         value={newSessionName}
                         onChange={(e) => setNewSessionName(e.target.value)}
-                        placeholder="Session 名称..."
+                        placeholder="输入内容名称..."
                         onKeyDown={(e) => { if (e.key === "Enter") createSession(folder.id); if (e.key === "Escape") { setCreatingSessionInFolder(null); setNewSessionName(""); } }}
                         onBlur={() => { if (newSessionName.trim()) createSession(folder.id); else { setCreatingSessionInFolder(null); setNewSessionName(""); } }}
                       />
@@ -593,12 +1015,10 @@ export function ProjectGeneratePage() {
                   ) : (
                     <button
                       onClick={() => setCreatingSessionInFolder(folder.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors mx-1.5 w-[calc(100%-12px)]"
-                      style={{ color: "rgba(255,255,255,0.25)", background: "transparent" }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.6)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.25)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                      className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs transition-colors w-full"
+                      style={{ color: "rgba(255,255,255,0.32)", background: "rgba(255,255,255,0.025)" }}
                     >
-                      <Plus size={10} />新建 Session
+                      <Plus size={10} />新建对话
                     </button>
                   )}
                 </div>
@@ -608,8 +1028,55 @@ export function ProjectGeneratePage() {
         })}
       </div>
 
-      <div className="px-3 py-2 border-t flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        
+      <div className="px-3 py-3 border-t flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <button
+          onClick={() => {
+            setCreatingRootSession(true);
+            setNewRootSessionName("");
+          }}
+          className="w-full h-10 rounded-xl text-sm font-medium transition-opacity hover:opacity-90"
+          style={{
+            background: "linear-gradient(180deg, #F29A54 0%, #E87322 100%)",
+            color: "#fff",
+            boxShadow: "0 10px 24px rgba(232,115,34,0.25)",
+          }}
+        >
+          新建剧集
+        </button>
+        {creatingRootSession && (
+          <div className="mt-2 px-3 py-2 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <input
+              autoFocus
+              className="w-full bg-transparent text-xs outline-none"
+              style={{ color: "rgba(255,255,255,0.78)", caretColor: "#E87322" }}
+              value={newRootSessionName}
+              onChange={(e) => setNewRootSessionName(e.target.value)}
+              placeholder="输入剧集名称..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newRootSessionName.trim()) {
+                  const s: Session = { id: `root${Date.now()}`, name: newRootSessionName.trim() };
+                  setRootSessions((prev) => [...prev, s]);
+                  setActiveSession(s.id);
+                  setNewRootSessionName("");
+                  setCreatingRootSession(false);
+                }
+                if (e.key === "Escape") {
+                  setCreatingRootSession(false);
+                  setNewRootSessionName("");
+                }
+              }}
+              onBlur={() => {
+                if (newRootSessionName.trim()) {
+                  const s: Session = { id: `root${Date.now()}`, name: newRootSessionName.trim() };
+                  setRootSessions((prev) => [...prev, s]);
+                  setActiveSession(s.id);
+                }
+                setNewRootSessionName("");
+                setCreatingRootSession(false);
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -627,7 +1094,7 @@ export function ProjectGeneratePage() {
   const SIDEBAR_TABS: { key: SidebarTab; label: string }[] = [
     { key: "files", label: "文件" },
     { key: "assets", label: "资产" },
-    { key: "storyboard", label: "故事板" },
+    { key: "storyboard", label: "分镜" },
   ];
 
   return (
@@ -679,199 +1146,63 @@ export function ProjectGeneratePage() {
         </div>
 
         {/* ── Main Chat Area ─────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: "#140F09", marginLeft: sidebarCollapsed ? "0px" : "240px", transition: "margin-left 0.2s ease" }}>
+        <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: "#120D08", marginLeft: sidebarCollapsed ? "0px" : "240px", transition: "margin-left 0.2s ease" }}>
           {/* Header with Visible Filter Tags */}
           <div className="px-6 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-            {/* Top row: Filter tags and toggle button */}
-            <div className="flex items-center justify-between">
-              {/* Left: Filter tags always visible */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <Users size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Package size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.34)" }}>
+                  {currentEpisodeLabel}
+                </span>
+                <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.18)" }} />
                 <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                  生成记录
+                  {activeSessionName || "未命名分镜"}
                 </span>
                 <span className="text-xs px-2 py-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
                   {filteredMessages.length} 条
                 </span>
-
-                {/* Active filter tags - always visible */}
-                {activeFilterCount > 0 && (
-                  <>
-                    <span style={{ color: "rgba(255,255,255,0.2)", fontSize: "10px" }}>|</span>
-                    {/* Member filter tags */}
-                    {memberFilter.length > 0 && memberFilter.map((memberId) => {
-                      const member = PROJECT_MEMBERS.find(m => m.id === memberId);
-                      if (!member) return null;
-                      return (
-                        <span
-                          key={memberId}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
-                          style={{ background: `${member.color}20`, color: member.color, border: `1px solid ${member.color}30` }}
-                        >
-                          <div className="w-3 h-3 rounded-full flex items-center justify-center" style={{ background: member.color, fontSize: "7px", color: "#fff" }}>
-                            {member.avatar}
-                          </div>
-                          {member.name}
-                          <button onClick={() => toggleMemberFilter(memberId)} className="ml-0.5 hover:opacity-70">
-                            <X size={10} />
-                          </button>
-                        </span>
-                      );
-                    })}
-                    {/* Type filter tag */}
-                    {generateTypeFilter !== "all" && (
-                      <span
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
-                        style={{
-                          background: generateTypeFilter === "image" ? "rgba(74,158,224,0.15)" : "rgba(155,89,182,0.15)",
-                          color: generateTypeFilter === "image" ? "#4A9EE0" : "#9B59B6",
-                          border: generateTypeFilter === "image" ? "1px solid rgba(74,158,224,0.3)" : "1px solid rgba(155,89,182,0.3)"
-                        }}
-                      >
-                        {generateTypeFilter === "image" ? <LucideImage size={12} /> : <Video size={12} />}
-                        {generateTypeFilter === "image" ? "图片" : "视频"}
-                        <button onClick={() => setGenerateTypeFilter("all")} className="ml-0.5 hover:opacity-70">
-                          <X size={10} />
-                        </button>
-                      </span>
-                    )}
-                    {/* Time filter tag */}
-                    {timeFilter !== "all" && (
-                      <span
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
-                        style={{ background: "rgba(74,198,120,0.15)", color: "#4AC678", border: "1px solid rgba(74,198,120,0.3)" }}
-                      >
-                        <Clock size={12} />
-                        {timeFilter === "today" ? "今天" : timeFilter === "week" ? "近7天" : timeFilter === "month" ? "近30天" : `${customDateFrom} ~ ${customDateTo}`}
-                        <button onClick={() => { setTimeFilter("all"); setCustomDateFrom(""); setCustomDateTo(""); }} className="ml-0.5 hover:opacity-70">
-                          <X size={10} />
-                        </button>
-                      </span>
-                    )}
-                    {/* Search keyword tag */}
-                    {searchKeyword && (
-                      <span
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs cursor-pointer hover:opacity-80"
-                        style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", border: "1px solid rgba(232,115,34,0.3)" }}
-                      >
-                        <Search size={12} />
-                        "{searchKeyword}"
-                        <button onClick={() => setSearchKeyword("")} className="ml-0.5 hover:opacity-70">
-                          <X size={10} />
-                        </button>
-                      </span>
-                    )}
-                    {/* Clear all button */}
-                    <button
-                      onClick={clearAllFilters}
-                      className="px-2 py-0.5 rounded-lg text-xs hover:opacity-80"
-                      style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}
-                    >
-                      清除全部
-                    </button>
-                  </>
-                )}
               </div>
 
-              {/* Right: Add filter button */}
-              <button
-                onClick={() => setShowFilterPanel(!showFilterPanel)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
-                style={{
-                  background: showFilterPanel ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.06)",
-                  color: showFilterPanel ? "#E87322" : "rgba(255,255,255,0.6)",
-                  border: showFilterPanel ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)"
-                }}
+              <div
+                className="flex items-center rounded-2xl px-2 py-1.5"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 30px rgba(0,0,0,0.14)" }}
+                onClick={(e) => e.stopPropagation()}
               >
-                <Plus size={11} />
-                添加筛选
-                <ChevronDown size={10} style={{ transform: showFilterPanel ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s" }} />
-              </button>
-            </div>
+              <div className="flex items-center gap-2 px-3 min-w-[170px]">
+                <Search size={15} style={{ color: "rgba(255,255,255,0.62)" }} />
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  placeholder="搜索内容、成员、模型..."
+                  className="bg-transparent text-xs flex-1 outline-none"
+                  style={{ color: "rgba(255,255,255,0.78)" }}
+                />
+                {searchKeyword && (
+                  <button onClick={() => setSearchKeyword("")} className="w-4 h-4 flex items-center justify-center rounded hover:bg-white/10">
+                    <X size={10} style={{ color: "rgba(255,255,255,0.32)" }} />
+                  </button>
+                )}
+              </div>
+              <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
 
-            {/* Expanded Filter Panel (for adding filters) */}
-            {showFilterPanel && (
-              <div className="flex flex-col gap-3 pt-3 pb-2 mt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} onClick={(e) => e.stopPropagation()}>
-                {/* Row 1: Member Filter */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>成员</span>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => setMemberFilter([])}
-                      className="px-2.5 py-1 rounded-lg text-xs transition-colors"
-                      style={{
-                        background: memberFilter.length === 0 ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.06)",
-                        color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.5)",
-                        border: memberFilter.length === 0 ? "1px solid rgba(232,115,34,0.3)" : "1px solid transparent"
-                      }}
-                    >
-                      全部
-                    </button>
-                    {/* Only Me Button */}
-                    <button
-                      onClick={() => setMemberFilter([CURRENT_USER.id])}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors"
-                      style={{
-                        background: memberFilter.length === 1 && memberFilter[0] === CURRENT_USER.id ? `${CURRENT_USER.color}20` : "rgba(255,255,255,0.06)",
-                        color: memberFilter.length === 1 && memberFilter[0] === CURRENT_USER.id ? CURRENT_USER.color : "rgba(255,255,255,0.5)",
-                        border: memberFilter.length === 1 && memberFilter[0] === CURRENT_USER.id ? `1px solid ${CURRENT_USER.color}40` : "1px solid transparent"
-                      }}
-                    >
-                      <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: CURRENT_USER.color, fontSize: "8px", color: "#fff" }}>
-                        {CURRENT_USER.avatar}
-                      </div>
-                      只看我的
-                    </button>
-                    {PROJECT_MEMBERS.map((member) => (
-                      <button
-                        key={member.id}
-                        onClick={() => toggleMemberFilter(member.id)}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors"
-                        style={{
-                          background: memberFilter.includes(member.id) ? `${member.color}20` : "rgba(255,255,255,0.06)",
-                          color: memberFilter.includes(member.id) ? member.color : "rgba(255,255,255,0.5)",
-                          border: memberFilter.includes(member.id) ? `1px solid ${member.color}40` : "1px solid transparent"
-                        }}
-                      >
-                        <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: member.color, fontSize: "8px", color: "#fff" }}>
-                          {member.avatar}
-                        </div>
-                        {member.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Row 2: Type Filter */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>类型</span>
-                  <div className="flex items-center gap-1">
-                    {[
-                      { key: "all", label: "全部", Icon: null, color: "#E87322" },
-                      { key: "image", label: "图片", Icon: LucideImage, color: "#4A9EE0" },
-                      { key: "video", label: "视频", Icon: Video, color: "#9B59B6" },
-                    ].map(({ key, label, Icon, color }) => (
-                      <button
-                        key={key}
-                        onClick={() => setGenerateTypeFilter(key as GenerateTypeFilter)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors"
-                        style={{
-                          background: generateTypeFilter === key ? `${color}15` : "rgba(255,255,255,0.06)",
-                          color: generateTypeFilter === key ? color : "rgba(255,255,255,0.5)",
-                          border: generateTypeFilter === key ? `1px solid ${color}30` : "1px solid transparent"
-                        }}
-                      >
-                        {Icon && <Icon size={12} />}
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Row 3: Time Filter */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>时间</span>
-                  <div className="flex items-center gap-1">
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowTimeMenu((v) => !v);
+                    setShowGenerateTypeMenu(false);
+                    setShowMemberMenu(false);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+                  style={{ color: timeFilter !== "all" ? "#E87322" : "rgba(255,255,255,0.82)" }}
+                >
+                  <span>{timeFilter === "all" ? "时间" : timeFilter === "today" ? "今天" : timeFilter === "week" ? "近7天" : timeFilter === "month" ? "近30天" : "自定义"}</span>
+                  <ChevronDown size={11} />
+                </button>
+                {showTimeMenu && (
+                  <div className="absolute top-full mt-2 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                    style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "180px" }}>
                     {[
                       { key: "all", label: "全部" },
                       { key: "today", label: "今天" },
@@ -882,71 +1213,134 @@ export function ProjectGeneratePage() {
                       <button
                         key={key}
                         onClick={() => setTimeFilter(key as TimeFilter)}
-                        className="px-2.5 py-1 rounded-lg text-xs transition-colors"
-                        style={{
-                          background: timeFilter === key ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.06)",
-                          color: timeFilter === key ? "#E87322" : "rgba(255,255,255,0.5)",
-                          border: timeFilter === key ? "1px solid rgba(232,115,34,0.3)" : "1px solid transparent"
-                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                        style={{ color: timeFilter === key ? "#E87322" : "rgba(255,255,255,0.6)" }}
                       >
+                        <Check size={9} style={{ color: timeFilter === key ? "#E87322" : "transparent" }} />
                         {label}
                       </button>
                     ))}
                     {timeFilter === "custom" && (
-                      <div className="flex items-center gap-1.5 ml-2">
-                        <input
-                          type="date"
-                          value={customDateFrom}
-                          onChange={(e) => setCustomDateFrom(e.target.value)}
-                          className="px-2 py-1 rounded-lg text-xs outline-none"
-                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }}
-                        />
-                        <span style={{ color: "rgba(255,255,255,0.3)" }}>至</span>
-                        <input
-                          type="date"
-                          value={customDateTo}
-                          onChange={(e) => setCustomDateTo(e.target.value)}
-                          className="px-2 py-1 rounded-lg text-xs outline-none"
-                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }}
-                        />
+                      <div className="px-3 py-2.5 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="date"
+                            value={customDateFrom}
+                            onChange={(e) => setCustomDateFrom(e.target.value)}
+                            className="px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }}
+                          />
+                          <span style={{ color: "rgba(255,255,255,0.3)" }}>至</span>
+                          <input
+                            type="date"
+                            value={customDateTo}
+                            onChange={(e) => setCustomDateTo(e.target.value)}
+                            className="px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
-
-                {/* Row 4: Keyword Search */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)", width: "60px" }}>搜索</span>
-                  <div className="flex items-center gap-2 flex-1">
-                    <div className="relative flex-1 max-w-[280px]">
-                      <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "rgba(255,255,255,0.3)" }} />
-                      <input
-                        type="text"
-                        value={searchKeyword}
-                        onChange={(e) => setSearchKeyword(e.target.value)}
-                        placeholder="搜索内容、成员、模型..."
-                        className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none"
-                        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}
-                      />
-                      {searchKeyword && (
-                        <button
-                          onClick={() => setSearchKeyword("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
-                          style={{ color: "rgba(255,255,255,0.5)" }}
-                        >
-                          <X size={10} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
-            )}
+
+              <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowGenerateTypeMenu((v) => !v);
+                    setShowTimeMenu(false);
+                    setShowMemberMenu(false);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+                  style={{ color: generateTypeFilter !== "all" ? "#E87322" : "rgba(255,255,255,0.82)" }}
+                >
+                  <span>{generateTypeFilter === "all" ? "类型" : generateTypeFilter === "image" ? "图片" : "视频"}</span>
+                  <ChevronDown size={11} />
+                </button>
+                {showGenerateTypeMenu && (
+                  <div className="absolute top-full mt-2 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                    style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "140px" }}>
+                    {[
+                      { key: "all", label: "全部" },
+                      { key: "image", label: "图片" },
+                      { key: "video", label: "视频" },
+                    ].map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => { setGenerateTypeFilter(key as GenerateTypeFilter); setShowGenerateTypeMenu(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                        style={{ color: generateTypeFilter === key ? "#E87322" : "rgba(255,255,255,0.6)" }}
+                      >
+                        <Check size={9} style={{ color: generateTypeFilter === key ? "#E87322" : "transparent" }} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowMemberMenu((v) => !v);
+                    setShowTimeMenu(false);
+                    setShowGenerateTypeMenu(false);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+                  style={{ color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.82)" }}
+                >
+                  <span>{memberFilter.length === 1 && memberFilter[0] === CURRENT_USER.id ? "成员·我" : memberFilter.length > 0 ? `成员 ${memberFilter.length}` : "成员"}</span>
+                  <ChevronDown size={11} />
+                </button>
+                {showMemberMenu && (
+                  <div className="absolute top-full mt-2 right-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                    style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "170px" }}>
+                    <button
+                      onClick={() => setMemberFilter([])}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                      style={{
+                        color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
+                        background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
+                      }}>
+                      <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
+                      全部成员
+                    </button>
+                    <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+                    {PROJECT_MEMBERS.map((member) => {
+                      const selected = memberFilter.includes(member.id);
+                      return (
+                        <button
+                          key={member.id}
+                          onClick={() => toggleMemberFilter(member.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                          style={{
+                            color: selected ? member.color : "rgba(255,255,255,0.6)",
+                            background: selected ? `${member.color}12` : "transparent",
+                          }}
+                        >
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: member.color, fontSize: "8px", color: "#fff" }}>
+                            {member.avatar}
+                          </div>
+                          <span className="flex-1">{member.name}</span>
+                          {selected && <Check size={9} style={{ color: member.color }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              </div>
+            </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-auto px-6 py-6">
-            <div className="max-w-2xl mx-auto">
+          <div className="flex-1 overflow-auto px-6 py-10" style={{ background: "radial-gradient(circle at top, rgba(232,115,34,0.04), transparent 26%), #120D08" }}>
+            <div className="max-w-3xl mx-auto">
               {filteredMessages.map((msg) => {
                 if (msg.type === "user") {
                   const sender = "sender" in msg ? msg.sender : null;
@@ -983,37 +1377,78 @@ export function ProjectGeneratePage() {
           </div>
 
           {/* Prompt Input */}
-          <div className="flex-shrink-0 px-6 pb-5" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-            <div className="rounded-2xl p-3 mt-4" style={{ background: "rgba(30,26,20,0.9)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}>
-              <div className="flex items-start gap-3 mb-3">
-                <button className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <Plus size={13} style={{ color: "rgba(255,255,255,0.45)" }} />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-6 pb-6">
+            <div
+              className="pointer-events-auto w-full max-w-6xl rounded-[36px] p-6"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.16) 0%, rgba(18,13,8,0.92) 12%, rgba(10,8,13,0.96) 100%)",
+                border: "1px solid rgba(255,255,255,0.22)",
+                boxShadow: "0 30px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.18)",
+                backdropFilter: "blur(18px)",
+              }}
+            >
+              <div className="flex items-start gap-4">
+                <button className="w-18 h-18 rounded-2xl flex items-center justify-center flex-shrink-0 mt-1" style={{ width: "76px", height: "76px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.22)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1)" }}>
+                  <Plus size={34} style={{ color: "rgba(255,255,255,0.75)" }} />
                 </button>
-                <textarea
-                  value={promptText}
-                  onChange={(e) => setPromptText(e.target.value)}
-                  placeholder={`在 "${activeSessionName}" 中继续创作...`}
-                  className="flex-1 bg-transparent text-sm resize-none outline-none"
-                  style={{ color: "rgba(255,255,255,0.75)", caretColor: "#E87322", lineHeight: 1.6, minHeight: "60px", maxHeight: "120px" }}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs px-2 py-1 rounded-lg" style={{ background: "rgba(232,115,34,0.12)", color: "#E87322" }}>1024×1024</span>
-                  <span className="text-xs px-2 py-1 rounded-lg" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.45)" }}>4张</span>
+                <div className="flex-1 min-h-[170px] flex flex-col">
+                  <div className="flex-1">
+                    <textarea
+                      value={promptText}
+                      onChange={(e) => setPromptText(e.target.value)}
+                      placeholder={`在 "${activeSessionName}" 中继续创作...`}
+                      className="w-full bg-transparent text-sm resize-none outline-none"
+                      style={{ color: "rgba(255,255,255,0.82)", caretColor: "#E87322", lineHeight: 1.7, minHeight: "120px", maxHeight: "220px" }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>图片生成</span>
+                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>Image-2</span>
+                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>智能比例</span>
+                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>1K</span>
+                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>4张</span>
+                      <button className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.55)" }}>
+                        选择风格
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>{promptText.length} / 1000</span>
+                      <button
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-white text-sm transition-opacity hover:opacity-85"
+                        style={{ background: promptText.trim() ? "#E87322" : "rgba(232,115,34,0.3)", boxShadow: promptText.trim() ? "0 12px 30px rgba(232,115,34,0.28)" : "none" }}
+                        disabled={!promptText.trim()}
+                      >
+                        <Send size={14} />生成
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <button
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm transition-opacity hover:opacity-80"
-                  style={{ background: promptText.trim() ? "#E87322" : "rgba(232,115,34,0.3)" }}
-                  disabled={!promptText.trim()}
-                >
-                  <Send size={13} />生成
-                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
+      {deleteSessionState && (
+        <DeleteSessionModal
+          sessionName={deleteSessionState.sessionName}
+          moveTargetId={moveTargetSessionId}
+          setMoveTargetId={setMoveTargetSessionId}
+          moveMode={deleteMode}
+          setMoveMode={setDeleteMode}
+          availableTargets={fileTree
+            .filter((folder) => folder.id !== "art")
+            .flatMap((folder) => folder.sessions.map((session) => ({
+              id: session.id,
+              sessionName: session.name,
+              folderId: folder.id,
+              folderName: folder.name,
+            })))
+            .filter((session) => session.id !== deleteSessionState.sessionId)}
+          onClose={() => setDeleteSessionState(null)}
+          onConfirm={confirmDeleteSessionAction}
+        />
+      )}
       {storyboardDetailPanel && (
         <StoryboardDetailModal panel={storyboardDetailPanel} onClose={() => setStoryboardDetailPanel(null)} />
       )}

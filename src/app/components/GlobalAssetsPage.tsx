@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Image as LucideImage, Video, Music, Download, Star, Trash2, Check, Search,
   ChevronDown, ChevronRight, X, Grid3X3, LayoutList, Pencil, ArrowDown, ArrowUp,
-  Layers, User, Folder, FileText, ArrowLeft,
+  Layers, User, Folder, FileText, ArrowLeft, Users, TreePalm, Package, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PROJECTS_DATA } from "../data/projectsData";
@@ -11,6 +11,10 @@ import { useSpace } from "../context/SpaceContext";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AssetTab = "generate" | "upload" | "subject" | "collect";
 type AssetType = "all" | "image" | "video" | "audio" | "script";
+type SubjectType = "sd_ip" | "character" | "scene" | "prop";
+type ReviewStatus = "pending" | "approved" | "rejected" | "expired";
+type ReviewStatusFilter = "all" | ReviewStatus;
+type SubjectMediaFilter = "all" | "image" | "video" | "audio";
 
 interface AssetItem {
   id: string;
@@ -24,6 +28,219 @@ interface AssetItem {
   tab: string;
   projectId?: string;
   memberId?: string;
+}
+
+interface SubjectItem {
+  id: string;
+  name: string;
+  type: SubjectType;
+  image: string;
+  updatedAt: string;
+  reviewStatus?: ReviewStatus;
+  assetType?: "image" | "video" | "audio";
+}
+
+const SUBJECT_TYPE_CONFIG: Record<SubjectType, { label: string; icon: typeof Users; color: string }> = {
+  sd_ip: { label: "SD虚拟IP", icon: Sparkles, color: "#E87322" },
+  character: { label: "人物", icon: User, color: "#7B3FC4" },
+  scene: { label: "场景", icon: TreePalm, color: "#2A6FC4" },
+  prop: { label: "道具", icon: Package, color: "#C42A6F" },
+};
+
+const SUBJECT_STATUS_CONFIG: Record<ReviewStatus, { bg: string; text: string; label: string }> = {
+  pending: { bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.6)", label: "审核中" },
+  approved: { bg: "rgba(74,198,120,0.15)", text: "#4AC678", label: "审核通过" },
+  rejected: { bg: "rgba(255,107,107,0.15)", text: "#ff6b6b", label: "审核失败" },
+  expired: { bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.35)", label: "已过期" },
+};
+
+const REVIEW_STATUS_FILTER_OPTIONS: { value: ReviewStatusFilter; label: string }[] = [
+  { value: "all", label: "全部状态" },
+  { value: "pending", label: "审核中" },
+  { value: "approved", label: "审核通过" },
+  { value: "rejected", label: "审核失败" },
+  { value: "expired", label: "已过期" },
+];
+
+const SUBJECT_MEDIA_FILTER_OPTIONS: { value: SubjectMediaFilter; label: string }[] = [
+  { value: "all", label: "全部模态" },
+  { value: "image", label: "图片" },
+  { value: "video", label: "视频" },
+  { value: "audio", label: "音频" },
+];
+
+const SUBJECT_ASSETS: SubjectItem[] = [
+  { id: "sd1", name: "周星驰", type: "sd_ip", image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=200&fit=crop", updatedAt: "2026-01-12", reviewStatus: "approved", assetType: "image" },
+  { id: "sd2", name: "成龙", type: "sd_ip", image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&h=200&fit=crop", updatedAt: "2026-01-12", reviewStatus: "pending", assetType: "video" },
+  { id: "sd3", name: "古风琴师", type: "sd_ip", image: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?w=300&h=200&fit=crop", updatedAt: "2026-01-10", reviewStatus: "approved", assetType: "audio" },
+  { id: "sd4", name: "山神·青帝", type: "sd_ip", image: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=300&h=200&fit=crop", updatedAt: "2026-01-08", reviewStatus: "rejected", assetType: "image" },
+  { id: "char1", name: "女主角·林月", type: "character", image: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=300&h=200&fit=crop", updatedAt: "2026-01-11" },
+  { id: "char2", name: "男主角·风清扬", type: "character", image: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=300&h=200&fit=crop", updatedAt: "2026-01-10" },
+  { id: "scene1", name: "仙山·昆仑", type: "scene", image: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=300&h=200&fit=crop", updatedAt: "2026-01-12" },
+  { id: "scene2", name: "古城镇·青云", type: "scene", image: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=300&h=200&fit=crop", updatedAt: "2026-01-09" },
+  { id: "prop1", name: "法宝·流云剑", type: "prop", image: "https://images.unsplash.com/photo-1636075219672-a422660ce589?w=300&h=200&fit=crop", updatedAt: "2026-01-10" },
+  { id: "prop2", name: "神器·天音琴", type: "prop", image: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?w=300&h=200&fit=crop", updatedAt: "2026-01-08" },
+];
+
+function SubjectAssetGrid({
+  subjects,
+  searchText,
+  mediaFilter,
+}: {
+  subjects: SubjectItem[];
+  searchText: string;
+  mediaFilter: SubjectMediaFilter;
+}) {
+  const [openGroups, setOpenGroups] = useState<Record<SubjectType, boolean>>({
+    sd_ip: false,
+    character: false,
+    scene: false,
+    prop: false,
+  });
+  const [sdReviewStatusFilter, setSdReviewStatusFilter] = useState<ReviewStatusFilter>("all");
+
+  const groupedSubjects = (Object.keys(SUBJECT_TYPE_CONFIG) as SubjectType[]).map((type) => {
+    const items = subjects.filter((subject) => {
+      if (subject.type !== type) return false;
+      if (mediaFilter !== "all") {
+        if ((subject.assetType ?? "image") !== mediaFilter) return false;
+      }
+      if (type === "sd_ip" && sdReviewStatusFilter !== "all") {
+        if ((subject.reviewStatus ?? "approved") !== sdReviewStatusFilter) return false;
+      }
+      if (searchText && !subject.name.toLowerCase().includes(searchText.toLowerCase())) return false;
+      return true;
+    });
+    return { type, items };
+  });
+
+  const totalFiltered = groupedSubjects.reduce((sum, group) => sum + group.items.length, 0);
+
+  const toggleGroup = (type: SubjectType) => {
+    setOpenGroups((prev) => ({ ...prev, [type]: !prev[type] }));
+  };
+
+  return (
+    <>
+      <div className="flex flex-col gap-3">
+        {groupedSubjects.map(({ type, items }) => {
+          const config = SUBJECT_TYPE_CONFIG[type];
+          const Icon = config.icon;
+          const isOpen = openGroups[type];
+
+          return (
+            <div key={type} className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5">
+                <button
+                  onClick={() => toggleGroup(type)}
+                  className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                >
+                  <ChevronDown
+                    size={14}
+                    style={{
+                      color: "rgba(255,255,255,0.35)",
+                      transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                      transition: "transform 0.18s ease",
+                    }}
+                  />
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: config.color + "18" }}>
+                    <Icon size={14} style={{ color: config.color }} />
+                  </div>
+                  <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.88)", fontWeight: 600 }}>{config.label}</span>
+                  <span className="px-2 py-0.5 rounded-full flex-shrink-0" style={{ fontSize: "10px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.42)" }}>
+                    {items.length}
+                  </span>
+                </button>
+
+                {type === "sd_ip" && (
+                  <div className="flex items-center gap-1 rounded-xl p-1 flex-shrink-0" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    {REVIEW_STATUS_FILTER_OPTIONS.map((option) => {
+                      const active = sdReviewStatusFilter === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          onClick={() => setSdReviewStatusFilter(option.value)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] transition-colors"
+                          style={{
+                            background: active ? "rgba(232,115,34,0.16)" : "transparent",
+                            color: active ? "#E87322" : "rgba(255,255,255,0.46)",
+                          }}>
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {isOpen && (
+                <div className="px-4 pb-4">
+                  {items.length > 0 ? (
+                    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+                      {items.map((subject) => {
+                        const subjectAssetType = subject.assetType ?? "image";
+                        const AssetTypeIcon = subjectAssetType === "image" ? LucideImage : subjectAssetType === "video" ? Video : Music;
+                        const statusCfg = subject.reviewStatus ? SUBJECT_STATUS_CONFIG[subject.reviewStatus] : null;
+                        const showOverlay = subject.type === "sd_ip" && subject.reviewStatus && (subject.reviewStatus === "pending" || subject.reviewStatus === "rejected");
+
+                        return (
+                          <div key={subject.id} className="rounded-xl overflow-hidden relative group" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                            <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1.5">
+                              <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(0,0,0,0.55)", color: "rgba(255,255,255,0.82)" }}>
+                                <AssetTypeIcon size={11} />
+                              </div>
+                              {subject.type === "sd_ip" && statusCfg && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: statusCfg.bg, color: statusCfg.text }}>{statusCfg.label}</span>
+                              )}
+                            </div>
+                            <div className="absolute top-2.5 right-2.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                                style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+                                onClick={() => toast.success(`已删除 ${subject.name}`)}>
+                                <Trash2 size={12} style={{ color: "rgba(255,255,255,0.8)" }} />
+                              </button>
+                            </div>
+                            {showOverlay && statusCfg && (
+                              <div className="absolute inset-0 z-[5] flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }}>
+                                <div className="text-3xl mb-2">{subject.reviewStatus === "pending" ? "⏳" : "❌"}</div>
+                                <span className="text-sm font-medium" style={{ color: statusCfg.text }}>{statusCfg.label}</span>
+                              </div>
+                            )}
+                            <img src={subject.image} alt={subject.name} className="w-full object-cover" style={{ height: "160px" }} />
+                            <div className="px-3 py-2.5 flex items-center gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate" style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{subject.name}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center rounded-xl" style={{ height: "120px", border: "1px dashed rgba(255,255,255,0.06)" }}>
+                      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.26)" }}>当前分类暂无内容</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {totalFiltered === 0 && (
+        <div className="rounded-2xl flex flex-col items-center justify-center text-center mt-4"
+          style={{ height: "320px", background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.08)" }}>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <Package size={28} style={{ color: "rgba(255,255,255,0.18)" }} />
+          </div>
+          <div style={{ fontSize: "16px", color: "rgba(255,255,255,0.62)", fontWeight: 500 }}>暂无主体资产</div>
+          <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.28)", marginTop: "8px" }}>当前筛选条件下没有可展示的主体内容</div>
+        </div>
+      )}
+    </>
+  );
 }
 
 // ─── My Assets ────────────────────────────────────────────────────────────────
@@ -271,6 +488,8 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [subjectMediaFilter, setSubjectMediaFilter] = useState<SubjectMediaFilter>("all");
+  const [showSubjectMediaMenu, setShowSubjectMediaMenu] = useState(false);
 
   // Member filter
   const [memberFilter, setMemberFilter] = useState<string[]>([]);
@@ -375,7 +594,7 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
   const displayGroups = tabFilteredGroups;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#140F09" }} onClick={() => setShowMemberMenu(false)}>
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#140F09" }} onClick={() => { setShowMemberMenu(false); setShowSubjectMediaMenu(false); }}>
       {/* Group header with back arrow when inside a group */}
       {currentGroup && (
         <div className="flex items-center gap-3 px-6 py-4 flex-shrink-0"
@@ -419,109 +638,201 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
       {!currentGroup && (
       <div className="flex items-center gap-2 px-6 py-3 flex-shrink-0 flex-wrap"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-        {/* Search */}
-        <div className="flex items-center gap-2 rounded-xl px-3 py-2"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", minWidth: "180px" }}>
-          <Search size={13} style={{ color: "rgba(255,255,255,0.3)" }} />
-          <input className="bg-transparent text-xs flex-1 outline-none" style={{ color: "rgba(255,255,255,0.6)" }}
-            placeholder="搜索文件夹..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
-          {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.3)" }} /></button>}
-        </div>
-
-        {/* Member filter */}
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => setShowMemberMenu(!showMemberMenu)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
-            style={{
-              background: memberFilter.length > 0 ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
-              border: memberFilter.length > 0 ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
-              color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.5)",
-            }}>
-            <User size={12} />
-            {memberFilter.length === 0 ? "全部成员" : `${memberFilter.length}人`}
-            <ChevronDown size={9} />
-          </button>
-          {showMemberMenu && (
-            <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
-              style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "160px" }}
-              onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => setMemberFilter([])}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
-                style={{
-                  color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
-                  background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
-                }}>
-                <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
-                全部成员
+        {assetTab !== "主体资产" ? (
+          <div
+            className="ml-auto flex items-center rounded-2xl px-2 py-1.5"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 30px rgba(0,0,0,0.14)" }}
+          >
+            <div className="flex items-center gap-2 px-3 min-w-[150px]">
+              <Search size={15} style={{ color: "rgba(255,255,255,0.58)" }} />
+              <input className="bg-transparent text-xs flex-1 outline-none" style={{ color: "rgba(255,255,255,0.72)" }}
+                placeholder="搜索文件夹..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+              {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.28)" }} /></button>}
+            </div>
+            <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <div className="flex items-center gap-2 px-2">
+              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.82)", fontWeight: 500 }}>时间</span>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                className="bg-transparent text-xs outline-none"
+                style={{ color: "rgba(255,255,255,0.62)", colorScheme: "dark", width: "112px" }} />
+              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.22)" }}>至</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                className="bg-transparent text-xs outline-none"
+                style={{ color: "rgba(255,255,255,0.62)", colorScheme: "dark", width: "112px" }} />
+              {(startDate || endDate) && (
+                <button onClick={() => { setStartDate(""); setEndDate(""); }}
+                  className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10">
+                  <X size={9} style={{ color: "rgba(255,255,255,0.3)" }} />
+                </button>
+              )}
+            </div>
+            <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setShowMemberMenu(!showMemberMenu)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+                style={{ color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.82)" }}>
+                <User size={12} />
+                {memberFilter.length === 0 ? "全部成员" : `${memberFilter.length}人`}
+                <ChevronDown size={11} />
               </button>
-              <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-              {MEMBER_DATA.map((member) => {
-                const selected = memberFilter.includes(member.id);
-                return (
-                  <button key={member.id} onClick={() => toggleMemberFilter(member.id)}
+              {showMemberMenu && (
+                <div className="absolute top-full mt-2 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                  style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "160px" }}
+                  onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => setMemberFilter([])}
                     className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
                     style={{
-                      color: selected ? member.avatarColor : "rgba(255,255,255,0.6)",
-                      background: selected ? `${member.avatarColor}12` : "transparent",
+                      color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
+                      background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
                     }}>
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ background: member.avatarColor, fontSize: "8px", fontWeight: 600, color: "#fff" }}>
-                      {member.letter}
-                    </div>
-                    <span className="flex-1">{member.name}</span>
-                    {selected && <Check size={9} style={{ color: member.avatarColor }} />}
+                    <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
+                    全部成员
                   </button>
-                );
-              })}
+                  <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+                  {MEMBER_DATA.map((member) => {
+                    const selected = memberFilter.includes(member.id);
+                    return (
+                      <button key={member.id} onClick={() => toggleMemberFilter(member.id)}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                        style={{
+                          color: selected ? member.avatarColor : "rgba(255,255,255,0.6)",
+                          background: selected ? `${member.avatarColor}12` : "transparent",
+                        }}>
+                        <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ background: member.avatarColor, fontSize: "8px", fontWeight: 600, color: "#fff" }}>
+                          {member.letter}
+                        </div>
+                        <span className="flex-1">{member.name}</span>
+                        {selected && <Check size={9} style={{ color: member.avatarColor }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+            <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <button onClick={() => setCollectedFilter(!collectedFilter)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+              style={{ color: collectedFilter ? "#E87322" : "rgba(255,255,255,0.82)" }}>
+              <Star size={12} style={{ fill: collectedFilter ? "#E87322" : "transparent" }} />
+              只看收藏
+            </button>
+            <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <button onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+              style={{ color: "rgba(255,255,255,0.82)" }}>
+              {sortOrder === "desc" ? <ArrowDown size={12} /> : <ArrowUp size={12} />}
+              时间
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Search */}
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", minWidth: "180px" }}>
+              <Search size={13} style={{ color: "rgba(255,255,255,0.3)" }} />
+              <input className="bg-transparent text-xs flex-1 outline-none" style={{ color: "rgba(255,255,255,0.6)" }}
+                placeholder="搜索文件夹..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+              {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.3)" }} /></button>}
+            </div>
 
-        {/* Collected filter */}
-        {(assetTab === "全部生成" || assetTab === "历史上传") && (
-          <button onClick={() => setCollectedFilter(!collectedFilter)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
-            style={{
-              background: collectedFilter ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
-              border: collectedFilter ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
-              color: collectedFilter ? "#E87322" : "rgba(255,255,255,0.5)",
-            }}>
-            <Star size={12} style={{ fill: collectedFilter ? "#E87322" : "transparent" }} />
-            只看收藏
-          </button>
+            {assetTab === "主体资产" ? (
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setShowSubjectMediaMenu(!showSubjectMediaMenu)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
+                  style={{
+                    background: subjectMediaFilter !== "all" ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
+                    border: subjectMediaFilter !== "all" ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                    color: subjectMediaFilter !== "all" ? "#E87322" : "rgba(255,255,255,0.5)",
+                  }}>
+                  <LucideImage size={12} />
+                  {SUBJECT_MEDIA_FILTER_OPTIONS.find((option) => option.value === subjectMediaFilter)?.label ?? "全部模态"}
+                  <ChevronDown size={9} />
+                </button>
+                {showSubjectMediaMenu && (
+                  <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                    style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "140px" }}
+                    onClick={(e) => e.stopPropagation()}>
+                    {SUBJECT_MEDIA_FILTER_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => { setSubjectMediaFilter(option.value); setShowSubjectMediaMenu(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                        style={{ color: subjectMediaFilter === option.value ? "#E87322" : "rgba(255,255,255,0.6)" }}>
+                        <Check size={9} style={{ color: subjectMediaFilter === option.value ? "#E87322" : "transparent" }} />
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setShowMemberMenu(!showMemberMenu)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
+                  style={{
+                    background: memberFilter.length > 0 ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
+                    border: memberFilter.length > 0 ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                    color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.5)",
+                  }}>
+                  <User size={12} />
+                  {memberFilter.length === 0 ? "全部成员" : `${memberFilter.length}人`}
+                  <ChevronDown size={9} />
+                </button>
+                {showMemberMenu && (
+                  <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                    style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "160px" }}
+                    onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setMemberFilter([])}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                      style={{
+                        color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
+                        background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
+                      }}>
+                      <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
+                      全部成员
+                    </button>
+                    <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+                    {MEMBER_DATA.map((member) => {
+                      const selected = memberFilter.includes(member.id);
+                      return (
+                        <button key={member.id} onClick={() => toggleMemberFilter(member.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                          style={{
+                            color: selected ? member.avatarColor : "rgba(255,255,255,0.6)",
+                            background: selected ? `${member.avatarColor}12` : "transparent",
+                          }}>
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ background: member.avatarColor, fontSize: "8px", fontWeight: 600, color: "#fff" }}>
+                            {member.letter}
+                          </div>
+                          <span className="flex-1">{member.name}</span>
+                          {selected && <Check size={9} style={{ color: member.avatarColor }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
 
-        {/* Date filter: start/end */}
-        <div className="flex items-center gap-1.5">
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>日期</span>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-            className="px-2 py-1.5 rounded-xl text-xs outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", width: "120px" }} />
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>至</span>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-            className="px-2 py-1.5 rounded-xl text-xs outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", width: "120px" }} />
-          {(startDate || endDate) && (
-            <button onClick={() => { setStartDate(""); setEndDate(""); }}
-              className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10">
-              <X size={9} style={{ color: "rgba(255,255,255,0.3)" }} />
-            </button>
-          )}
-        </div>
-
-        {/* Sort */}
-        <button onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
-          {sortOrder === "desc" ? <ArrowDown size={11} /> : <ArrowUp size={11} />}
-          时间{sortOrder === "desc" ? "降序" : "升序"}
-        </button>
       </div>
       )}
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-6 pt-6 pb-4">
+        {!currentGroup && assetTab === "主体资产" ? (
+          <SubjectAssetGrid
+            subjects={SUBJECT_ASSETS}
+            searchText={searchText}
+            mediaFilter={subjectMediaFilter}
+          />
+        ) : (
+          <>
         {/* ── Group-level view: sub-folders shown directly as cards ── */}
         {currentGroup && (
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
@@ -693,6 +1004,8 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
             <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>暂无文件夹</p>
           </div>
         )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -707,6 +1020,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
   const [detailAsset, setDetailAsset] = useState<AssetItem | null>(null);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const supportsSubjectTab = enableMemberFilter;
   const [collectedIds, setCollectedIds] = useState<Set<string>>(
     new Set(assets.filter((a) => a.collected).map((a) => a.id))
   );
@@ -717,6 +1031,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
   const [endDate, setEndDate] = useState("");
   // Sort
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [subjectMediaFilter, setSubjectMediaFilter] = useState<SubjectMediaFilter>("all");
 
   // Map dateTs to actual dates for range filtering
   // dateTs: 4=today, 3=yesterday, 2=3 days ago, 1=1 week ago
@@ -743,7 +1058,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
       // Tab filter
       if (assetTab === "全部收藏" && !collectedIds.has(a.id)) return false;
       if (assetTab === "历史上传" && a.tab !== "upload") return false;
-      if (assetTab === "主体资产" && a.tab !== "subject") return false;
+      if (supportsSubjectTab && assetTab === "主体资产" && a.tab !== "subject") return false;
       // Collected filter (only for 全部生成 and 历史上传)
       if (collectedFilter && (assetTab === "全部生成" || assetTab === "历史上传") && !collectedIds.has(a.id)) return false;
       // Member filter (empty = all)
@@ -900,7 +1215,11 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
       {/* Tabs */}
       <div className="flex items-end gap-0 px-6 pt-3 flex-shrink-0"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-        {(["全部生成", "历史上传", "主体资产", "全部收藏"] as const).map((tab) => (
+        {(
+          supportsSubjectTab
+            ? (["全部生成", "历史上传", "主体资产", "全部收藏"] as const)
+            : (["全部生成", "历史上传", "全部收藏"] as const)
+        ).map((tab) => (
           <button key={tab} onClick={() => setAssetTab(tab)}
             className="px-4 py-2 text-xs font-medium relative"
             style={{
@@ -916,129 +1235,156 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
       {/* Filter bar */}
       <div className="flex items-center gap-2 px-6 py-3 flex-shrink-0"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-        {/* Search */}
-        <div className="flex items-center gap-2 rounded-xl px-3 py-2"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", minWidth: "180px" }}>
-          <Search size={13} style={{ color: "rgba(255,255,255,0.3)" }} />
-          <input className="bg-transparent text-xs flex-1 outline-none" style={{ color: "rgba(255,255,255,0.6)" }}
-            placeholder="搜索资产..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
-          {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.3)" }} /></button>}
-        </div>
-
-        {/* Type filter */}
-        <div className="relative">
-          <button onClick={() => setShowTypeMenu(!showTypeMenu)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
-            {TYPE_LABELS[typeFilter]}<ChevronDown size={9} />
-          </button>
-          {showTypeMenu && (
-            <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
-              style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "110px" }}
-              onClick={(e) => e.stopPropagation()}>
-              {(["all", "image", "video", "audio", "script"] as AssetType[]).map((t) => (
-                <button key={t} onClick={() => { setTypeFilter(t); setShowTypeMenu(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
-                  style={{ color: typeFilter === t ? "#E87322" : "rgba(255,255,255,0.5)" }}>
-                  {TYPE_LABELS[t]}{typeFilter === t && <Check size={9} className="ml-auto" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Member filter — only for shared assets */}
-        {enableMemberFilter && (
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => setShowMemberMenu(!showMemberMenu)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
-            style={{
-              background: memberFilter.length > 0 ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
-              border: memberFilter.length > 0 ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
-              color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.5)",
-            }}>
-            <User size={12} />
-            {memberFilter.length === 0 ? "全部成员" : `${memberFilter.length}人`}
-            <ChevronDown size={9} />
-          </button>
-          {showMemberMenu && (
-            <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
-              style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "160px" }}
-              onClick={(e) => e.stopPropagation()}>
-              {/* All members button */}
-              <button
-                onClick={() => setMemberFilter([])}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
-                style={{
-                  color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
-                  background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
-                }}>
-                <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
-                全部成员
-              </button>
-              <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-              {MEMBER_DATA.map((member) => {
-                const selected = memberFilter.includes(member.id);
+        {assetTab === "主体资产" ? (
+          <>
+          {/* Search */}
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", minWidth: "180px" }}>
+            <Search size={13} style={{ color: "rgba(255,255,255,0.3)" }} />
+            <input className="bg-transparent text-xs flex-1 outline-none" style={{ color: "rgba(255,255,255,0.6)" }}
+              placeholder="搜索主体资产..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.3)" }} /></button>}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.32)" }}>模态</span>
+            <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              {SUBJECT_MEDIA_FILTER_OPTIONS.map((option) => {
+                const active = subjectMediaFilter === option.value;
                 return (
-                  <button key={member.id} onClick={() => toggleMemberFilter(member.id)}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                  <button
+                    key={option.value}
+                    onClick={() => setSubjectMediaFilter(option.value)}
+                    className="px-3 py-1.5 rounded-lg text-xs transition-colors"
                     style={{
-                      color: selected ? member.avatarColor : "rgba(255,255,255,0.6)",
-                      background: selected ? `${member.avatarColor}12` : "transparent",
+                      background: active ? "rgba(232,115,34,0.16)" : "transparent",
+                      color: active ? "#E87322" : "rgba(255,255,255,0.48)",
                     }}>
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ background: member.avatarColor, fontSize: "8px", fontWeight: 600, color: "#fff" }}>
-                      {member.letter}
-                    </div>
-                    <span className="flex-1">{member.name}</span>
-                    {selected && <Check size={9} style={{ color: member.avatarColor }} />}
+                    {option.label}
                   </button>
                 );
               })}
             </div>
-          )}
-        </div>
-        )}
-
-        {/* Collected filter — only for 全部生成 and 历史上传 */}
-        {(assetTab === "全部生成" || assetTab === "历史上传") && (
-          <button onClick={() => setCollectedFilter(!collectedFilter)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
-            style={{
-              background: collectedFilter ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.05)",
-              border: collectedFilter ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)",
-              color: collectedFilter ? "#E87322" : "rgba(255,255,255,0.5)",
-            }}>
-            <Star size={12} style={{ fill: collectedFilter ? "#E87322" : "transparent" }} />
-            只看收藏
-          </button>
-        )}
-
-        {/* Date filter: start/end */}
-        <div className="flex items-center gap-1.5">
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>日期</span>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-            className="px-2 py-1.5 rounded-xl text-xs outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", width: "120px" }} />
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>至</span>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-            className="px-2 py-1.5 rounded-xl text-xs outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", width: "120px" }} />
-          {(startDate || endDate) && (
-            <button onClick={() => { setStartDate(""); setEndDate(""); }}
-              className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10">
-              <X size={9} style={{ color: "rgba(255,255,255,0.3)" }} />
+          </div>
+          </>
+        ) : (
+          <div
+            className="ml-auto flex items-center rounded-2xl px-2 py-1.5"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 30px rgba(0,0,0,0.14)" }}
+          >
+            <div className="flex items-center gap-2 px-3 min-w-[150px]">
+              <Search size={15} style={{ color: "rgba(255,255,255,0.58)" }} />
+              <input className="bg-transparent text-xs flex-1 outline-none" style={{ color: "rgba(255,255,255,0.72)" }}
+                placeholder="搜索资产..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+              {searchText && <button onClick={() => setSearchText("")}><X size={11} style={{ color: "rgba(255,255,255,0.28)" }} /></button>}
+            </div>
+            <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <div className="flex items-center gap-2 px-2">
+              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.82)", fontWeight: 500 }}>时间</span>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                className="bg-transparent text-xs outline-none"
+                style={{ color: "rgba(255,255,255,0.62)", colorScheme: "dark", width: "112px" }} />
+              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.22)" }}>至</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                className="bg-transparent text-xs outline-none"
+                style={{ color: "rgba(255,255,255,0.62)", colorScheme: "dark", width: "112px" }} />
+              {(startDate || endDate) && (
+                <button onClick={() => { setStartDate(""); setEndDate(""); }}
+                  className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10">
+                  <X size={9} style={{ color: "rgba(255,255,255,0.3)" }} />
+                </button>
+              )}
+            </div>
+            <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <div className="relative">
+              <button onClick={() => setShowTypeMenu(!showTypeMenu)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+                style={{ color: "rgba(255,255,255,0.82)" }}>
+                {TYPE_LABELS[typeFilter]}
+                <ChevronDown size={11} />
+              </button>
+              {showTypeMenu && (
+                <div className="absolute top-full mt-2 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                  style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "110px" }}
+                  onClick={(e) => e.stopPropagation()}>
+                  {(["all", "image", "video", "audio", "script"] as AssetType[]).map((t) => (
+                    <button key={t} onClick={() => { setTypeFilter(t); setShowTypeMenu(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                      style={{ color: typeFilter === t ? "#E87322" : "rgba(255,255,255,0.5)" }}>
+                      {TYPE_LABELS[t]}{typeFilter === t && <Check size={9} className="ml-auto" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {enableMemberFilter && (
+              <>
+              <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+              <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setShowMemberMenu(!showMemberMenu)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+                  style={{ color: memberFilter.length > 0 ? "#E87322" : "rgba(255,255,255,0.82)" }}>
+                  <User size={12} />
+                  {memberFilter.length === 0 ? "全部成员" : `${memberFilter.length}人`}
+                  <ChevronDown size={11} />
+                </button>
+                {showMemberMenu && (
+                  <div className="absolute top-full mt-2 left-0 z-20 rounded-xl overflow-hidden shadow-2xl"
+                    style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", minWidth: "160px" }}
+                    onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setMemberFilter([])}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                      style={{
+                        color: memberFilter.length === 0 ? "#E87322" : "rgba(255,255,255,0.6)",
+                        background: memberFilter.length === 0 ? "rgba(232,115,34,0.08)" : "transparent",
+                      }}>
+                      <Check size={9} style={{ color: memberFilter.length === 0 ? "#E87322" : "transparent" }} />
+                      全部成员
+                    </button>
+                    <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+                    {MEMBER_DATA.map((member) => {
+                      const selected = memberFilter.includes(member.id);
+                      return (
+                        <button key={member.id} onClick={() => toggleMemberFilter(member.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-left hover:bg-white/5"
+                          style={{
+                            color: selected ? member.avatarColor : "rgba(255,255,255,0.6)",
+                            background: selected ? `${member.avatarColor}12` : "transparent",
+                          }}>
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ background: member.avatarColor, fontSize: "8px", fontWeight: 600, color: "#fff" }}>
+                            {member.letter}
+                          </div>
+                          <span className="flex-1">{member.name}</span>
+                          {selected && <Check size={9} style={{ color: member.avatarColor }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              </>
+            )}
+            {(assetTab === "全部生成" || assetTab === "历史上传") && (
+              <>
+              <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+              <button onClick={() => setCollectedFilter(!collectedFilter)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+                style={{ color: collectedFilter ? "#E87322" : "rgba(255,255,255,0.82)" }}>
+                <Star size={12} style={{ fill: collectedFilter ? "#E87322" : "transparent" }} />
+                只看收藏
+              </button>
+              </>
+            )}
+            <div className="mx-2 h-5 w-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            <button onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
+              style={{ color: "rgba(255,255,255,0.82)" }}>
+              {sortOrder === "desc" ? <ArrowDown size={12} /> : <ArrowUp size={12} />}
+              时间
             </button>
-          )}
-        </div>
-
-        {/* Sort */}
-        <button onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
-          {sortOrder === "desc" ? <ArrowDown size={11} /> : <ArrowUp size={11} />}
-          时间{sortOrder === "desc" ? "降序" : "升序"}
-        </button>
+          </div>
+        )}
 
         {/* Batch */}
         <button onClick={() => setBatchMode(!batchMode)}
@@ -1068,7 +1414,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
       </div>
 
       {/* Batch bar */}
-      {batchMode && selectedIds.size > 0 && (
+      {assetTab !== "主体资产" && batchMode && selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-6 py-2.5 flex-shrink-0"
           style={{ background: "rgba(232,115,34,0.08)", borderBottom: "1px solid rgba(232,115,34,0.2)" }}>
           <button onClick={selectAll} className="flex items-center gap-2 text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
@@ -1098,7 +1444,13 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-6 py-4">
-        {viewMode === "grid" ? (
+        {assetTab === "主体资产" ? (
+          <SubjectAssetGrid
+            subjects={SUBJECT_ASSETS}
+            searchText={searchText}
+            mediaFilter={subjectMediaFilter}
+          />
+        ) : viewMode === "grid" ? (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
             {filtered.map((a) => renderGridCard(a))}
             {filtered.length === 0 && (
