@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
   Users, User, TreePalm, Package, Sparkles, Upload,
@@ -1535,6 +1535,7 @@ const CURRENT_USER = PROJECT_MEMBERS[0];
 
 export function ProjectSubjectsPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   // ── Sidebar state ──────────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1563,6 +1564,14 @@ export function ProjectSubjectsPage() {
   const [inlineEditValue, setInlineEditValue] = useState("");
   const [createType, setCreateType] = useState<SubjectType>("sd_ip");
   const [sdIpView, setSdIpView] = useState<SubjectItem | null>(null);
+
+  const openCreateSubject = (type: SubjectType) => {
+    setCreateType(type);
+    setDetailSubject(null);
+    setDetailMode("create");
+    setSidebarOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const filteredSubjects = subjects.filter((subject) => {
     if (subject.type !== activeType) return false;
@@ -1599,13 +1608,28 @@ export function ProjectSubjectsPage() {
 
   const openDetail = (subject: SubjectItem) => { setDetailSubject(subject); setDetailMode("view"); };
   const openEdit = (subject: SubjectItem) => { setDetailSubject(subject); setDetailMode("edit"); };
-  const openCreate = (type: SubjectType) => { setCreateType(type); setDetailSubject(null); setDetailMode("create"); };
+  const openCreate = openCreateSubject;
+
+  useEffect(() => {
+    const type = new URLSearchParams(window.location.search).get("createType") as SubjectType | null;
+    if (type && ["sd_ip", "character", "scene", "prop"].includes(type)) {
+      openCreateSubject(type);
+    }
+  }, []);
 
   const handleDeleteSingle = (subjectId: string) => {
     setSubjects(prev => prev.filter(s => s.id !== subjectId));
     setDetailSubject(null);
     toast.success("主体已删除");
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get("createType");
+    if (type === "character" || type === "scene" || type === "prop" || type === "sd_ip") {
+      openCreateSubject(type);
+    }
+  }, []);
 
   return (
     <div className="flex h-full overflow-hidden relative" style={{ background: "#140F09" }}>

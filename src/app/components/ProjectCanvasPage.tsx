@@ -2,15 +2,13 @@ import { useState } from "react";
 import {
   Layers, Eye, EyeOff, Lock, Unlock, ChevronRight, Plus, Image as LucideImage, Type,
   Minus, ZoomIn, ZoomOut, Move, MousePointer, Maximize2, MoreHorizontal,
-  Upload, Package, Star, Search, Film, Video,
   ChevronLeft,
 } from "lucide-react";
-import { toast } from "sonner";
 import { ProjectAssetsSidebarPanel } from "./ProjectAssetsSidebarPanel";
+import { StoryboardSidebarPanel } from "./StoryboardSidebarPanel";
 
 type LayerType = "group" | "image" | "text" | "shape";
 type CanvasSidebarTab = "files" | "assets" | "storyboard";
-type AssetSubTab = "generate" | "upload" | "subject" | "collect";
 
 interface Layer {
   id: string;
@@ -46,22 +44,6 @@ const TYPE_COLORS: Record<LayerType, string> = {
   group: "#E87322", image: "#4A9EE0", text: "#7BC47A", shape: "#9B59B6",
 };
 
-const CANVAS_ASSETS = [
-  { id: "ca1", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "白发女侠_v1.jpg", type: "image" as const },
-  { id: "ca2", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "角色立绘.jpg", type: "image" as const },
-  { id: "ca3", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "山林背景.jpg", type: "image" as const },
-  { id: "ca4", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "古城背景.jpg", type: "image" as const },
-  { id: "ca5", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "道具宝剑.jpg", type: "image" as const },
-  { id: "ca6", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "动效_v1.mp4", type: "video" as const },
-];
-
-const CANVAS_STORYBOARD = [
-  { id: "sp1", no: "01", desc: "女主角出场，云雾缭绕", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70" },
-  { id: "sp2", no: "02", desc: "近景，持剑回眸", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70" },
-  { id: "sp3", no: "03", desc: "全景，古城楼背景", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70" },
-  { id: "sp4", no: "04", desc: "战斗特效，剑气飞舞", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70" },
-];
-
 export function ProjectCanvasPage() {
   const [layers, setLayers] = useState<Layer[]>(INITIAL_LAYERS);
   const [selectedLayerId, setSelectedLayerId] = useState<string>("l1");
@@ -69,8 +51,6 @@ export function ProjectCanvasPage() {
   const [zoom, setZoom] = useState(75);
   const [tool, setTool] = useState<"select" | "move">("select");
   const [sidebarTab, setSidebarTab] = useState<CanvasSidebarTab>("files");
-  const [assetSubTab, setAssetSubTab] = useState<AssetSubTab>("generate");
-  const [assetSearch, setAssetSearch] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const toggleLayerProp = (layerList: Layer[], id: string, prop: "visible" | "locked" | "expanded"): Layer[] => {
@@ -111,14 +91,6 @@ export function ProjectCanvasPage() {
       </div>
     );
   };
-
-  const filteredAssets = CANVAS_ASSETS.filter((a) => {
-    if (assetSubTab === "collect") return false;
-    if (assetSubTab === "subject") return false;
-    if (assetSubTab === "upload") return false;
-    if (assetSearch && !a.name.toLowerCase().includes(assetSearch.toLowerCase())) return false;
-    return true;
-  });
 
   const renderSidebarContent = () => {
     if (sidebarTab === "files") {
@@ -161,33 +133,7 @@ export function ProjectCanvasPage() {
     }
 
     if (sidebarTab === "storyboard") {
-      return (
-        <div className="flex flex-col h-full">
-          <div className="px-3 py-2.5 flex items-center justify-between flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <div className="flex items-center gap-1.5">
-              <Film size={12} style={{ color: "#E87322" }} />
-              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)" }}>分镜概览</span>
-            </div>
-            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", fontSize: "10px" }}>{CANVAS_STORYBOARD.length} 帧</span>
-          </div>
-          <div className="flex-1 overflow-auto px-2 pb-2 flex flex-col gap-1.5 pt-1.5">
-            {CANVAS_STORYBOARD.map((panel) => (
-              <div key={panel.id} className="flex gap-2 rounded-lg overflow-hidden cursor-pointer group transition-colors hover:bg-white/5 p-1.5">
-                <div className="rounded overflow-hidden flex-shrink-0" style={{ width: "60px", height: "44px" }}>
-                  <img src={panel.src} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                </div>
-                <div className="flex flex-col justify-center min-w-0">
-                  <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>#{panel.no}</span>
-                  <span className="text-xs truncate mt-0.5" style={{ color: "rgba(255,255,255,0.4)", fontSize: "10px" }}>{panel.desc}</span>
-                </div>
-              </div>
-            ))}
-            <button className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs mt-1 hover:bg-white/5 transition-colors" style={{ border: "1px dashed rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)" }}>
-              <Plus size={11} />新增分镜
-            </button>
-          </div>
-        </div>
-      );
+      return <StoryboardSidebarPanel />;
     }
 
     return null;

@@ -175,6 +175,16 @@ function MemberRow({ memberId }: { memberId?: string }) {
 
 // ─── Generate Asset Detail Modal ──────────────────────────────────────────────
 function GenerateAssetModal({ asset, open, onClose }: { asset: GenerateAsset | null; open: boolean; onClose: () => void }) {
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [title, setTitle] = useState("");
+
+  useEffect(() => {
+    if (asset && open) {
+      setTitle(asset.name);
+      setIsRenaming(false);
+    }
+  }, [asset, open]);
+
   if (!asset) return null;
 
   return (
@@ -213,7 +223,38 @@ function GenerateAssetModal({ asset, open, onClose }: { asset: GenerateAsset | n
               style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="flex items-center gap-2">
                 <Sparkles size={13} style={{ color: "#E87322" }} />
-                <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>图片生成</span>
+                {isRenaming ? (
+                  <input
+                    autoFocus
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    onBlur={() => setIsRenaming(false)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") setIsRenaming(false);
+                      if (event.key === "Escape") {
+                        setTitle(asset.name);
+                        setIsRenaming(false);
+                      }
+                    }}
+                    className="w-[170px] rounded-lg border bg-transparent px-2.5 py-1 text-sm font-semibold outline-none"
+                    style={{ borderColor: "rgba(232,115,34,0.28)", color: "rgba(255,255,255,0.9)" }}
+                  />
+                ) : (
+                  <>
+                    <span className="truncate text-sm font-semibold" style={{ color: "rgba(255,255,255,0.9)", maxWidth: "170px" }}>
+                      {title || asset.name}
+                    </span>
+                    <button
+                      type="button"
+                      className="flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-white/6"
+                      style={{ color: "rgba(255,255,255,0.38)" }}
+                      onClick={() => setIsRenaming(true)}
+                      title="重命名"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  </>
+                )}
               </div>
               <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{asset.date}</span>
             </div>

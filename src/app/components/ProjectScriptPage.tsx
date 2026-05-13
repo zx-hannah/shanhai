@@ -26,6 +26,8 @@ interface EpisodeItem {
   image?: string;
 }
 
+type ExtractScope = "episode" | "global";
+
 /* ── Mock Data ──────────────────────────────────────────────────────────────── */
 
 const MOCK_CHAPTERS: Chapter[] = [
@@ -129,6 +131,94 @@ const ITEM_TYPE_CONFIG: Record<ItemType, { label: string; icon: typeof User; col
 
 const WORD_LIMIT = 2000;
 
+const EXTRACT_PREVIEW_IMAGES: Record<ItemType, string> = {
+  character: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=80&h=80&fit=crop&crop=face",
+  scene: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=80&h=80&fit=crop",
+  prop: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=80&h=80&fit=crop",
+};
+
+function normalizeSubjectName(value: string) {
+  return value
+    .replace(/[△◆•]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildEpisodeItemId(chapterId: string, type: ItemType, name: string) {
+  return `${chapterId}-${type}-${name}`.replace(/\s+/g, "-");
+}
+
+function extractChapterSubjects(chapter: Chapter) {
+  const text = chapter.content;
+  const result: EpisodeItem[] = [];
+  const seen = new Set<string>();
+  const addItem = (type: ItemType, name: string) => {
+    const cleaned = normalizeSubjectName(name);
+    const invalid = !cleaned || cleaned.length < 2 || ["字幕", "字幕&OS", "人", "场景"].includes(cleaned);
+    if (invalid) return;
+    const id = buildEpisodeItemId(chapter.id, type, cleaned);
+    if (seen.has(id)) return;
+    seen.add(id);
+    result.push({
+      id,
+      chapterId: chapter.id,
+      type,
+      name: cleaned,
+      image: EXTRACT_PREVIEW_IMAGES[type],
+    });
+  };
+
+  text.split("\n").forEach((line) => {
+    const row = line.trim();
+    if (!row) return;
+
+    const sceneMatch = row.match(/^(\d+-\d+)?\s*([^\d]+?)\s+(日|夜)\s+(内|外)$/);
+    if (sceneMatch?.[2]) addItem("scene", sceneMatch[2]);
+
+    const castMatch = row.match(/^人[：:]\s*(.+)$/);
+    if (castMatch?.[1]) {
+      castMatch[1]
+        .split(/[、,，\/和]+/)
+        .map((item) => item.trim())
+        .forEach((item) => addItem("character", item));
+    }
+
+    const speakerMatch = row.match(/^([^\s：:]{2,12})[：:]/);
+    if (speakerMatch?.[1] && !row.startsWith("字幕") && !row.startsWith("字幕&OS") && !row.startsWith("人：")) {
+      addItem("character", speakerMatch[1]);
+    }
+
+    [
+      ["character", ["老汉", "三井秀赖", "尉官佐藤", "女八路", "婴儿", "日本军官"]],
+      ["scene", ["老屋", "冀中平原", "村庄", "三井秀赖办公室", "日军指挥部", "太行山脉"]],
+      ["prop", ["地图残片", "装甲车", "铁锹", "绘图工具"]],
+    ].forEach(([type, keywords]) => {
+      keywords.forEach((keyword) => {
+        if (row.includes(keyword)) addItem(type as ItemType, keyword);
+      });
+    });
+  });
+
+  return result;
+}
+
+function extractSubjectsFromChapters(chapters: Chapter[], scope: ExtractScope, activeChapterId: string) {
+  const targetChapters = scope === "global" ? chapters : chapters.filter((chapter) => chapter.id === activeChapterId);
+  const nextItems: EpisodeItem[] = [];
+  const existingKeys = new Set<string>();
+
+  targetChapters.forEach((chapter) => {
+    extractChapterSubjects(chapter).forEach((item) => {
+      const key = `${item.chapterId}:${item.type}:${item.name}`;
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      nextItems.push(item);
+    });
+  });
+
+  return nextItems;
+}
+
 function GlobalSettings({
   chapters,
   activeChapterId,
@@ -208,7 +298,6 @@ function GlobalSettings({
         </h3>
       </div>
 
-      {/* ── Episode card ── */}
       <div className="px-4 pt-4 pb-3 flex-shrink-0">
         {/* Episode header with word count */}
         <div className="flex items-end justify-between mb-3">
@@ -228,27 +317,30 @@ function GlobalSettings({
 
         {/* Type tabs — merged stat + navigation */}
         <div className="grid grid-cols-3 gap-1.5">
-          {(Object.entries(ITEM_TYPE_CONFIG) as [ItemType, typeof ITEM_TYPE_CONFIG[ItemType]][]).map(([type, cfg]) => (
-            <button
-              key={type}
-              onClick={() => setActiveTab(type)}
-              className="flex flex-col items-center gap-0.5 py-2 rounded-lg transition-all relative"
-              style={{
-                background: activeTab === type ? `${cfg.color}12` : "transparent",
-              }}
-            >
-              {activeTab === type && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-[2px] rounded-full" style={{ background: cfg.color }} />
-              )}
-              <cfg.icon size={13} style={{ color: activeTab === type ? cfg.color : "rgba(255,255,255,0.25)" }} />
-              <span className="text-[10px]" style={{ color: activeTab === type ? cfg.color : "rgba(255,255,255,0.35)" }}>
-                {cfg.label}
-              </span>
-              <span className="text-[9px]" style={{ color: activeTab === type ? cfg.color : "rgba(255,255,255,0.2)" }}>
-                {typeCounts[type]}
-              </span>
-            </button>
-          ))}
+          {(["character", "scene", "prop"] as ItemType[]).map((type) => {
+            const cfg = ITEM_TYPE_CONFIG[type];
+            const isActive = activeTab === type;
+            const Icon = cfg.icon;
+            return (
+              <button
+                key={type}
+                onClick={() => setActiveTab(type)}
+                className="flex flex-col items-center gap-0.5 py-2 rounded-lg transition-all relative"
+                style={{ background: isActive ? `${cfg.color}12` : "transparent" }}
+              >
+                {isActive && (
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-[2px] rounded-full" style={{ background: cfg.color }} />
+                )}
+                <Icon size={13} style={{ color: isActive ? cfg.color : "rgba(255,255,255,0.25)" }} />
+                <span className="text-[10px]" style={{ color: isActive ? cfg.color : "rgba(255,255,255,0.35)" }}>
+                  {cfg.label}
+                </span>
+                <span className="text-[9px]" style={{ color: isActive ? cfg.color : "rgba(255,255,255,0.2)" }}>
+                  {typeCounts[type]}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -330,12 +422,37 @@ function GlobalSettings({
               {/* Results */}
               <div className="overflow-auto" style={{ maxHeight: "200px" }}>
                 {filteredSubjects.length === 0 ? (
-                  <div className="flex flex-col items-center py-6" style={{ color: "rgba(255,255,255,0.15)" }}>
-                    <Search size={14} className="mb-1.5" />
-                    <span className="text-[11px]">{searchQuery ? "未找到匹配的主体" : "所有主体已添加完毕"}</span>
+                  <div className="flex flex-col items-center gap-3 py-6 px-4" style={{ color: "rgba(255,255,255,0.15)" }}>
+                    <Search size={14} />
+                    <span className="text-[11px]">{searchQuery ? "未找到匹配的主体" : "没有可添加的主体"}</span>
+                    <div className="flex flex-col gap-2 w-full">
+                      <button
+                        onClick={() => onNavigate("subjects", activeChapter?.chapterNo ? `ep${activeChapter.chapterNo}` : undefined)}
+                        className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px]"
+                        style={{ background: "rgba(232,115,34,0.12)", color: "#E87322" }}
+                      >
+                        <User size={11} />去主体模块添加
+                      </button>
+                      <button
+                        onClick={() => setShowExtractDialog(true)}
+                        className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px]"
+                        style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.65)" }}
+                      >
+                        <Sparkles size={11} />自动提取主体
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="py-1">
+                    <div className="px-2 pt-1 pb-2">
+                      <button
+                        onClick={() => onNavigate("subjects", `createType=${activeTab}`)}
+                        className="w-full rounded-md px-2 py-1.5 text-[10px] transition-colors"
+                        style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.65)", border: "1px solid rgba(255,255,255,0.08)" }}
+                      >
+                        新建{ITEM_TYPE_CONFIG[activeTab].label}
+                      </button>
+                    </div>
                     {filteredSubjects.map((subject) => (
                       <button
                         key={subject.id}
@@ -869,6 +986,100 @@ function ScriptParseDialog({
   );
 }
 
+function SubjectExtractDialog({
+  open,
+  onClose,
+  onConfirm,
+  chapterTitle,
+  chapterCount,
+  totalWords,
+  cost,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (scope: ExtractScope) => void;
+  chapterTitle: string;
+  chapterCount: number;
+  totalWords: number;
+  cost: number;
+}) {
+  const [scope, setScope] = useState<ExtractScope>("episode");
+
+  useEffect(() => {
+    if (open) setScope("episode");
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
+      <div className="rounded-2xl w-[520px] max-w-[calc(100vw-32px)] overflow-hidden" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center gap-2">
+            <Sparkles size={15} style={{ color: "#E87322" }} />
+            <span className="text-sm text-white font-medium">一键提取主体</span>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10">
+            <X size={14} style={{ color: "rgba(255,255,255,0.45)" }} />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>
+            从《{chapterTitle}》提取主体，支持按当前剧集或全局范围扫描。
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>剧集集数</div>
+              <div className="mt-1 text-2xl font-semibold text-white">{chapterCount}</div>
+            </div>
+            <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>总字数</div>
+              <div className="mt-1 text-2xl font-semibold text-white">{totalWords}</div>
+            </div>
+            <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>需消耗生产栗</div>
+              <div className="mt-1 text-2xl font-semibold" style={{ color: "#7CFFD0" }}>{cost}</div>
+            </div>
+          </div>
+          <div className="rounded-xl px-4 py-3 text-xs" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)" }}>
+            提取出的主体将追加到主体库，不会覆盖已有内容。
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { key: "episode" as ExtractScope, title: "分集提取", desc: "只提取当前剧集中的主体", accent: "rgba(232,115,34,0.12)" },
+              { key: "global" as ExtractScope, title: "全局提取", desc: "扫描全部剧本，汇总主体", accent: "rgba(123,60,196,0.12)" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                onClick={() => setScope(item.key)}
+                className="rounded-xl p-4 text-left transition-colors"
+                style={{
+                  background: scope === item.key ? item.accent : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${scope === item.key ? "rgba(232,115,34,0.28)" : "rgba(255,255,255,0.06)"}`,
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white font-medium">{item.title}</span>
+                  {scope === item.key && <Check size={12} style={{ color: "#E87322" }} />}
+                </div>
+                <div className="mt-1 text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>{item.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-xs" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
+            取消
+          </button>
+          <button onClick={() => onConfirm(scope)} className="px-4 py-2 rounded-lg text-xs text-white" style={{ background: "#E87322" }}>
+            开始提取
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main Component ─────────────────────────────────────────────────────────── */
 
 export function ProjectScriptPage() {
@@ -882,6 +1093,8 @@ export function ProjectScriptPage() {
   const [editContent, setEditContent] = useState("");
   const [episodeItems, setEpisodeItems] = useState<EpisodeItem[]>(MOCK_EPISODE_ITEMS);
   const [showParseDialog, setShowParseDialog] = useState(false);
+  const [showExtractDialog, setShowExtractDialog] = useState(false);
+  const extractCost = Math.max(1, Math.ceil(chapters.reduce((sum, chapter) => sum + chapter.content.length, 0) / 1000));
 
   const handleParseConfirm = (parsed: ParsedEpisode[]) => {
     const newChapters = parsed.map((ep, idx) => ({
@@ -954,6 +1167,25 @@ export function ProjectScriptPage() {
       c.id === id ? { ...c, title: newName } : c
     ));
     toast.success("已重命名");
+  };
+
+  const handleExtractSubjects = (scope: ExtractScope) => {
+    const extracted = extractSubjectsFromChapters(chapters, scope, activeChapterId);
+    if (extracted.length === 0) {
+      toast.message("没有提取到主体");
+      return;
+    }
+    setEpisodeItems((prev) => {
+      const next = [...prev];
+      const existing = new Set(next.map((item) => `${item.chapterId}:${item.type}:${item.name}`));
+      extracted.forEach((item) => {
+        const key = `${item.chapterId}:${item.type}:${item.name}`;
+        if (!existing.has(key)) next.push(item);
+      });
+      return next;
+    });
+    setShowExtractDialog(false);
+    toast.success(scope === "global" ? "已完成全局主体提取" : "已完成分集主体提取");
   };
 
   return (
@@ -1029,13 +1261,22 @@ export function ProjectScriptPage() {
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => setShowParseDialog(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
-                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.08)" }}
-              >
-                <Sparkles size={11} />剧本解析
-              </button>
+              <>
+                <button
+                  onClick={() => setShowParseDialog(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  <Sparkles size={11} />剧本解析
+                </button>
+                <button
+                  onClick={() => setShowExtractDialog(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
+                  style={{ background: "rgba(232,115,34,0.12)", color: "#E87322", border: "1px solid rgba(232,115,34,0.18)" }}
+                >
+                  <Sparkles size={11} />从剧本提取主体
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1098,6 +1339,15 @@ export function ProjectScriptPage() {
         open={showParseDialog}
         onClose={() => setShowParseDialog(false)}
         onConfirm={handleParseConfirm}
+      />
+      <SubjectExtractDialog
+        open={showExtractDialog}
+        onClose={() => setShowExtractDialog(false)}
+        onConfirm={handleExtractSubjects}
+        chapterTitle={activeChapter.title}
+        chapterCount={chapters.length}
+        totalWords={chapters.reduce((sum, chapter) => sum + chapter.content.length, 0)}
+        cost={extractCost}
       />
     </div>
   );

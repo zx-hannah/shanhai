@@ -1494,506 +1494,212 @@ export function ProjectHomePage() {
           </div>
         </div>
 
-      {/* ── Premium Stats Dashboard ── */}
+      {/* ── Dashboard ── */}
         <div className="mb-6">
-          {/* Hero Row: Budget (primary) + Progress + Efficiency */}
-          <div className={`grid gap-4 mb-4 ${projectPerm === "管理" ? "grid-cols-1" : "grid-cols-2"}`}>
-
-            {/* ── Hero Budget Card ── */}
-            <div className="relative rounded-2xl overflow-hidden" style={{ minHeight: "140px" }}>
-              {/* Ambient glow */}
-              <div className="absolute inset-0 opacity-30" style={{
-                background: `radial-gradient(ellipse 80% 50% at 30% 50%, rgba(232,115,34,0.4) 0%, transparent 70%)`,
-                filter: "blur(40px)"
-              }} />
-              {/* Base gradient */}
-              <div className="absolute inset-0" style={{
-                background: "linear-gradient(135deg, #1E1612 0%, #18120E 50%, #14110E 100%)"
-              }} />
-              {/* Decorative elements */}
-              <div className="absolute top-0 right-0 w-32 h-32 opacity-10" style={{
-                background: "radial-gradient(circle at 100% 0%, rgba(232,115,34,0.6) 0%, transparent 60%)"
-              }} />
-
-              <div className="relative p-5">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{
-                      background: "rgba(232,115,34,0.2)",
-                      boxShadow: "0 2px 8px rgba(232,115,34,0.3)"
-                    }}>
-                      <Coins size={14} style={{ color: "#E87322" }} />
-                    </div>
-                    <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.55)", fontWeight: 500 }}>生产栗预算</span>
-                    <StatTooltip text="项目已消耗生产栗 / 总配额。超过 80% 时进入预警区间" />
-                  </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 mb-4">
+            <div
+              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.18) 0%, rgba(232,115,34,0.08) 100%)", border: "1px solid rgba(232,115,34,0.18)", minHeight: "128px" }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(232,115,34,0.18)" }}>
+                  <Coins size={14} style={{ color: "#E87322" }} />
+                </div>
+                <div className="flex items-center gap-2">
                   {projectPerm === "管理" && (
                     <button
-                      onClick={() => setEditingTotalQuota(!editingTotalQuota)}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:opacity-90 transition-all"
-                      style={{
-                        background: editingTotalQuota ? "rgba(232,115,34,0.25)" : "rgba(255,255,255,0.08)",
-                        color: editingTotalQuota ? "#E87322" : "rgba(255,255,255,0.7)",
-                        border: `1px solid ${editingTotalQuota ? "rgba(232,115,34,0.4)" : "rgba(255,255,255,0.15)"}`,
-                        fontSize: "11px",
-                        fontWeight: 500,
-                      }}>
-                      <Edit2 size={12} />{editingTotalQuota ? "取消" : "配额"}
+                      onClick={() => setEditingTotalQuota(v => !v)}
+                      className="px-2.5 py-1 rounded-lg transition-colors hover:opacity-90"
+                      style={{ background: "rgba(232,115,34,0.14)", color: "#E87322", border: "1px solid rgba(232,115,34,0.2)", fontSize: "11px", fontWeight: 500 }}
+                    >
+                      {editingTotalQuota ? "收起" : "编辑"}
                     </button>
                   )}
                 </div>
-
-                {!editingTotalQuota && (
-                  <>
-                    {/* Large typography */}
-                    <div className="flex items-baseline gap-2 mb-3">
-                      <span style={{
-                        fontSize: "42px",
-                        fontWeight: 700,
-                        color: "rgba(255,255,255,0.95)",
-                        letterSpacing: "-1px",
-                        lineHeight: 1
-                      }}>{project.tokenUsed.toLocaleString()}</span>
-                      <span style={{
-                        fontSize: "14px",
-                        color: "rgba(255,255,255,0.4)",
-                        marginBottom: "6px"
-                      }}>已消耗</span>
-                      <span className="mx-2" style={{ color: "rgba(255,255,255,0.2)" }}>·</span>
-                      <span style={{
-                        fontSize: "18px",
-                        color: "rgba(255,255,255,0.6)",
-                        marginBottom: "4px"
-                      }}>{localTokenTotal.toLocaleString()}</span>
-                      <span style={{
-                        fontSize: "12px",
-                        color: "rgba(255,255,255,0.35)",
-                        marginBottom: "3px"
-                      }}>总配额</span>
-                    </div>
-
-                    {/* Animated progress bar */}
-                    <div className="relative w-full rounded-full overflow-hidden" style={{ height: "8px", background: "rgba(255,255,255,0.08)" }}>
-                      <div className="absolute inset-0 rounded-full" style={{
-                        width: `${Math.min(100, tokenPercent)}%`,
-                        background: tokenPercent > 80
-                          ? "linear-gradient(90deg, #ff6b6b 0%, #ff8e8e 50%, #ff6b6b 100%)"
-                          : "linear-gradient(90deg, #E87322 0%, #F5A623 50%, #E87322 100%)",
-                        boxShadow: tokenPercent > 80
-                          ? "0 0 20px rgba(255,107,107,0.5)"
-                          : "0 0 20px rgba(232,115,34,0.5)",
-                        transition: "width 0.8s cubic-bezier(0.4, 0, 0.2, 1)"
-                      }} />
-                      {/* Shimmer effect */}
-                      <div className="absolute inset-0 opacity-60" style={{
-                        background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%)",
-                        animation: "shimmer 2s infinite",
-                        width: "100%"
-                      }} />
-                    </div>
-
-                    {/* Status indicators */}
-                    <div className="flex items-center gap-3 mt-3">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full" style={{
-                          background: tokenPercent > 80 ? "#ff6b6b" : "#4AC678",
-                          boxShadow: tokenPercent > 80 ? "0 0 6px #ff6b6b" : "0 0 6px #4AC678"
-                        }} />
-                        <span style={{
-                          fontSize: "11px",
-                          color: tokenPercent > 80 ? "#ff6b6b" : "rgba(255,255,255,0.5)"
-                        }}>
-                          剩余 {projectBalance.toLocaleString()} 颗 ({100 - tokenPercent}%)
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {editingTotalQuota && (
-                  <InlineTotalQuotaEditor
-                    currentConsumed={project.tokenUsed}
-                    currentTotal={localTokenTotal}
-                    onSave={(v) => { setLocalTokenTotal(v); setEditingTotalQuota(false); }}
-                    onCancel={() => setEditingTotalQuota(false)}
-                  />
-                )}
               </div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目配额</div>
+              <div className="mt-2 flex items-end gap-2">
+                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{localTokenTotal.toLocaleString()}</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>生产栗</span>
+              </div>
+              <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div style={{ width: `${Math.min(100, tokenPercent)}%`, height: "100%", background: tokenPercent > 80 ? "linear-gradient(90deg, #ff6b6b, #ff9b9b)" : "linear-gradient(90deg, #E87322, #F5A623)" }} />
+              </div>
+              <div className="mt-2 flex items-center justify-between" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
+                <span>已用 {project.tokenUsed.toLocaleString()}</span>
+                <span>剩余 {projectBalance.toLocaleString()}</span>
+              </div>
+              
             </div>
 
-
-            {/* ── Member Card for non-admin ── */}
-            {projectPerm !== "管理" && (() => {
-              const myUsed = membersWithPerm[0]?.tokenUsed ?? 0;
-              const myQuota = memberQuotas[0];
-              const myTotal = myQuota?.type === "unlimited" ? 0 : (myQuota?.total ?? 0);
-              const myRemaining = myQuota?.type === "unlimited" ? Infinity : (myQuota?.remaining ?? 0);
-              const myPct = myTotal > 0 ? Math.round((myUsed / myTotal) * 100) : 0;
-              return (
-                <div className="relative rounded-2xl p-5 flex flex-col" style={{
-                  background: "linear-gradient(180deg, #1A1510 0%, #161210 100%)",
-                  border: "1px solid rgba(255,255,255,0.06)"
-                }}>
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <Coins size={11} style={{ color: "rgba(232,115,34,0.6)" }} />
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>我的消耗</span>
-                  </div>
-                  <div className="flex items-baseline gap-2 mb-3">
-                    <span style={{ fontSize: "28px", fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>{myUsed.toLocaleString()}</span>
-                    {myQuota?.type !== "unlimited" && myTotal > 0 && (
-                      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}>/{myTotal.toLocaleString()}</span>
-                    )}
-                    {myQuota?.type === "unlimited" && (
-                      <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "10px", background: "rgba(74,198,120,0.12)", color: "#4AC678" }}>无限制</span>
-                    )}
-                  </div>
-                  {myQuota?.type !== "unlimited" && myTotal > 0 && (
-                    <div className="w-full rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.08)" }}>
-                      <div className="h-full rounded-full" style={{
-                        width: `${Math.min(100, myPct)}%`,
-                        background: myPct > 80 ? "#ff6b6b" : "#E87322",
-                        transition: "width 0.6s"
-                      }} />
-                    </div>
-                  )}
-                  <div className="text-xs mt-2" style={{ color: "rgba(255,255,255,0.35)" }}>
-                    {myQuota?.type === "unlimited" ? "无额度限制" : `剩余 ${myRemaining.toLocaleString()} 颗`}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Secondary Row: Members (full width for admin) + Project Stats (full width) */}
-          {projectPerm === "管理" && (
-          <>
-            {/* ── Members Overview ── */}
-            <div className="rounded-2xl p-4 flex flex-col mb-4" style={{
-              background: "#1A1510",
-              border: "1px solid rgba(255,255,255,0.06)"
-            }}>
+            <button
+              onClick={() => setActiveTab("progress")}
+              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.12) 0%, rgba(232,115,34,0.04) 100%)", border: "1px solid rgba(232,115,34,0.14)", minHeight: "128px" }}
+            >
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(232,115,34,0.15)" }}>
-                    <Users size={11} style={{ color: "#E87322" }} />
-                  </div>
-                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>参与成员</span>
-                </div>
-                <button
-                  onClick={() => setShowMemberModal(true)}
-                  className="px-2 py-1 rounded-lg hover:opacity-80 transition-opacity"
-                  style={{ background: "rgba(232,115,34,0.1)", color: "#E87322", fontSize: "10px", fontWeight: 500 }}>
-                  管理成员
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="flex items-center" style={{ marginLeft: "-6px" }}>
-                  {activeMembers.slice(0, 5).map((m, i) => (
-                    <div key={i} className="w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{
-                        background: MEMBER_COLORS[i % MEMBER_COLORS.length],
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        color: "#fff",
-                        border: "2px solid #1A1510",
-                        marginLeft: i > 0 ? "-10px" : "0",
-                        zIndex: 10 - i,
-                        boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
-                      }}>
-                      {m.avatar}
-                    </div>
-                  ))}
-                  {activeMembers.length > 5 && (
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{
-                        background: "rgba(255,255,255,0.1)",
-                        fontSize: "10px",
-                        color: "rgba(255,255,255,0.5)",
-                        border: "2px solid #1A1510",
-                        marginLeft: "-10px",
-                        zIndex: 3
-                      }}>
-                      +{activeMembers.length - 5}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span style={{ fontSize: "24px", fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>{activeMembers.length}</span>
-                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(232,115,34,0.16)" }}>
+                  <Film size={14} style={{ color: "#E87322" }} />
                 </div>
               </div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目进度</div>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{project.completedEpisodes}</span>
+                <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>/{project.episodes} 集</span>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <div style={{ width: `${contentProgress}%`, height: "100%", background: contentProgress === 100 ? "linear-gradient(90deg, #4AC678, #6EE7A0)" : "linear-gradient(90deg, #E87322, #F5A623)" }} />
+                </div>
+                <span style={{ fontSize: "11px", color: contentProgress === 100 ? "#4AC678" : "#E87322", fontWeight: 600 }}>{contentProgress}%</span>
+              </div>
+              <div className="mt-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
+                {contentProgress === 100 ? "已完结" : `还差 ${Math.max(0, project.episodes - project.completedEpisodes)} 集`}
+              </div>
+            </button>
 
-              <div className="flex items-center gap-2 mt-3">
+            <button
+              onClick={() => setShowMemberModal(true)}
+              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: "linear-gradient(145deg, rgba(74,158,224,0.12) 0%, rgba(74,158,224,0.04) 100%)", border: "1px solid rgba(74,158,224,0.14)", minHeight: "128px" }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,158,224,0.16)" }}>
+                  <Users size={14} style={{ color: "#4A9EE0" }} />
+                </div>
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>点击管理成员</span>
+              </div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目成员</div>
+              <div className="mt-2 flex items-end gap-2">
+                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{activeMembers.length}</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {(Object.entries(permCounts) as [ProjectPermission, number][]).map(([perm, cnt]) => cnt > 0 && (
-                  <span key={perm} className="flex items-center gap-1 px-2 py-0.5 rounded-lg"
-                    style={{
-                      background: `${PERM_COLORS[perm]}15`,
-                      color: PERM_COLORS[perm],
-                      fontSize: "10px",
-                      fontWeight: 500
-                    }}>
-                    {perm}<span style={{ opacity: 0.7 }}>×{cnt}</span>
+                  <span key={perm} className="px-2 py-0.5 rounded-full" style={{ background: `${PERM_COLORS[perm]}20`, color: PERM_COLORS[perm], fontSize: "10px" }}>
+                    {perm} {cnt}
                   </span>
                 ))}
               </div>
-            </div>
+            </button>
 
-            {/* ── Project Statistics (Full Width) ── */}
-            <div className="rounded-2xl overflow-hidden" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <button
-                onClick={() => setShowProjectStats(!showProjectStats)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
-              >
+            <button
+              onClick={() => setShowProjectStats(v => !v)}
+              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: "linear-gradient(145deg, rgba(74,198,120,0.12) 0%, rgba(74,198,120,0.04) 100%)", border: "1px solid rgba(74,198,120,0.14)", minHeight: "128px" }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,198,120,0.16)" }}>
+                  <Layers size={14} style={{ color: "#4AC678" }} />
+                </div>
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>{showProjectStats ? "收起" : "展开"}</span>
+              </div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>资产总量</div>
+              <div className="mt-2 flex items-end gap-2">
+                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{totalGenerated}</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>件</span>
+              </div>
+              <div className="mt-2 flex items-center gap-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
+                <span>图片 {imageGenerated}</span>
+                <span>视频 {videoGenerated}</span>
+              </div>
+            </button>
+          </div>
+
+          {projectPerm === "管理" && editingTotalQuota && (
+            <div
+              className="rounded-2xl p-4 mb-4"
+              style={{ background: "#1A1510", border: "1px solid rgba(232,115,34,0.16)" }}
+            >
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(232,115,34,0.15)" }}>
-                    <BarChart2 size={11} style={{ color: "#E87322" }} />
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(232,115,34,0.16)" }}>
+                    <Edit2 size={13} style={{ color: "#E87322" }} />
                   </div>
-                  <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>项目统计</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }}>
-                    {showProjectStats ? <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.5)" }} /> : <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.5)" }} />}
-                  </div>
-                </div>
-              </button>
-
-              {showProjectStats && (
-              <div className="px-4 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                {/* Summary Row: 总生成资产数、总消耗、总抽卡率 - 改进样式 */}
-                <div className="grid grid-cols-3 gap-4 mb-5">
-                  {/* 总生成资产数 */}
-                  <div className="relative flex flex-col gap-2 p-4 rounded-2xl overflow-hidden" style={{
-                    background: "linear-gradient(145deg, rgba(232,115,34,0.18) 0%, rgba(232,115,34,0.08) 50%, rgba(232,115,34,0.03) 100%)",
-                    border: "1px solid rgba(232,115,34,0.25)",
-                    boxShadow: "0 4px 20px rgba(232,115,34,0.08)"
-                  }}>
-                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full" style={{
-                      background: "radial-gradient(circle, rgba(232,115,34,0.15) 0%, transparent 70%)",
-                      transform: "translate(30%, -30%)"
-                    }} />
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(232,115,34,0.2)" }}>
-                        <Layers size={14} style={{ color: "#E87322" }} />
-                      </div>
-                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>总生成资产数</span>
-                    </div>
-                    <div className="flex items-baseline gap-1.5 mt-1">
-                      <span style={{ fontSize: "36px", color: "#E87322", fontWeight: 700, lineHeight: 1 }}>
-                        {totalGenerated}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1" style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>
-                      <span className="flex items-center gap-1">
-                        <LucideImage size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
-                        {imageGenerated}图
-                      </span>
-                      <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
-                      <span className="flex items-center gap-1">
-                        <Film size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
-                        {videoGenerated}视
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 总消耗 */}
-                  <div className="relative flex flex-col gap-2 p-4 rounded-2xl overflow-hidden" style={{
-                    background: "linear-gradient(145deg, rgba(74,158,224,0.18) 0%, rgba(74,158,224,0.08) 50%, rgba(74,158,224,0.03) 100%)",
-                    border: "1px solid rgba(74,158,224,0.25)",
-                    boxShadow: "0 4px 20px rgba(74,158,224,0.08)"
-                  }}>
-                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full" style={{
-                      background: "radial-gradient(circle, rgba(74,158,224,0.15) 0%, transparent 70%)",
-                      transform: "translate(30%, -30%)"
-                    }} />
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(74,158,224,0.2)" }}>
-                        <Coins size={14} style={{ color: "#4A9EE0" }} />
-                      </div>
-                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>总消耗</span>
-                    </div>
-                    <div className="flex items-baseline gap-1.5 mt-1">
-                      <span style={{ fontSize: "36px", color: "#4A9EE0", fontWeight: 700, lineHeight: 1 }}>
-                        {totalTokenUsed.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1" style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>
-                      <span className="flex items-center gap-1">
-                        <LucideImage size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
-                        {imageTokenUsed.toLocaleString()}图
-                      </span>
-                      <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
-                      <span className="flex items-center gap-1">
-                        <Film size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
-                        {videoTokenUsed.toLocaleString()}视
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 总抽卡率 */}
-                  <div className="relative flex flex-col gap-2 p-4 rounded-2xl overflow-hidden" style={{
-                    background: "linear-gradient(145deg, rgba(74,198,120,0.18) 0%, rgba(74,198,120,0.08) 50%, rgba(74,198,120,0.03) 100%)",
-                    border: "1px solid rgba(74,198,120,0.25)",
-                    boxShadow: "0 4px 20px rgba(74,198,120,0.08)"
-                  }}>
-                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full" style={{
-                      background: "radial-gradient(circle, rgba(74,198,120,0.15) 0%, transparent 70%)",
-                      transform: "translate(30%, -30%)"
-                    }} />
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(74,198,120,0.2)" }}>
-                        <Check size={14} style={{ color: "#4AC678" }} />
-                      </div>
-                      <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>总抽卡率</span>
-                    </div>
-                    <div className="flex items-baseline gap-1.5 mt-1">
-                      <span style={{ fontSize: "36px", color: "#4AC678", fontWeight: 700, lineHeight: 1 }}>
-                        {totalGachaAvg === "-" ? "-" : `${totalGachaAvg}%`}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1" style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>
-                      <span className="flex items-center gap-1">
-                        <LucideImage size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
-                        图片{imgGachaAvg}%
-                      </span>
-                      <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
-                      <span className="flex items-center gap-1">
-                        <Film size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
-                        视频{vidGachaAvg}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Project Progress Ring — moved from hero row */}
-                <div className="mb-4 rounded-2xl p-4 flex items-center gap-5" style={{
-                  background: "linear-gradient(180deg, rgba(232,115,34,0.06) 0%, rgba(232,115,34,0.02) 100%)",
-                  border: "1px solid rgba(232,115,34,0.12)"
-                }}>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <BarChart2 size={11} style={{ color: "rgba(232,115,34,0.6)" }} />
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>项目进度</span>
-                  </div>
-                  <div className="relative flex-shrink-0">
-                    <svg width="48" height="48" className="transform -rotate-90">
-                      <circle cx="24" cy="24" r="19" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-                      <circle
-                        cx="24" cy="24" r="19"
-                        fill="none"
-                        stroke={contentProgress === 100 ? "#4AC678" : "#E87322"}
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        strokeDasharray={`${contentProgress * 1.19} 119`}
-                        style={{
-                          transition: "stroke-dasharray 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
-                          filter: `drop-shadow(0 0 6px ${contentProgress === 100 ? "rgba(74,198,120,0.4)" : "rgba(232,115,34,0.4)"})`
-                        }}
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span style={{ fontSize: "11px", fontWeight: 700, color: contentProgress === 100 ? "#4AC678" : "#E87322" }}>
-                        {contentProgress}%
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span style={{ fontSize: "18px", fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>{project.completedEpisodes}</span>
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>/{project.episodes} 集</span>
-                    <span className="px-1.5 py-0.5 rounded-full" style={{
-                      fontSize: "10px",
-                      background: contentProgress === 100 ? "rgba(74,198,120,0.12)" : "rgba(232,115,34,0.1)",
-                      color: contentProgress === 100 ? "#4AC678" : "#E87322",
-                      border: `1px solid ${contentProgress === 100 ? "rgba(74,198,120,0.2)" : "rgba(232,115,34,0.2)"}`,
-                      fontWeight: 500
-                    }}>
-                      {contentProgress === 100 ? "已完结" : "进行中"}
-                    </span>
-                    {project.episodes - project.completedEpisodes > 0 && (
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
-                        · {project.episodes - project.completedEpisodes}集待完成
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Detail Stats Grid */}
-                <div className="grid grid-cols-4 gap-3">
-                  {/* Image Generated */}
-                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(74,158,224,0.08)" }}>
-                    <div className="flex items-center gap-1">
-                      <LucideImage size={10} style={{ color: "rgba(74,158,224,0.8)" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片生成</span>
-                    </div>
-                    <span style={{ fontSize: "16px", color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
-                      {imageGenerated}
-                    </span>
-                  </div>
-                  {/* Image Token */}
-                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(74,158,224,0.08)" }}>
-                    <div className="flex items-center gap-1">
-                      <Coins size={10} style={{ color: "#4A9EE0" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片消耗</span>
-                    </div>
-                    <span style={{ fontSize: "16px", color: "#4A9EE0", fontWeight: 600 }}>
-                      {imageTokenUsed.toLocaleString()}
-                    </span>
-                  </div>
-                  {/* Video Generated */}
-                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(155,89,182,0.08)" }}>
-                    <div className="flex items-center gap-1">
-                      <Film size={10} style={{ color: "rgba(155,89,182,0.8)" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频生成</span>
-                    </div>
-                    <span style={{ fontSize: "16px", color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
-                      {videoGenerated}
-                    </span>
-                  </div>
-                  {/* Video Token */}
-                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(155,89,182,0.08)" }}>
-                    <div className="flex items-center gap-1">
-                      <Coins size={10} style={{ color: "#9B59B6" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频消耗</span>
-                    </div>
-                    <span style={{ fontSize: "16px", color: "#9B59B6", fontWeight: 600 }}>
-                      {videoTokenUsed.toLocaleString()}
-                    </span>
-                  </div>
-                  {/* Video Duration */}
-                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
-                    <div className="flex items-center gap-1">
-                      <Clock size={10} style={{ color: "rgba(255,255,255,0.5)" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频时长</span>
-                    </div>
-                    <span style={{ fontSize: "16px", color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
-                      {formatDuration(videoDurationSec)}
-                    </span>
-                  </div>
-                  {/* Image Gacha Rate */}
-                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(74,198,120,0.08)" }}>
-                    <div className="flex items-center gap-1">
-                      <Check size={10} style={{ color: "#4AC678" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片抽卡率</span>
-                    </div>
-                    <span style={{ fontSize: "16px", color: "#4AC678", fontWeight: 600 }}>
-                      {imgGachaAvg === "-" ? "-" : `${imgGachaAvg}%`}
-                    </span>
-                  </div>
-                  {/* Video Gacha Rate */}
-                  <div className="flex flex-col gap-1 p-2 rounded-lg" style={{ background: "rgba(232,115,34,0.08)" }}>
-                    <div className="flex items-center gap-1">
-                      <Check size={10} style={{ color: "#E87322" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频抽卡率</span>
-                    </div>
-                    <span style={{ fontSize: "16px", color: "#E87322", fontWeight: 600 }}>
-                      {vidGachaAvg === "-" ? "-" : `${vidGachaAvg}%`}
-                    </span>
-                  </div>
+                  <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.72)", fontWeight: 500 }}>编辑项目配额</span>
                 </div>
               </div>
-              )}
+              <InlineTotalQuotaEditor
+                currentConsumed={project.tokenUsed}
+                currentTotal={localTokenTotal}
+                onSave={(v) => { setLocalTokenTotal(v); setEditingTotalQuota(false); }}
+                onCancel={() => setEditingTotalQuota(false)}
+              />
             </div>
-          </>
           )}
+
+          <div className="rounded-2xl overflow-hidden" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <button
+              onClick={() => setShowProjectStats(!showProjectStats)}
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(232,115,34,0.15)" }}>
+                  <BarChart2 size={11} style={{ color: "#E87322" }} />
+                </div>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>统计明细</span>
+              </div>
+              <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }}>
+                {showProjectStats ? <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.5)" }} /> : <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.5)" }} />}
+              </div>
+            </button>
+
+            {showProjectStats && (
+            <div className="px-4 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+                <div className="rounded-2xl p-4" style={{ background: "rgba(74,158,224,0.08)", border: "1px solid rgba(74,158,224,0.12)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <LucideImage size={12} style={{ color: "#4A9EE0" }} />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>图片生成</span>
+                  </div>
+                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{imageGenerated}</span>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(74,158,224,0.08)", border: "1px solid rgba(74,158,224,0.12)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Coins size={12} style={{ color: "#4A9EE0" }} />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>图片消耗</span>
+                  </div>
+                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{imageTokenUsed.toLocaleString()}</span>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(155,89,182,0.08)", border: "1px solid rgba(155,89,182,0.12)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Film size={12} style={{ color: "#9B59B6" }} />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频生成</span>
+                  </div>
+                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{videoGenerated}</span>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(155,89,182,0.08)", border: "1px solid rgba(155,89,182,0.12)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Coins size={12} style={{ color: "#9B59B6" }} />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频消耗</span>
+                  </div>
+                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{videoTokenUsed.toLocaleString()}</span>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock size={12} style={{ color: "rgba(255,255,255,0.5)" }} />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频时长</span>
+                  </div>
+                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{formatDuration(videoDurationSec)}</span>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(74,198,120,0.08)", border: "1px solid rgba(74,198,120,0.12)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Check size={12} style={{ color: "#4AC678" }} />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>图片抽卡率</span>
+                  </div>
+                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{imgGachaAvg === "-" ? "-" : `${imgGachaAvg}%`}</span>
+                </div>
+                <div className="rounded-2xl p-4" style={{ background: "rgba(232,115,34,0.08)", border: "1px solid rgba(232,115,34,0.12)" }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Check size={12} style={{ color: "#E87322" }} />
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频抽卡率</span>
+                  </div>
+                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{vidGachaAvg === "-" ? "-" : `${vidGachaAvg}%`}</span>
+                </div>
+              </div>
+            </div>
+            )}
+          </div>
         </div>
         {/* ══════════════════════════════════════════════════════════════════════
             ── Tab Container ──
