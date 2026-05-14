@@ -6,9 +6,8 @@ import {
 } from "lucide-react";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { EnterpriseSettings } from "./enterprise/EnterpriseSettings";
-import { TokenModal, TOTAL_TOKENS, ENTERPRISE_ALLOC, GIFT_TOKENS, ALL_PROJECT_ALLOC } from "./TokenModal";
+import { TokenModal, PERSONAL_TOKEN_BALANCE } from "./TokenModal";
 import { TaskQueue } from "./TaskQueue";
-import { PROJECTS_DATA } from "../data/projectsData";
 import { SpaceContext, type SpaceId } from "../context/SpaceContext";
 
 const NAV_ITEMS = [
@@ -26,9 +25,6 @@ const SPACES = [
   { id: "ent1", name: "山海科技有限公司", short: "山海科技", type: "enterprise" as const, role: "所有者", avatarColor: "#C45C1A", letter: "山" },
   { id: "ent2", name: "未来创意工作室", short: "未来创意", type: "enterprise" as const, role: "成员", avatarColor: "#1A5CC4", letter: "未" },
 ];
-
-const ALL_USED = PROJECTS_DATA.reduce((s, p) => s + p.tokenUsed, 0);
-const CURRENT_AVAILABLE = TOTAL_TOKENS - ALL_USED;
 
 export function MainLayout() {
   const navigate = useNavigate();
@@ -91,7 +87,7 @@ export function MainLayout() {
             <span style={{ fontSize: "12px", lineHeight: 1 }}>🌰</span>
             <div className="flex flex-col items-center gap-0">
               <span style={{ fontSize: "8px", fontWeight: 600, color: "#E87322", lineHeight: 1.2 }}>
-                {CURRENT_AVAILABLE >= 1000 ? `${(CURRENT_AVAILABLE / 1000).toFixed(0)}` : CURRENT_AVAILABLE}
+                {PERSONAL_TOKEN_BALANCE >= 1000 ? `${(PERSONAL_TOKEN_BALANCE / 1000).toFixed(1)}k` : PERSONAL_TOKEN_BALANCE}
               </span>
             </div>
           </button>

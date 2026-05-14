@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useNavigate, useLocation, Outlet, useParams } from "react-router";
 import { Layers, Sparkles, Film, Home, RefreshCw, Users, ChevronRight, BookOpen } from "lucide-react";
 import { getProjectById } from "../data/projectsData";
-import { TokenModal, ENTERPRISE_ALLOC, GIFT_TOKENS, TOTAL_TOKENS, ALL_PROJECT_ALLOC } from "./TokenModal";
-import { PROJECTS_DATA } from "../data/projectsData";
+import { TokenModal } from "./TokenModal";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { EnterpriseSettings } from "./enterprise/EnterpriseSettings";
 
@@ -39,8 +38,6 @@ const PERM_STYLE: Record<string, { bg: string; text: string }> = {
   "编辑": { bg: "rgba(59,130,246,0.15)", text: "#3b82f6" },
   "阅读": { bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.4)" },
 };
-
-const ALL_USED = PROJECTS_DATA.reduce((s, p) => s + p.tokenUsed, 0);
 
 function fmt(n: number) {
   return n >= 10000 ? `${(n / 10000).toFixed(1)}万` : n.toLocaleString();
@@ -173,7 +170,7 @@ export function ProjectDetailLayout() {
           >
             <span style={{ fontSize: "12px", lineHeight: 1 }}>🌰</span>
             <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.4)", lineHeight: 1.2 }}>
-              {fmt(TOTAL_TOKENS)}
+              {fmt(Math.max((project?.tokenTotal ?? 0) - (project?.tokenUsed ?? 0), 0))}
             </span>
           </button>
 
@@ -290,6 +287,7 @@ export function ProjectDetailLayout() {
         <TokenModal
           onClose={() => setShowTokenModal(false)}
           mode="project"
+          projectId={project.id}
           projectName={project.name}
           projectAlloc={project.tokenTotal}
           projectUsed={project.tokenUsed}

@@ -12,9 +12,10 @@ import {
   Image as LucideImage,
 } from "lucide-react";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, BarChart, Bar,
   Tooltip as ReTooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
+  LineChart, Line,
 } from "recharts";
 import { getProjectById } from "../data/projectsData";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ import { AllocateMemberTokenDialog } from "./AllocateMemberTokenDialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ProjectPermission = "管理" | "编辑" | "阅读";
-type PeriodKey = "all" | "week" | "month" | "year" | "custom";
+type PeriodKey = "today" | "week" | "month" | "quarter" | "custom";
 type QuotaType = "unlimited" | "periodic" | "fixed";
 
 interface MemberWithPerm {
@@ -66,95 +67,372 @@ const PERM_COLORS: Record<ProjectPermission, string> = {
   管理: "#E87322", 编辑: "#7B3FC4", 阅读: "#2A6FC4",
 };
 const PERIOD_LABELS: { key: PeriodKey; label: string }[] = [
-  { key: "all", label: "累计" },
-  { key: "week", label: "本周" },
-  { key: "month", label: "本月" },
-  { key: "year", label: "本年" },
-  { key: "custom", label: "自定义" },
+  { key: "today", label: "到今天" },
+  { key: "week", label: "近7天" },
+  { key: "month", label: "近一个月" },
+  { key: "quarter", label: "近三个月" },
+  { key: "custom", label: "起止时间" },
 ];
 
 // ─── Tab Types ────────────────────────────────────────────────────────────────
-type ProjectTab = "members" | "progress" | "warnings";
+type ProjectTab = "cost" | "members" | "progress" | "warnings";
 
 const TAB_CONFIG: { key: ProjectTab; label: string; icon: typeof Users }[] = [
-  { key: "members", label: "项目成本", icon: Users },
-  { key: "progress", label: "分镜进度", icon: Film },
+  { key: "members", label: "成员管理", icon: Users },
+  { key: "cost", label: "项目成本", icon: Coins },
+  { key: "progress", label: "项目进度", icon: Film },
   { key: "warnings", label: "生成预警", icon: AlertTriangle },
 ];
 
-// ─── Trend Data ───────────────────────────────────────────────────────────────
-const TREND_DATA: Record<PeriodKey, Array<{ date: string; value: number }>> = {
-  week: [
-    { date: "4/10", value: 85 },
-    { date: "4/11", value: 120 },
-    { date: "4/12", value: 95 },
-    { date: "4/13", value: 180 },
-    { date: "4/14", value: 145 },
-    { date: "4/15", value: 210 },
-    { date: "4/16", value: 160 },
-  ],
-  month: [
-    { date: "3/18", value: 80 },
-    { date: "3/21", value: 120 },
-    { date: "3/24", value: 95 },
-    { date: "3/27", value: 175 },
-    { date: "3/30", value: 145 },
-    { date: "4/2",  value: 210 },
-    { date: "4/5",  value: 160 },
-    { date: "4/8",  value: 195 },
-    { date: "4/11", value: 240 },
-    { date: "4/14", value: 185 },
-    { date: "4/16", value: 220 },
-  ],
-  year: [
-    { date: "5月",  value: 980 },
-    { date: "6月",  value: 1200 },
-    { date: "7月",  value: 850 },
-    { date: "8月",  value: 1450 },
-    { date: "9月",  value: 1100 },
-    { date: "10月", value: 1680 },
-    { date: "11月", value: 1320 },
-    { date: "12月", value: 1850 },
-    { date: "1月",  value: 1500 },
-    { date: "2月",  value: 900 },
-    { date: "3月",  value: 1750 },
-    { date: "4月",  value: 1420 },
-  ],
-  custom: [
-    { date: "4/1",  value: 120 },
-    { date: "4/3",  value: 85 },
-    { date: "4/5",  value: 190 },
-    { date: "4/7",  value: 145 },
-    { date: "4/9",  value: 210 },
-    { date: "4/11", value: 165 },
-    { date: "4/13", value: 130 },
-    { date: "4/16", value: 185 },
-  ],
-  all: [
-    { date: "1月",  value: 1200 },
-    { date: "2月",  value: 980 },
-    { date: "3月",  value: 1650 },
-    { date: "4月",  value: 1420 },
-    { date: "5月",  value: 1800 },
-    { date: "6月",  value: 2100 },
-    { date: "7月",  value: 1900 },
-    { date: "8月",  value: 2400 },
-    { date: "9月",  value: 2200 },
-    { date: "10月", value: 2650 },
-    { date: "11月", value: 2900 },
-    { date: "12月", value: 3200 },
-  ],
+
+// Stacked trend data per metric — categories are "主体" | "第1集" | "第2集"
+const STACKED_TREND_DATA: Record<string, Record<PeriodKey, Array<{ date: string; cat1: number; cat2: number; cat3: number }>>> = {
+  img_count: {
+    week: [
+      { date: "4/10", cat1: 40, cat2: 28, cat3: 17 },
+      { date: "4/11", cat1: 55, cat2: 38, cat3: 27 },
+      { date: "4/12", cat1: 42, cat2: 30, cat3: 23 },
+      { date: "4/13", cat1: 80, cat2: 60, cat3: 40 },
+      { date: "4/14", cat1: 65, cat2: 48, cat3: 32 },
+      { date: "4/15", cat1: 95, cat2: 70, cat3: 45 },
+      { date: "4/16", cat1: 72, cat2: 52, cat3: 36 },
+    ],
+    month: [
+      { date: "3/18", cat1: 36, cat2: 25, cat3: 19 },
+      { date: "3/21", cat1: 55, cat2: 38, cat3: 27 },
+      { date: "3/24", cat1: 43, cat2: 30, cat3: 22 },
+      { date: "3/27", cat1: 80, cat2: 55, cat3: 40 },
+      { date: "3/30", cat1: 65, cat2: 47, cat3: 33 },
+      { date: "4/2",  cat1: 95, cat2: 68, cat3: 47 },
+      { date: "4/5",  cat1: 73, cat2: 52, cat3: 35 },
+      { date: "4/8",  cat1: 88, cat2: 62, cat3: 45 },
+      { date: "4/11", cat1: 110, cat2: 78, cat3: 52 },
+      { date: "4/14", cat1: 84, cat2: 60, cat3: 41 },
+      { date: "4/16", cat1: 100, cat2: 72, cat3: 48 },
+    ],
+    year: [
+      { date: "5月",  cat1: 440, cat2: 320, cat3: 220 },
+      { date: "6月",  cat1: 540, cat2: 395, cat3: 265 },
+      { date: "7月",  cat1: 385, cat2: 278, cat3: 187 },
+      { date: "8月",  cat1: 655, cat2: 472, cat3: 323 },
+      { date: "9月",  cat1: 495, cat2: 357, cat3: 248 },
+      { date: "10月", cat1: 758, cat2: 545, cat3: 377 },
+      { date: "11月", cat1: 594, cat2: 428, cat3: 298 },
+      { date: "12月", cat1: 833, cat2: 598, cat3: 419 },
+      { date: "1月",  cat1: 675, cat2: 487, cat3: 338 },
+      { date: "2月",  cat1: 405, cat2: 292, cat3: 203 },
+      { date: "3月",  cat1: 788, cat2: 567, cat3: 395 },
+      { date: "4月",  cat1: 639, cat2: 462, cat3: 319 },
+    ],
+    custom: [
+      { date: "4/1",  cat1: 54, cat2: 39, cat3: 27 },
+      { date: "4/3",  cat1: 38, cat2: 28, cat3: 19 },
+      { date: "4/5",  cat1: 86, cat2: 62, cat3: 42 },
+      { date: "4/7",  cat1: 65, cat2: 47, cat3: 33 },
+      { date: "4/9",  cat1: 95, cat2: 68, cat3: 47 },
+      { date: "4/11", cat1: 74, cat2: 54, cat3: 37 },
+      { date: "4/13", cat1: 59, cat2: 42, cat3: 29 },
+      { date: "4/16", cat1: 83, cat2: 60, cat3: 42 },
+    ],
+    all: [
+      { date: "1月",  cat1: 540, cat2: 389, cat3: 271 },
+      { date: "2月",  cat1: 441, cat2: 319, cat3: 220 },
+      { date: "3月",  cat1: 743, cat2: 534, cat3: 373 },
+      { date: "4月",  cat1: 639, cat2: 461, cat3: 320 },
+      { date: "5月",  cat1: 810, cat2: 583, cat3: 407 },
+      { date: "6月",  cat1: 945, cat2: 682, cat3: 473 },
+      { date: "7月",  cat1: 855, cat2: 617, cat3: 428 },
+      { date: "8月",  cat1: 1080, cat2: 778, cat3: 542 },
+      { date: "9月",  cat1: 990, cat2: 714, cat3: 496 },
+      { date: "10月", cat1: 1193, cat2: 860, cat3: 597 },
+      { date: "11月", cat1: 1305, cat2: 941, cat3: 654 },
+      { date: "12月", cat1: 1440, cat2: 1038, cat3: 722 },
+    ],
+  },
+  img_tokens: {
+    week: [
+      { date: "4/10", cat1: 340, cat2: 238, cat3: 147 },
+      { date: "4/11", cat1: 480, cat2: 336, cat3: 224 },
+      { date: "4/12", cat1: 380, cat2: 266, cat3: 214 },
+      { date: "4/13", cat1: 720, cat2: 504, cat3: 396 },
+      { date: "4/14", cat1: 580, cat2: 406, cat3: 334 },
+      { date: "4/15", cat1: 840, cat2: 588, cat3: 492 },
+      { date: "4/16", cat1: 640, cat2: 448, cat3: 352 },
+    ],
+    month: [
+      { date: "3/18", cat1: 320, cat2: 224, cat3: 156 },
+      { date: "3/21", cat1: 480, cat2: 336, cat3: 224 },
+      { date: "3/24", cat1: 380, cat2: 266, cat3: 174 },
+      { date: "3/27", cat1: 700, cat2: 490, cat3: 410 },
+      { date: "3/30", cat1: 580, cat2: 406, cat3: 314 },
+      { date: "4/2",  cat1: 840, cat2: 588, cat3: 452 },
+      { date: "4/5",  cat1: 640, cat2: 448, cat3: 352 },
+      { date: "4/8",  cat1: 780, cat2: 546, cat3: 374 },
+      { date: "4/11", cat1: 960, cat2: 672, cat3: 508 },
+      { date: "4/14", cat1: 740, cat2: 518, cat3: 402 },
+      { date: "4/16", cat1: 880, cat2: 616, cat3: 444 },
+    ],
+    year: [
+      { date: "5月",  cat1: 3920, cat2: 2744, cat3: 2116 },
+      { date: "6月",  cat1: 4800, cat2: 3360, cat3: 2240 },
+      { date: "7月",  cat1: 3400, cat2: 2380, cat3: 1720 },
+      { date: "8月",  cat1: 5800, cat2: 4060, cat3: 2940 },
+      { date: "9月",  cat1: 4400, cat2: 3080, cat3: 2220 },
+      { date: "10月", cat1: 6720, cat2: 4704, cat3: 3476 },
+      { date: "11月", cat1: 5280, cat2: 3696, cat3: 2824 },
+      { date: "12月", cat1: 7400, cat2: 5180, cat3: 3820 },
+      { date: "1月",  cat1: 6000, cat2: 4200, cat3: 3000 },
+      { date: "2月",  cat1: 3600, cat2: 2520, cat3: 1780 },
+      { date: "3月",  cat1: 7000, cat2: 4900, cat3: 3500 },
+      { date: "4月",  cat1: 5680, cat2: 3976, cat3: 2844 },
+    ],
+    custom: [
+      { date: "4/1",  cat1: 480, cat2: 336, cat3: 224 },
+      { date: "4/3",  cat1: 340, cat2: 238, cat3: 162 },
+      { date: "4/5",  cat1: 760, cat2: 532, cat3: 368 },
+      { date: "4/7",  cat1: 580, cat2: 406, cat3: 294 },
+      { date: "4/9",  cat1: 840, cat2: 588, cat3: 392 },
+      { date: "4/11", cat1: 660, cat2: 462, cat3: 318 },
+      { date: "4/13", cat1: 520, cat2: 364, cat3: 256 },
+      { date: "4/16", cat1: 740, cat2: 518, cat3: 362 },
+    ],
+    all: [
+      { date: "1月",  cat1: 4800, cat2: 3360, cat3: 2240 },
+      { date: "2月",  cat1: 3920, cat2: 2744, cat3: 1836 },
+      { date: "3月",  cat1: 6600, cat2: 4620, cat3: 3080 },
+      { date: "4月",  cat1: 5680, cat2: 3976, cat3: 2544 },
+      { date: "5月",  cat1: 7200, cat2: 5040, cat3: 3360 },
+      { date: "6月",  cat1: 8400, cat2: 5880, cat3: 3920 },
+      { date: "7月",  cat1: 7600, cat2: 5320, cat3: 3480 },
+      { date: "8月",  cat1: 9600, cat2: 6720, cat3: 4480 },
+      { date: "9月",  cat1: 8800, cat2: 6160, cat3: 4040 },
+      { date: "10月", cat1: 10600, cat2: 7420, cat3: 4980 },
+      { date: "11月", cat1: 11600, cat2: 8120, cat3: 5480 },
+      { date: "12月", cat1: 12800, cat2: 8960, cat3: 5840 },
+    ],
+  },
+  vid_count: {
+    week: [
+      { date: "4/10", cat1: 8, cat2: 5, cat3: 3 },
+      { date: "4/11", cat1: 12, cat2: 8, cat3: 6 },
+      { date: "4/12", cat1: 9, cat2: 6, cat3: 4 },
+      { date: "4/13", cat1: 18, cat2: 12, cat3: 9 },
+      { date: "4/14", cat1: 14, cat2: 9, cat3: 7 },
+      { date: "4/15", cat1: 21, cat2: 14, cat3: 10 },
+      { date: "4/16", cat1: 16, cat2: 11, cat3: 7 },
+    ],
+    month: [
+      { date: "3/18", cat1: 8, cat2: 5, cat3: 3 },
+      { date: "3/21", cat1: 12, cat2: 8, cat3: 6 },
+      { date: "3/24", cat1: 9, cat2: 6, cat3: 4 },
+      { date: "3/27", cat1: 17, cat2: 11, cat3: 8 },
+      { date: "3/30", cat1: 14, cat2: 9, cat3: 7 },
+      { date: "4/2",  cat1: 21, cat2: 14, cat3: 10 },
+      { date: "4/5",  cat1: 16, cat2: 10, cat3: 8 },
+      { date: "4/8",  cat1: 19, cat2: 13, cat3: 9 },
+      { date: "4/11", cat1: 24, cat2: 16, cat3: 12 },
+      { date: "4/14", cat1: 18, cat2: 12, cat3: 9 },
+      { date: "4/16", cat1: 22, cat2: 15, cat3: 11 },
+    ],
+    year: [
+      { date: "5月",  cat1: 98, cat2: 66, cat3: 46 },
+      { date: "6月",  cat1: 120, cat2: 81, cat3: 57 },
+      { date: "7月",  cat1: 85, cat2: 58, cat3: 40 },
+      { date: "8月",  cat1: 145, cat2: 98, cat3: 68 },
+      { date: "9月",  cat1: 110, cat2: 75, cat3: 52 },
+      { date: "10月", cat1: 168, cat2: 114, cat3: 79 },
+      { date: "11月", cat1: 132, cat2: 90, cat3: 62 },
+      { date: "12月", cat1: 185, cat2: 126, cat3: 87 },
+      { date: "1月",  cat1: 150, cat2: 102, cat3: 71 },
+      { date: "2月",  cat1: 90, cat2: 61, cat3: 43 },
+      { date: "3月",  cat1: 175, cat2: 119, cat3: 83 },
+      { date: "4月",  cat1: 142, cat2: 97, cat3: 67 },
+    ],
+    custom: [
+      { date: "4/1",  cat1: 12, cat2: 8, cat3: 5 },
+      { date: "4/3",  cat1: 9, cat2: 6, cat3: 4 },
+      { date: "4/5",  cat1: 19, cat2: 13, cat3: 9 },
+      { date: "4/7",  cat1: 14, cat2: 10, cat3: 7 },
+      { date: "4/9",  cat1: 21, cat2: 14, cat3: 10 },
+      { date: "4/11", cat1: 16, cat2: 11, cat3: 8 },
+      { date: "4/13", cat1: 13, cat2: 9, cat3: 6 },
+      { date: "4/16", cat1: 18, cat2: 12, cat3: 9 },
+    ],
+    all: [
+      { date: "1月",  cat1: 120, cat2: 82, cat3: 58 },
+      { date: "2月",  cat1: 98, cat2: 67, cat3: 47 },
+      { date: "3月",  cat1: 165, cat2: 113, cat3: 79 },
+      { date: "4月",  cat1: 142, cat2: 97, cat3: 68 },
+      { date: "5月",  cat1: 180, cat2: 123, cat3: 87 },
+      { date: "6月",  cat1: 210, cat2: 144, cat3: 100 },
+      { date: "7月",  cat1: 190, cat2: 130, cat3: 90 },
+      { date: "8月",  cat1: 240, cat2: 164, cat3: 116 },
+      { date: "9月",  cat1: 220, cat2: 151, cat3: 105 },
+      { date: "10月", cat1: 265, cat2: 181, cat3: 127 },
+      { date: "11月", cat1: 290, cat2: 198, cat3: 140 },
+      { date: "12月", cat1: 320, cat2: 219, cat3: 153 },
+    ],
+  },
+  vid_tokens: {
+    week: [
+      { date: "4/10", cat1: 380, cat2: 266, cat3: 174 },
+      { date: "4/11", cat1: 560, cat2: 392, cat3: 288 },
+      { date: "4/12", cat1: 420, cat2: 294, cat3: 226 },
+      { date: "4/13", cat1: 840, cat2: 588, cat3: 492 },
+      { date: "4/14", cat1: 660, cat2: 462, cat3: 378 },
+      { date: "4/15", cat1: 980, cat2: 686, cat3: 574 },
+      { date: "4/16", cat1: 740, cat2: 518, cat3: 382 },
+    ],
+    month: [
+      { date: "3/18", cat1: 360, cat2: 252, cat3: 188 },
+      { date: "3/21", cat1: 560, cat2: 392, cat3: 288 },
+      { date: "3/24", cat1: 420, cat2: 294, cat3: 236 },
+      { date: "3/27", cat1: 820, cat2: 574, cat3: 506 },
+      { date: "3/30", cat1: 640, cat2: 448, cat3: 352 },
+      { date: "4/2",  cat1: 980, cat2: 686, cat3: 574 },
+      { date: "4/5",  cat1: 740, cat2: 518, cat3: 422 },
+      { date: "4/8",  cat1: 900, cat2: 630, cat3: 470 },
+      { date: "4/11", cat1: 1120, cat2: 784, cat3: 616 },
+      { date: "4/14", cat1: 860, cat2: 602, cat3: 478 },
+      { date: "4/16", cat1: 1020, cat2: 714, cat3: 526 },
+    ],
+    year: [
+      { date: "5月",  cat1: 4560, cat2: 3192, cat3: 2548 },
+      { date: "6月",  cat1: 5600, cat2: 3920, cat3: 2880 },
+      { date: "7月",  cat1: 3960, cat2: 2772, cat3: 2068 },
+      { date: "8月",  cat1: 6760, cat2: 4732, cat3: 3508 },
+      { date: "9月",  cat1: 5120, cat2: 3584, cat3: 2696 },
+      { date: "10月", cat1: 7840, cat2: 5488, cat3: 4172 },
+      { date: "11月", cat1: 6160, cat2: 4312, cat3: 3328 },
+      { date: "12月", cat1: 8640, cat2: 6048, cat3: 4612 },
+      { date: "1月",  cat1: 7000, cat2: 4900, cat3: 3600 },
+      { date: "2月",  cat1: 4200, cat2: 2940, cat3: 2160 },
+      { date: "3月",  cat1: 8160, cat2: 5712, cat3: 4228 },
+      { date: "4月",  cat1: 6624, cat2: 4637, cat3: 3439 },
+    ],
+    custom: [
+      { date: "4/1",  cat1: 560, cat2: 392, cat3: 288 },
+      { date: "4/3",  cat1: 400, cat2: 280, cat3: 200 },
+      { date: "4/5",  cat1: 880, cat2: 616, cat3: 424 },
+      { date: "4/7",  cat1: 680, cat2: 476, cat3: 344 },
+      { date: "4/9",  cat1: 980, cat2: 686, cat3: 434 },
+      { date: "4/11", cat1: 760, cat2: 532, cat3: 358 },
+      { date: "4/13", cat1: 600, cat2: 420, cat3: 280 },
+      { date: "4/16", cat1: 860, cat2: 602, cat3: 418 },
+    ],
+    all: [
+      { date: "1月",  cat1: 5600, cat2: 3920, cat3: 2480 },
+      { date: "2月",  cat1: 4560, cat2: 3192, cat3: 2048 },
+      { date: "3月",  cat1: 7700, cat2: 5390, cat3: 3410 },
+      { date: "4月",  cat1: 6624, cat2: 4637, cat3: 2839 },
+      { date: "5月",  cat1: 8400, cat2: 5880, cat3: 3720 },
+      { date: "6月",  cat1: 9800, cat2: 6860, cat3: 4340 },
+      { date: "7月",  cat1: 8860, cat2: 6202, cat3: 3938 },
+      { date: "8月",  cat1: 11200, cat2: 7840, cat3: 4960 },
+      { date: "9月",  cat1: 10260, cat2: 7182, cat3: 4558 },
+      { date: "10月", cat1: 12380, cat2: 8666, cat3: 5554 },
+      { date: "11月", cat1: 13530, cat2: 9471, cat3: 5999 },
+      { date: "12月", cat1: 14940, cat2: 10458, cat3: 6602 },
+    ],
+  },
+  vid_duration: {
+    week: [
+      { date: "4/10", cat1: 42, cat2: 28, cat3: 15 },
+      { date: "4/11", cat1: 63, cat2: 42, cat3: 25 },
+      { date: "4/12", cat1: 47, cat2: 31, cat3: 17 },
+      { date: "4/13", cat1: 94, cat2: 62, cat3: 34 },
+      { date: "4/14", cat1: 74, cat2: 49, cat3: 27 },
+      { date: "4/15", cat1: 110, cat2: 73, cat3: 42 },
+      { date: "4/16", cat1: 83, cat2: 55, cat3: 32 },
+    ],
+    month: [
+      { date: "3/18", cat1: 40, cat2: 27, cat3: 13 },
+      { date: "3/21", cat1: 63, cat2: 42, cat3: 25 },
+      { date: "3/24", cat1: 47, cat2: 31, cat3: 17 },
+      { date: "3/27", cat1: 91, cat2: 60, cat3: 34 },
+      { date: "3/30", cat1: 74, cat2: 49, cat3: 27 },
+      { date: "4/2",  cat1: 110, cat2: 73, cat3: 42 },
+      { date: "4/5",  cat1: 83, cat2: 55, cat3: 32 },
+      { date: "4/8",  cat1: 101, cat2: 67, cat3: 37 },
+      { date: "4/11", cat1: 124, cat2: 82, cat3: 44 },
+      { date: "4/14", cat1: 96, cat2: 64, cat3: 35 },
+      { date: "4/16", cat1: 114, cat2: 76, cat3: 40 },
+    ],
+    year: [
+      { date: "5月",  cat1: 510, cat2: 340, cat3: 190 },
+      { date: "6月",  cat1: 620, cat2: 413, cat3: 247 },
+      { date: "7月",  cat1: 440, cat2: 293, cat3: 167 },
+      { date: "8月",  cat1: 750, cat2: 500, cat3: 280 },
+      { date: "9月",  cat1: 572, cat2: 381, cat3: 207 },
+      { date: "10月", cat1: 873, cat2: 582, cat3: 325 },
+      { date: "11月", cat1: 685, cat2: 457, cat3: 258 },
+      { date: "12月", cat1: 960, cat2: 640, cat3: 355 },
+      { date: "1月",  cat1: 780, cat2: 520, cat3: 290 },
+      { date: "2月",  cat1: 468, cat2: 312, cat3: 170 },
+      { date: "3月",  cat1: 910, cat2: 607, cat3: 333 },
+      { date: "4月",  cat1: 738, cat2: 492, cat3: 270 },
+    ],
+    custom: [
+      { date: "4/1",  cat1: 63, cat2: 42, cat3: 25 },
+      { date: "4/3",  cat1: 44, cat2: 29, cat3: 12 },
+      { date: "4/5",  cat1: 98, cat2: 65, cat3: 37 },
+      { date: "4/7",  cat1: 74, cat2: 50, cat3: 26 },
+      { date: "4/9",  cat1: 110, cat2: 73, cat3: 38 },
+      { date: "4/11", cat1: 84, cat2: 56, cat3: 30 },
+      { date: "4/13", cat1: 67, cat2: 45, cat3: 18 },
+      { date: "4/16", cat1: 96, cat2: 64, cat3: 30 },
+    ],
+    all: [
+      { date: "1月",  cat1: 624, cat2: 416, cat3: 220 },
+      { date: "2月",  cat1: 508, cat2: 339, cat3: 133 },
+      { date: "3月",  cat1: 858, cat2: 572, cat3: 320 },
+      { date: "4月",  cat1: 738, cat2: 492, cat3: 270 },
+      { date: "5月",  cat1: 936, cat2: 624, cat3: 340 },
+      { date: "6月",  cat1: 1092, cat2: 728, cat3: 380 },
+      { date: "7月",  cat1: 988, cat2: 659, cat3: 353 },
+      { date: "8月",  cat1: 1248, cat2: 832, cat3: 440 },
+      { date: "9月",  cat1: 1144, cat2: 763, cat3: 393 },
+      { date: "10月", cat1: 1378, cat2: 919, cat3: 453 },
+      { date: "11月", cat1: 1508, cat2: 1005, cat3: 487 },
+      { date: "12月", cat1: 1664, cat2: 1109, cat3: 527 },
+    ],
+  },
+};
+
+// Rate trend data (line chart only)
+const RATE_TREND_DATA: Record<string, Record<PeriodKey, Array<{ date: string; value: number }>>> = {
+  gacha_rate: {
+    week:   [{ date: "4/10", value: 3.1 }, { date: "4/11", value: 2.9 }, { date: "4/12", value: 3.4 }, { date: "4/13", value: 2.7 }, { date: "4/14", value: 3.2 }, { date: "4/15", value: 3.8 }, { date: "4/16", value: 3.0 }],
+    month:  [{ date: "3/18", value: 3.0 }, { date: "3/21", value: 2.8 }, { date: "3/24", value: 3.2 }, { date: "3/27", value: 3.5 }, { date: "3/30", value: 2.9 }, { date: "4/2",  value: 3.4 }, { date: "4/5",  value: 3.1 }, { date: "4/8",  value: 3.6 }, { date: "4/11", value: 2.8 }, { date: "4/14", value: 3.3 }, { date: "4/16", value: 3.0 }],
+    year:   [{ date: "5月", value: 3.2 }, { date: "6月", value: 3.0 }, { date: "7月", value: 3.5 }, { date: "8月", value: 2.9 }, { date: "9月", value: 3.4 }, { date: "10月", value: 2.8 }, { date: "11月", value: 3.1 }, { date: "12月", value: 3.3 }, { date: "1月", value: 2.7 }, { date: "2月", value: 3.6 }, { date: "3月", value: 3.0 }, { date: "4月", value: 3.2 }],
+    custom: [{ date: "4/1", value: 3.1 }, { date: "4/3", value: 2.9 }, { date: "4/5", value: 3.3 }, { date: "4/7", value: 3.5 }, { date: "4/9", value: 2.8 }, { date: "4/11", value: 3.0 }, { date: "4/13", value: 3.4 }, { date: "4/16", value: 3.2 }],
+    all:    [{ date: "1月", value: 3.0 }, { date: "2月", value: 3.2 }, { date: "3月", value: 2.8 }, { date: "4月", value: 3.4 }, { date: "5月", value: 3.1 }, { date: "6月", value: 2.9 }, { date: "7月", value: 3.5 }, { date: "8月", value: 3.0 }, { date: "9月", value: 3.3 }, { date: "10月", value: 2.7 }, { date: "11月", value: 3.6 }, { date: "12月", value: 3.2 }],
+  },
+  img_gacha_rate: {
+    week:   [{ date: "4/10", value: 2.8 }, { date: "4/11", value: 2.6 }, { date: "4/12", value: 3.1 }, { date: "4/13", value: 2.4 }, { date: "4/14", value: 2.9 }, { date: "4/15", value: 3.4 }, { date: "4/16", value: 2.7 }],
+    month:  [{ date: "3/18", value: 2.7 }, { date: "3/21", value: 2.5 }, { date: "3/24", value: 2.9 }, { date: "3/27", value: 3.2 }, { date: "3/30", value: 2.6 }, { date: "4/2",  value: 3.1 }, { date: "4/5",  value: 2.8 }, { date: "4/8",  value: 3.3 }, { date: "4/11", value: 2.5 }, { date: "4/14", value: 3.0 }, { date: "4/16", value: 2.7 }],
+    year:   [{ date: "5月", value: 2.9 }, { date: "6月", value: 2.7 }, { date: "7月", value: 3.2 }, { date: "8月", value: 2.6 }, { date: "9月", value: 3.1 }, { date: "10月", value: 2.5 }, { date: "11月", value: 2.8 }, { date: "12月", value: 3.0 }, { date: "1月", value: 2.4 }, { date: "2月", value: 3.3 }, { date: "3月", value: 2.7 }, { date: "4月", value: 2.9 }],
+    custom: [{ date: "4/1", value: 2.8 }, { date: "4/3", value: 2.6 }, { date: "4/5", value: 3.0 }, { date: "4/7", value: 3.2 }, { date: "4/9", value: 2.5 }, { date: "4/11", value: 2.7 }, { date: "4/13", value: 3.1 }, { date: "4/16", value: 2.9 }],
+    all:    [{ date: "1月", value: 2.7 }, { date: "2月", value: 2.9 }, { date: "3月", value: 2.5 }, { date: "4月", value: 3.1 }, { date: "5月", value: 2.8 }, { date: "6月", value: 2.6 }, { date: "7月", value: 3.2 }, { date: "8月", value: 2.7 }, { date: "9月", value: 3.0 }, { date: "10月", value: 2.4 }, { date: "11月", value: 3.3 }, { date: "12月", value: 2.9 }],
+  },
+  vid_gacha_rate: {
+    week:   [{ date: "4/10", value: 3.5 }, { date: "4/11", value: 3.2 }, { date: "4/12", value: 3.8 }, { date: "4/13", value: 3.1 }, { date: "4/14", value: 3.6 }, { date: "4/15", value: 4.2 }, { date: "4/16", value: 3.4 }],
+    month:  [{ date: "3/18", value: 3.4 }, { date: "3/21", value: 3.2 }, { date: "3/24", value: 3.6 }, { date: "3/27", value: 3.9 }, { date: "3/30", value: 3.3 }, { date: "4/2",  value: 3.8 }, { date: "4/5",  value: 3.5 }, { date: "4/8",  value: 4.0 }, { date: "4/11", value: 3.2 }, { date: "4/14", value: 3.7 }, { date: "4/16", value: 3.4 }],
+    year:   [{ date: "5月", value: 3.6 }, { date: "6月", value: 3.4 }, { date: "7月", value: 3.9 }, { date: "8月", value: 3.3 }, { date: "9月", value: 3.8 }, { date: "10月", value: 3.2 }, { date: "11月", value: 3.5 }, { date: "12月", value: 3.7 }, { date: "1月", value: 3.1 }, { date: "2月", value: 4.1 }, { date: "3月", value: 3.4 }, { date: "4月", value: 3.6 }],
+    custom: [{ date: "4/1", value: 3.5 }, { date: "4/3", value: 3.3 }, { date: "4/5", value: 3.7 }, { date: "4/7", value: 3.9 }, { date: "4/9", value: 3.2 }, { date: "4/11", value: 3.4 }, { date: "4/13", value: 3.8 }, { date: "4/16", value: 3.6 }],
+    all:    [{ date: "1月", value: 3.4 }, { date: "2月", value: 3.6 }, { date: "3月", value: 3.2 }, { date: "4月", value: 3.8 }, { date: "5月", value: 3.5 }, { date: "6月", value: 3.3 }, { date: "7月", value: 3.9 }, { date: "8月", value: 3.4 }, { date: "9月", value: 3.7 }, { date: "10月", value: 3.1 }, { date: "11月", value: 4.0 }, { date: "12月", value: 3.6 }],
+  },
 };
 
 const PERIOD_CONSUMED: Record<PeriodKey, number> = {
-  week: 820, month: 3200, year: 12500, custom: 1600, all: 0,
+  today: 240, week: 820, month: 3200, quarter: 7600, custom: 1600,
 };
 const MEMBER_PERIOD_CONSUMED: Record<PeriodKey, number[]> = {
+  today:  [90, 60, 50, 40],
   week:   [320, 220, 180, 100],
   month:  [1280, 860, 720, 340],
-  year:   [4800, 3500, 2900, 1300],
+  quarter:[2900, 2100, 1700, 900],
   custom: [560, 420, 380, 240],
-  all:    [4800, 3500, 2900, 1300],
 };
 
 const INITIAL_MEMBER_QUOTAS: MemberQuota[] = [
@@ -249,6 +527,74 @@ function formatDuration(sec: number): string {
   return `${m}分${String(s).padStart(2, "0")}秒`;
 }
 
+function deriveCategoryRates(node: {
+  imageCount: number;
+  imageTokens: number;
+  videoCount: number;
+  videoTokens: number;
+}) {
+  const imageRate = Number((2 + (node.imageTokens / Math.max(node.imageCount, 1)) / 120).toFixed(1));
+  const videoRate = Number((2.2 + (node.videoTokens / Math.max(node.videoCount, 1)) / 450).toFixed(1));
+  const totalCount = node.imageCount + node.videoCount;
+  const totalRate = Number((((imageRate * node.imageCount) + (videoRate * node.videoCount)) / Math.max(totalCount, 1)).toFixed(1));
+  return { totalRate, imageRate, videoRate };
+}
+
+function scaleStackedSeries(
+  series: Record<PeriodKey, Array<{ date: string; cat1: number; cat2: number; cat3: number }>>,
+  factor: number,
+) {
+  return Object.fromEntries(
+    Object.entries(series).map(([periodKey, rows]) => [
+      periodKey,
+      rows.map((row) => ({
+        date: row.date,
+        cat1: Math.round(row.cat1 * factor),
+        cat2: Math.round(row.cat2 * factor),
+        cat3: Math.round(row.cat3 * factor),
+      })),
+    ]),
+  ) as Record<PeriodKey, Array<{ date: string; cat1: number; cat2: number; cat3: number }>>;
+}
+
+function shiftRateSeries(
+  series: Record<PeriodKey, Array<{ date: string; value: number }>>,
+  targetAverage: number,
+) {
+  const baseWeek = series.week ?? [];
+  const baseAverage = baseWeek.length > 0
+    ? baseWeek.reduce((sum, row) => sum + row.value, 0) / baseWeek.length
+    : targetAverage;
+  const delta = targetAverage - baseAverage;
+  return Object.fromEntries(
+    Object.entries(series).map(([periodKey, rows]) => [
+      periodKey,
+      rows.map((row) => ({
+        date: row.date,
+        value: Number(Math.max(0.5, row.value + delta).toFixed(1)),
+      })),
+    ]),
+  ) as Record<PeriodKey, Array<{ date: string; value: number }>>;
+}
+
+function scaleCategoryNode(node: CategoryNode, factor: number): CategoryNode {
+  if ("type" in node) {
+    return {
+      ...node,
+      children: node.children.map((child) => scaleCategoryNode(child, factor)),
+    };
+  }
+  return {
+    ...node,
+    totalTokens: Math.round(node.totalTokens * factor),
+    imageCount: Math.round(node.imageCount * factor),
+    imageTokens: Math.round(node.imageTokens * factor),
+    videoCount: Math.round(node.videoCount * factor),
+    videoDurationSec: Math.round(node.videoDurationSec * factor),
+    videoTokens: Math.round(node.videoTokens * factor),
+  };
+}
+
 // ─── Animated Number (count-up effect) ────────────────────────────────────────────
 function AnimatedNumber({ value, duration = 800 }: { value: number; duration?: number }) {
   const [display, setDisplay] = useState(0);
@@ -336,15 +682,13 @@ const CATEGORY_CONSUMPTION: CategoryNode[] = [
 ];
 
 
-// ─── Stage progress derivation ────────────────────────────────────────────────
-function deriveStages(epProgress: number) {
-  const s1 = Math.min(100, Math.round(epProgress * 3));
-  const s2 = epProgress >= 34 ? Math.min(100, Math.round((epProgress - 33) * 3)) : 0;
-  const s3 = epProgress >= 67 ? Math.min(100, Math.round((epProgress - 66) * 3)) : 0;
+// ─── Episode progress derivation ──────────────────────────────────────────────
+function deriveEpisodeMediaProgress(epProgress: number) {
+  const imageProgress = Math.min(100, Math.round(epProgress * 1.25));
+  const videoProgress = epProgress <= 20 ? 0 : Math.min(100, Math.round((epProgress - 20) * 1.25));
   return [
-    { label: "草分绘制", progress: s1 },
-    { label: "静帧生成", progress: s2 },
-    { label: "动态生成", progress: s3 },
+    { label: "图片进度", progress: imageProgress, color: "#4A9EE0" },
+    { label: "视频进度", progress: videoProgress, color: "#9B59B6" },
   ];
 }
 
@@ -386,19 +730,6 @@ function StatTooltip({ text }: { text: string }) {
   );
 }
 
-// ─── Custom Recharts Tooltip ───────────────────────────────────────────────────
-function TrendTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="px-3 py-2 rounded-lg shadow-2xl"
-      style={{ background: "#1E1A14", border: "1px solid rgba(232,115,34,0.3)", minWidth: "110px" }}>
-      <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "4px" }}>{label}</p>
-      <p style={{ fontSize: "14px", fontWeight: 600, color: "#E87322" }}>
-        {payload[0].value.toLocaleString()} <span style={{ fontSize: "10px", fontWeight: 400, color: "rgba(255,255,255,0.4)" }}>颗</span>
-      </p>
-    </div>
-  );
-}
 
 // ─── Quota Tag (read-only display) ──────────────────────────────────────────────
 function QuotaTag({ qd }: { qd: MemberQuota }) {
@@ -1192,7 +1523,7 @@ export function ProjectHomePage() {
   const [editingName, setEditingName] = useState(false);
   const [status, setStatus] = useState(project?.status ?? "进行中");
   const [showStatusDrop, setShowStatusDrop] = useState(false);
-  const [period, setPeriod] = useState<PeriodKey>("month");
+  const [period, setPeriod] = useState<PeriodKey>("custom");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showMemberModal, setShowMemberModal] = useState(false);
@@ -1223,7 +1554,8 @@ export function ProjectHomePage() {
   const [openPermDropdown, setOpenPermDropdown] = useState<number | null>(null);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<ProjectTab>("members");
+  const [activeTab, setActiveTab] = useState<ProjectTab>("cost");
+  const [selectedMetric, setSelectedMetric] = useState<string>("img_count");
 
   // Episode progress collapse state
   const [expandedEpisodes, setExpandedEpisodes] = useState<Set<number>>(new Set());
@@ -1237,9 +1569,6 @@ export function ProjectHomePage() {
   // Filter states
   const [filterMembers, setFilterMembers] = useState<Set<string>>(new Set());
   const [filterPerm, setFilterPerm] = useState<ProjectPermission | "all">("all");
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-
   
   if (!project) {
     return (
@@ -1248,6 +1577,8 @@ export function ProjectHomePage() {
   }
 
   const projectPerm = project.permission;
+  const isManager = projectPerm === "管理";
+  const isEditor = projectPerm === "编辑";
 
   const membersWithPerm: MemberWithPerm[] = project.members.map((m, i) => {
     const detail = MEMBER_DETAIL_STATS[i] ?? MEMBER_DETAIL_STATS[0];
@@ -1264,6 +1595,9 @@ export function ProjectHomePage() {
     .filter(({ i }) => !removedMembers.has(i));
 
   const activeMembers = activeMembersIndexed.map(({ m }) => m);
+  const currentMemberEntry = activeMembersIndexed[0] ?? { m: membersWithPerm[0], i: 0 };
+  const currentMember = currentMemberEntry.m;
+  const currentMemberIndex = currentMemberEntry.i;
 
   const permCounts = {
     管理: activeMembers.filter(m => m.permission === "管理").length,
@@ -1272,7 +1606,7 @@ export function ProjectHomePage() {
   };
 
   // Stats data for project statistics (no filtering)
-  const statsMembers = membersWithPerm;
+  const statsMembers = isEditor ? [currentMember] : membersWithPerm;
 
   const imageGenerated = statsMembers.reduce((s, m) => s + m.imageGenerated, 0);
   const videoGenerated = statsMembers.reduce((s, m) => s + m.videoGenerated, 0);
@@ -1293,18 +1627,32 @@ export function ProjectHomePage() {
   const allRates = [...imgRates, ...vidRates];
   const totalGachaAvg = allRates.length > 0 ? (allRates.reduce((a, b) => a + b, 0) / allRates.length).toFixed(1) : "-";
 
-  const tokenPercent = Math.round((project.tokenUsed / localTokenTotal) * 100);
+  const memberPeriodConsumed: number[] = MEMBER_PERIOD_CONSUMED[period] ?? [];
+  const currentMemberQuota = memberQuotas[currentMemberIndex] ?? memberQuotas[0];
+  const currentMemberConsumed = memberPeriodConsumed[currentMemberIndex] ?? currentMember.tokenUsed;
+  const editorQuotaTotal = currentMemberQuota.type === "unlimited" ? currentMemberConsumed : currentMemberQuota.total;
+  const editorQuotaPercent = editorQuotaTotal > 0 ? Math.round((currentMemberConsumed / editorQuotaTotal) * 100) : 0;
+  const displayedQuotaTotal = isEditor ? editorQuotaTotal : localTokenTotal;
+  const displayedTokenUsed = isEditor ? currentMemberConsumed : project.tokenUsed;
+  const tokenPercent = displayedQuotaTotal > 0 ? Math.round((displayedTokenUsed / displayedQuotaTotal) * 100) : 0;
   const projectBalance = localTokenTotal - project.tokenUsed;
   const memberTotalBalance = Math.round(localTokenTotal * 0.12);
-  const periodConsumed = period === "all"
-    ? project.tokenUsed
-    : (PERIOD_CONSUMED[period] ?? 0);
-  const memberPeriodConsumed: number[] = period === "all"
-    ? membersWithPerm.map((m) => m.tokenUsed)
-    : (MEMBER_PERIOD_CONSUMED[period] ?? []);
+  const periodConsumed = PERIOD_CONSUMED[period] ?? 0;
   const contentProgress = project.progress;
   const statusStyle = STATUS_STYLE[status] ?? STATUS_STYLE["暂停"];
-  const trendData = TREND_DATA[period] ?? TREND_DATA.month;
+  const editorConsumptionFactor = totalTokenUsed > 0 ? currentMember.tokenUsed / totalTokenUsed : 0.25;
+  const visibleTabs = TAB_CONFIG.filter((tab) => {
+    if (isManager) return true;
+    return tab.key === "cost" || tab.key === "progress";
+  });
+
+  useEffect(() => {
+    const nextDefaultTab: ProjectTab = isManager ? "members" : "cost";
+    const hasActiveTab = visibleTabs.some((tab) => tab.key === activeTab);
+    if (!hasActiveTab) {
+      setActiveTab(nextDefaultTab);
+    }
+  }, [activeTab, isManager, visibleTabs]);
 
   // Convert to DialogMember format
   const dialogMembers: DialogMember[] = activeMembers.map((m, i) => ({
@@ -1353,6 +1701,49 @@ export function ProjectHomePage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadCategoryCSV = () => {
+    const headers = ["分类", "总消耗", "图片生成", "图片消耗", "视频生成", "视频时长", "视频消耗", "抽卡率", "图片抽卡率", "视频抽卡率"];
+    const rows: string[][] = [];
+    categorySummary.forEach((item) => {
+      rows.push([
+        item.name,
+        item.totalTokens.toLocaleString(),
+        String(item.imageCount),
+        item.imageTokens.toLocaleString(),
+        String(item.videoCount),
+        formatDuration(item.videoDurationSec),
+        item.videoTokens.toLocaleString(),
+        `${item.totalRate}%`,
+        `${item.imageRate}%`,
+        `${item.videoRate}%`,
+      ]);
+      item.children?.forEach((child) => {
+        if ("type" in child) return;
+        const rates = deriveCategoryRates(child);
+        rows.push([
+          `  - ${child.name}`,
+          child.totalTokens.toLocaleString(),
+          String(child.imageCount),
+          child.imageTokens.toLocaleString(),
+          String(child.videoCount),
+          formatDuration(child.videoDurationSec),
+          child.videoTokens.toLocaleString(),
+          `${rates.totalRate}%`,
+          `${rates.imageRate}%`,
+          `${rates.videoRate}%`,
+        ]);
+      });
+    });
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `分类消耗_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Filtered members
   const filteredMembersIndexed = activeMembersIndexed.filter(({ m, i }) => {
     if (filterMembers.size > 0 && !filterMembers.has(m.name)) return false;
@@ -1374,6 +1765,39 @@ export function ProjectHomePage() {
   const removeConfirmEntry = removeConfirmIndex !== null
     ? (activeMembersIndexed.find(x => x.i === removeConfirmIndex) ?? null)
     : null;
+  const scopedCategoryConsumption = (isEditor
+    ? CATEGORY_CONSUMPTION.map((node) => scaleCategoryNode(node, editorConsumptionFactor))
+    : CATEGORY_CONSUMPTION) as CategoryNode[];
+
+  const categorySummary = scopedCategoryConsumption.map((node) => {
+    if ("type" in node) {
+      const summary = {
+        totalTokens: sumCat(node.children, "totalTokens"),
+        imageCount: sumCat(node.children, "imageCount"),
+        imageTokens: sumCat(node.children, "imageTokens"),
+        videoCount: sumCat(node.children, "videoCount"),
+        videoDurationSec: sumCat(node.children, "videoDurationSec"),
+        videoTokens: sumCat(node.children, "videoTokens"),
+      };
+      return {
+        name: node.name,
+        ...summary,
+        ...deriveCategoryRates(summary),
+        children: node.children,
+      };
+    }
+    return {
+      name: node.name,
+      totalTokens: node.totalTokens,
+      imageCount: node.imageCount,
+      imageTokens: node.imageTokens,
+      videoCount: node.videoCount,
+      videoDurationSec: node.videoDurationSec,
+      videoTokens: node.videoTokens,
+      ...deriveCategoryRates(node),
+      children: null,
+    };
+  });
 
   return (
     <div
@@ -1381,14 +1805,9 @@ export function ProjectHomePage() {
       style={{ background: "radial-gradient(ellipse 70% 35% at 50% 0%, rgba(140,70,20,0.18) 0%, rgba(20,15,9,0) 55%), #140F09" }}
       onClick={() => setShowStatusDrop(false)}
     >
-      <div className="max-w-5xl mx-auto px-8 py-7">
+      <div className="max-w-[1760px] mx-auto px-4 py-7 lg:px-6">
 
-        {/* ── Breadcrumb ── */}
-        <div className="flex items-center gap-1.5 mb-5" style={{ color: "rgba(255,255,255,0.3)" }}>
-          <button className="text-xs hover:text-white transition-colors" onClick={() => navigate("/projects")}>所有项目</button>
-          <ChevronRight size={12} />
-          <span className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>{projectName}</span>
-        </div>
+     
 
         {/* ── Header ── */}
         <div className="mb-6">
@@ -1495,8 +1914,33 @@ export function ProjectHomePage() {
         </div>
 
       {/* ── Dashboard ── */}
+
         <div className="mb-6">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 mb-4">
+              <button
+              onClick={() => isManager && setShowMemberModal(true)}
+              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: "linear-gradient(145deg, rgba(74,158,224,0.12) 0%, rgba(74,158,224,0.04) 100%)", border: "1px solid rgba(74,158,224,0.14)", minHeight: "128px" }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,158,224,0.16)" }}>
+                  <Users size={14} style={{ color: "#4A9EE0" }} />
+                </div>
+                {isManager && <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>点击管理成员</span>}
+              </div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目成员</div>
+              <div className="mt-2 flex items-end gap-2">
+                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{activeMembers.length}</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(Object.entries(permCounts) as [ProjectPermission, number][]).map(([perm, cnt]) => cnt > 0 && (
+                  <span key={perm} className="px-2 py-0.5 rounded-full" style={{ background: `${PERM_COLORS[perm]}20`, color: PERM_COLORS[perm], fontSize: "10px" }}>
+                    {perm} {cnt}
+                  </span>
+                ))}
+              </div>
+            </button>
             <div
               className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
               style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.18) 0%, rgba(232,115,34,0.08) 100%)", border: "1px solid rgba(232,115,34,0.18)", minHeight: "128px" }}
@@ -1506,7 +1950,7 @@ export function ProjectHomePage() {
                   <Coins size={14} style={{ color: "#E87322" }} />
                 </div>
                 <div className="flex items-center gap-2">
-                  {projectPerm === "管理" && (
+                  {isManager && (
                     <button
                       onClick={() => setEditingTotalQuota(v => !v)}
                       className="px-2.5 py-1 rounded-lg transition-colors hover:opacity-90"
@@ -1519,20 +1963,42 @@ export function ProjectHomePage() {
               </div>
               <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目配额</div>
               <div className="mt-2 flex items-end gap-2">
-                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{localTokenTotal.toLocaleString()}</span>
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>生产栗</span>
+                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{displayedQuotaTotal.toLocaleString()}</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>颗</span>
               </div>
+            
               <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
                 <div style={{ width: `${Math.min(100, tokenPercent)}%`, height: "100%", background: tokenPercent > 80 ? "linear-gradient(90deg, #ff6b6b, #ff9b9b)" : "linear-gradient(90deg, #E87322, #F5A623)" }} />
               </div>
               <div className="mt-2 flex items-center justify-between" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
-                <span>已用 {project.tokenUsed.toLocaleString()}</span>
-                <span>剩余 {projectBalance.toLocaleString()}</span>
+                <span>已用 {displayedTokenUsed.toLocaleString()}</span>
+                <span>{Math.min(100, tokenPercent)}%</span>
               </div>
               
             </div>
 
-            <button
+          
+          
+            <div
+              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ background: "linear-gradient(145deg, rgba(74,198,120,0.12) 0%, rgba(74,198,120,0.04) 100%)", border: "1px solid rgba(74,198,120,0.14)", minHeight: "128px" }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,198,120,0.16)" }}>
+                  <Layers size={14} style={{ color: "#4AC678" }} />
+                </div>
+              </div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>资产总量</div>
+              <div className="mt-2 flex items-end gap-2">
+                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{totalGenerated}</span>
+                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>个</span>
+              </div>
+              <div className="mt-2 flex items-center gap-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
+                <span>图片 {imageGenerated}</span>
+                <span>视频 {videoGenerated}</span>
+              </div>
+            </div>
+              <button
               onClick={() => setActiveTab("progress")}
               className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
               style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.12) 0%, rgba(232,115,34,0.04) 100%)", border: "1px solid rgba(232,115,34,0.14)", minHeight: "128px" }}
@@ -1553,60 +2019,16 @@ export function ProjectHomePage() {
                 </div>
                 <span style={{ fontSize: "11px", color: contentProgress === 100 ? "#4AC678" : "#E87322", fontWeight: 600 }}>{contentProgress}%</span>
               </div>
+              {/*
               <div className="mt-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
                 {contentProgress === 100 ? "已完结" : `还差 ${Math.max(0, project.episodes - project.completedEpisodes)} 集`}
               </div>
+              */}
             </button>
 
-            <button
-              onClick={() => setShowMemberModal(true)}
-              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-              style={{ background: "linear-gradient(145deg, rgba(74,158,224,0.12) 0%, rgba(74,158,224,0.04) 100%)", border: "1px solid rgba(74,158,224,0.14)", minHeight: "128px" }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,158,224,0.16)" }}>
-                  <Users size={14} style={{ color: "#4A9EE0" }} />
-                </div>
-                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>点击管理成员</span>
-              </div>
-              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目成员</div>
-              <div className="mt-2 flex items-end gap-2">
-                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{activeMembers.length}</span>
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(Object.entries(permCounts) as [ProjectPermission, number][]).map(([perm, cnt]) => cnt > 0 && (
-                  <span key={perm} className="px-2 py-0.5 rounded-full" style={{ background: `${PERM_COLORS[perm]}20`, color: PERM_COLORS[perm], fontSize: "10px" }}>
-                    {perm} {cnt}
-                  </span>
-                ))}
-              </div>
-            </button>
-
-            <button
-              onClick={() => setShowProjectStats(v => !v)}
-              className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-              style={{ background: "linear-gradient(145deg, rgba(74,198,120,0.12) 0%, rgba(74,198,120,0.04) 100%)", border: "1px solid rgba(74,198,120,0.14)", minHeight: "128px" }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,198,120,0.16)" }}>
-                  <Layers size={14} style={{ color: "#4AC678" }} />
-                </div>
-                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>{showProjectStats ? "收起" : "展开"}</span>
-              </div>
-              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>资产总量</div>
-              <div className="mt-2 flex items-end gap-2">
-                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{totalGenerated}</span>
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>件</span>
-              </div>
-              <div className="mt-2 flex items-center gap-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
-                <span>图片 {imageGenerated}</span>
-                <span>视频 {videoGenerated}</span>
-              </div>
-            </button>
           </div>
 
-          {projectPerm === "管理" && editingTotalQuota && (
+          {isManager && editingTotalQuota && (
             <div
               className="rounded-2xl p-4 mb-4"
               style={{ background: "#1A1510", border: "1px solid rgba(232,115,34,0.16)" }}
@@ -1628,78 +2050,6 @@ export function ProjectHomePage() {
             </div>
           )}
 
-          <div className="rounded-2xl overflow-hidden" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <button
-              onClick={() => setShowProjectStats(!showProjectStats)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(232,115,34,0.15)" }}>
-                  <BarChart2 size={11} style={{ color: "#E87322" }} />
-                </div>
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>统计明细</span>
-              </div>
-              <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(255,255,255,0.08)" }}>
-                {showProjectStats ? <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.5)" }} /> : <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.5)" }} />}
-              </div>
-            </button>
-
-            {showProjectStats && (
-            <div className="px-4 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-                <div className="rounded-2xl p-4" style={{ background: "rgba(74,158,224,0.08)", border: "1px solid rgba(74,158,224,0.12)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <LucideImage size={12} style={{ color: "#4A9EE0" }} />
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>图片生成</span>
-                  </div>
-                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{imageGenerated}</span>
-                </div>
-                <div className="rounded-2xl p-4" style={{ background: "rgba(74,158,224,0.08)", border: "1px solid rgba(74,158,224,0.12)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Coins size={12} style={{ color: "#4A9EE0" }} />
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>图片消耗</span>
-                  </div>
-                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{imageTokenUsed.toLocaleString()}</span>
-                </div>
-                <div className="rounded-2xl p-4" style={{ background: "rgba(155,89,182,0.08)", border: "1px solid rgba(155,89,182,0.12)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Film size={12} style={{ color: "#9B59B6" }} />
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频生成</span>
-                  </div>
-                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{videoGenerated}</span>
-                </div>
-                <div className="rounded-2xl p-4" style={{ background: "rgba(155,89,182,0.08)", border: "1px solid rgba(155,89,182,0.12)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Coins size={12} style={{ color: "#9B59B6" }} />
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频消耗</span>
-                  </div>
-                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{videoTokenUsed.toLocaleString()}</span>
-                </div>
-                <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock size={12} style={{ color: "rgba(255,255,255,0.5)" }} />
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频时长</span>
-                  </div>
-                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{formatDuration(videoDurationSec)}</span>
-                </div>
-                <div className="rounded-2xl p-4" style={{ background: "rgba(74,198,120,0.08)", border: "1px solid rgba(74,198,120,0.12)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Check size={12} style={{ color: "#4AC678" }} />
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>图片抽卡率</span>
-                  </div>
-                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{imgGachaAvg === "-" ? "-" : `${imgGachaAvg}%`}</span>
-                </div>
-                <div className="rounded-2xl p-4" style={{ background: "rgba(232,115,34,0.08)", border: "1px solid rgba(232,115,34,0.12)" }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Check size={12} style={{ color: "#E87322" }} />
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>视频抽卡率</span>
-                  </div>
-                  <span style={{ fontSize: "28px", fontWeight: 700, color: "#fff" }}>{vidGachaAvg === "-" ? "-" : `${vidGachaAvg}%`}</span>
-                </div>
-              </div>
-            </div>
-            )}
-          </div>
         </div>
         {/* ══════════════════════════════════════════════════════════════════════
             ── Tab Container ──
@@ -1707,7 +2057,7 @@ export function ProjectHomePage() {
         <div className="rounded-xl overflow-hidden mb-5" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
           {/* Tab Header */}
           <div className="flex items-center gap-1 px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            {TAB_CONFIG.filter(t => projectPerm === "管理" || t.key !== "warnings").map(({ key, label, icon: Icon }) => (
+            {visibleTabs.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
@@ -1721,35 +2071,60 @@ export function ProjectHomePage() {
               >
                 <Icon size={12} />
                 {label}
-                {key === "members" && (
-                  <span className="px-1.5 py-0.5 rounded-full" style={{ background: "rgba(232,115,34,0.2)", color: "#E87322", fontSize: "10px" }}>
-                    {activeMembers.length}
-                  </span>
-                )}
-                {key === "warnings" && (
-                  <span className="px-1.5 py-0.5 rounded-full" style={{ background: "rgba(255,100,100,0.15)", color: "#ff6b6b", fontSize: "10px" }}>
-                    {DUPLICATE_PROMPTS.length}
-                  </span>
-                )}
               </button>
             ))}
           </div>
 
           {/* Tab Content */}
           <div className="p-5">
-            {/* ── 成员与成本 Tab (merged) ── */}
-            {activeTab === "members" && (
-              <div className="flex flex-col gap-6">
-
-                {/* ── Section 2: 成本消耗 ── */}
+            {/* ── 项目成本 Tab ── */}
+            {activeTab === "cost" && (() => {
+              const STACKED_METRICS = new Set(["img_count", "img_tokens", "vid_count", "vid_duration", "vid_tokens"]);
+              const isStacked = STACKED_METRICS.has(selectedMetric);
+              const scopedStackedTrendData = isEditor
+                ? scaleStackedSeries(STACKED_TREND_DATA[selectedMetric] ?? STACKED_TREND_DATA.img_count, editorConsumptionFactor)
+                : STACKED_TREND_DATA[selectedMetric];
+              const scopedRateTrendData = isEditor
+                ? shiftRateSeries(
+                    RATE_TREND_DATA[selectedMetric] ?? RATE_TREND_DATA.gacha_rate,
+                    Number(
+                      selectedMetric === "img_gacha_rate"
+                        ? imgGachaAvg
+                        : selectedMetric === "vid_gacha_rate"
+                          ? vidGachaAvg
+                          : totalGachaAvg,
+                    ),
+                  )
+                : RATE_TREND_DATA[selectedMetric];
+              const stackedData = isStacked ? (scopedStackedTrendData?.[period] ?? []) : [];
+              const rateData = !isStacked ? (scopedRateTrendData?.[period] ?? []) : [];
+              const categoryLegend = [
+                { k: "cat1", label: "主体", color: "#E87322" },
+                { k: "cat2", label: "第1集", color: "#4A9EE0" },
+                { k: "cat3", label: "第2集", color: "#4AC678" },
+              ];
+              const metricCards = [
+                { key: "img_count",      label: "图片生成数",    value: imageGenerated.toLocaleString(),         tooltip: "统计周期内项目所有成员生成的图片总数量（含人物/场景/道具等各分类）",  unit: "张" },
+                { key: "img_tokens",     label: "图片消耗生产栗", value: imageTokenUsed.toLocaleString(),          tooltip: "统计周期内生成图片所消耗的生产栗总量，按生成成本累计",             unit: "颗" },
+                { key: "vid_count",      label: "视频生成数",    value: videoGenerated.toLocaleString(),          tooltip: "统计周期内生成的视频片段总数量（含各集各分镜）",                  unit: "个" },
+                { key: "vid_duration",   label: "视频生成时长",  value: formatDuration(videoDurationSec),         tooltip: "统计周期内所有视频的累计生成时长",                              unit: ""  },
+                { key: "vid_tokens",     label: "视频消耗生产栗", value: videoTokenUsed.toLocaleString(),          tooltip: "统计周期内生成视频所消耗的生产栗总量",                          unit: "颗" },
+                { key: "gacha_rate",     label: "抽卡率",        value: `${totalGachaAvg}%`,                     tooltip: "平均抽卡率，按保留资产对应的生成成功率换算为百分比展示",          unit: ""  },
+                { key: "img_gacha_rate", label: "图片抽卡率",    value: `${imgGachaAvg}%`,                       tooltip: "图片资产抽卡率，按图片生成成功率换算为百分比展示",                unit: ""  },
+                { key: "vid_gacha_rate", label: "视频抽卡率",    value: `${vidGachaAvg}%`,                       tooltip: "视频资产抽卡率，按视频生成成功率换算为百分比展示",                unit: ""  },
+              ];
+              const metricMeta: Record<string, string> = {
+                img_count: "图片生成数", img_tokens: "图片消耗生产栗", vid_count: "视频生成数",
+                vid_duration: "视频生成时长", vid_tokens: "视频消耗生产栗",
+                gacha_rate: "抽卡率", img_gacha_rate: "图片抽卡率", vid_gacha_rate: "视频抽卡率",
+              };
+              return (
                 <div className="flex flex-col gap-5">
-
-                  {/* Period filter + trend chart */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-1.5">
-                        <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>消耗趋势</span>
-                      </div>
+                  <div className="flex items-center justify-between">
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
+                      时间筛选
+                    </span>
+                    <div className="flex items-center gap-2">
                       <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
                         {PERIOD_LABELS.map(({ key, label }) => (
                           <button key={key} onClick={() => setPeriod(key)}
@@ -1759,81 +2134,208 @@ export function ProjectHomePage() {
                           </button>
                         ))}
                       </div>
+                      {period === "custom" && (
+                        <div className="flex items-center gap-1.5">
+                          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                            className="px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", fontSize: "10px" }} />
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>~</span>
+                          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                            className="px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", fontSize: "10px" }} />
+                        </div>
+                      )}
                     </div>
-                    {period === "custom" && (
-                      <div className="flex items-center gap-2 mb-3">
-                        {["from", "to"].map((k) => (
-                          <input key={k} type="date"
-                            value={k === "from" ? dateFrom : dateTo}
-                            onChange={(e) => k === "from" ? setDateFrom(e.target.value) : setDateTo(e.target.value)}
-                            className="flex-1 px-2 py-1 rounded-lg text-xs outline-none"
-                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", colorScheme: "dark" }} />
-                        ))}
-                      </div>
-                    )}
-                    
+                  </div>
 
-                    {/* Recharts Trend Chart */}
+                  {/* ── Stats Grid ── */}
+                  <div>
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500, display: "block", marginBottom: "10px" }}>{isEditor ? "我的消耗明细" : "统计明细"}</span>
+                    <div className="grid grid-cols-4 gap-2.5">
+                      {metricCards.map(({ key, label, value, tooltip, unit }) => (
+                        <button
+                          key={key}
+                          onClick={() => setSelectedMetric(key)}
+                          className="flex flex-col gap-1.5 p-3 rounded-xl text-left transition-all"
+                          style={{
+                            background: selectedMetric === key ? "rgba(232,115,34,0.12)" : "rgba(255,255,255,0.03)",
+                            border: `1px solid ${selectedMetric === key ? "rgba(232,115,34,0.3)" : "rgba(255,255,255,0.06)"}`,
+                          }}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span style={{ fontSize: "10px", color: selectedMetric === key ? "#E87322" : "rgba(255,255,255,0.4)" }}>{label}</span>
+                            <StatTooltip text={tooltip} />
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                            <span style={{ fontSize: "18px", fontWeight: 700, color: selectedMetric === key ? "#E87322" : "rgba(255,255,255,0.8)", lineHeight: 1 }}>{value}</span>
+                            {unit && <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{unit}</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Period Selector + Dynamic Chart ── */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
+                        {metricMeta[selectedMetric]} 趋势
+                      </span>
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>按所选时间范围展示</span>
+                    </div>
+
                     <div className="rounded-lg px-1 pt-2 pb-1" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                      <div className="flex items-center justify-between px-3 mb-1">
-                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>消耗趋势</span>
-                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>
-                          {period === "week" ? "最近7天" : period === "month" ? "最近30天" : period === "year" ? "最近12月" : period === "all" ? "全部时段" : "自定义时段"}
-                        </span>
-                      </div>
-                      <ResponsiveContainer width="100%" height={110}>
-                        <AreaChart data={trendData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="trendGradFill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#E87322" stopOpacity={0.25} />
-                              <stop offset="95%" stopColor="#E87322" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                          <XAxis
-                            dataKey="date"
-                            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }}
-                            axisLine={false}
-                            tickLine={false}
-                            interval="preserveStartEnd"
-                          />
-                          <YAxis
-                            tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }}
-                            axisLine={false}
-                            tickLine={false}
-                            tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                          />
-                          <ReTooltip
-                            content={<TrendTooltip />}
-                            cursor={{ stroke: "rgba(232,115,34,0.3)", strokeWidth: 1, strokeDasharray: "4 3" }}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="value"
-                            stroke="#E87322"
-                            strokeWidth={2}
-                            fill="url(#trendGradFill)"
-                            dot={false}
-                            activeDot={{ r: 4, fill: "#E87322", stroke: "#140F09", strokeWidth: 2 }}
-                          />
-                        </AreaChart>
+                      {isStacked && (
+                        <div className="flex items-center gap-4 px-3 mb-2">
+                          {categoryLegend.map(({ label, color }) => (
+                            <div key={label} className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: color }} /><span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>{label}</span></div>
+                          ))}
+                        </div>
+                      )}
+                      <ResponsiveContainer width="100%" height={130}>
+                        {isStacked ? (
+                          <BarChart data={stackedData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                            <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                            <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)} />
+                            <ReTooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={({ active, payload, label: lbl }) => {
+                              if (!active || !payload?.length) return null;
+                              const total = payload.reduce((sum, item) => sum + Number(item.value ?? 0), 0);
+                              return (
+                                <div className="px-3 py-2 rounded-lg shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(232,115,34,0.3)", minWidth: "110px" }}>
+                                  <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "4px" }}>{lbl}</p>
+                                  <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.72)", marginBottom: "4px" }}>总量 {total.toLocaleString()}</p>
+                                  {categoryLegend.map(({ k, label: l, color }) => {
+                                    const p = payload.find(x => x.dataKey === k);
+                                    return p ? <p key={k} style={{ fontSize: "11px", color }}>{l} {p.value?.toLocaleString()}</p> : null;
+                                  })}
+                                </div>
+                              );
+                            }} />
+                            <Bar dataKey="cat1" stackId="s" fill="#E87322" fillOpacity={0.85} radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="cat2" stackId="s" fill="#4A9EE0" fillOpacity={0.85} radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="cat3" stackId="s" fill="#4AC678" fillOpacity={0.85} radius={[3, 3, 0, 0]} />
+                          </BarChart>
+                        ) : (
+                          <LineChart data={rateData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                            <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                            <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }} axisLine={false} tickLine={false} />
+                            <ReTooltip content={({ active, payload, label: lbl }) => {
+                              if (!active || !payload?.length) return null;
+                              return (
+                                <div className="px-3 py-2 rounded-lg shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(232,115,34,0.3)", minWidth: "100px" }}>
+                                  <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "4px" }}>{lbl}</p>
+                                  <p style={{ fontSize: "14px", fontWeight: 600, color: "#E87322" }}>{payload[0].value}<span style={{ fontSize: "10px", fontWeight: 400, color: "rgba(255,255,255,0.4)", marginLeft: "2px" }}>%</span></p>
+                                </div>
+                              );
+                            }} cursor={{ stroke: "rgba(232,115,34,0.3)", strokeWidth: 1, strokeDasharray: "4 3" }} />
+                            <Line type="monotone" dataKey="value" stroke="#E87322" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#E87322", stroke: "#140F09", strokeWidth: 2 }} />
+                          </LineChart>
+                        )}
                       </ResponsiveContainer>
                     </div>
                   </div>
 
-
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{isEditor ? "我的分类消耗" : "按分类消耗"}</span>
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>点击分类行查看明细</span>
+                        <button onClick={handleDownloadCategoryCSV}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
+                          style={{ background: "rgba(74,198,120,0.1)", color: "#4AC678", border: "1px solid rgba(74,198,120,0.2)", fontSize: "10px" }}>
+                          <DownloadIcon size={10} />下载表格
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid px-4 py-2.5 rounded-lg"
+                      style={{ gridTemplateColumns: "140px 90px 90px 90px 90px 100px 100px 90px 100px 100px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>分类</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", textAlign: "right" }}>总消耗</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", textAlign: "right" }}>图片生成</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", textAlign: "right" }}>图片消耗</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", textAlign: "right" }}>视频生成</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", textAlign: "right" }}>视频时长</span>
+                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", textAlign: "right" }}>视频消耗</span>
+                      <div className="flex justify-end"><MetricHeader label="抽卡率" tooltip="分类下全部资产的综合抽卡率，按图片和视频抽卡率加权计算" /></div>
+                      <div className="flex justify-end"><MetricHeader label="图片抽卡率" tooltip="分类下图片资产抽卡率，按图片生成效率换算为百分比展示" /></div>
+                      <div className="flex justify-end"><MetricHeader label="视频抽卡率" tooltip="分类下视频资产抽卡率，按视频生成效率换算为百分比展示" /></div>
+                    </div>
+                    <div className="flex flex-col gap-1 mt-2">
+                      {categorySummary.map((item) => {
+                        const expanded = expandedCategories.has(item.name);
+                        return (
+                          <div key={item.name} className="rounded-lg overflow-hidden" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                            <button
+                              onClick={() => setExpandedCategories((prev) => {
+                                const next = new Set(prev);
+                                next.has(item.name) ? next.delete(item.name) : next.add(item.name);
+                                return next;
+                              })}
+                              className="w-full grid px-4 py-3 text-left items-center transition-colors hover:bg-white/[0.02]"
+                              style={{ gridTemplateColumns: "140px 90px 90px 90px 90px 100px 100px 90px 100px 100px" }}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                {item.children ? (expanded ? <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.25)", flexShrink: 0 }} /> : <ChevronRight size={14} style={{ color: "rgba(255,255,255,0.25)", flexShrink: 0 }} />) : <span style={{ width: 14, flexShrink: 0 }} />}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.78)", fontWeight: 600 }}>{item.name}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ fontSize: "12px", color: "#fff", fontWeight: 600, textAlign: "right" }}>{item.totalTokens.toLocaleString()}</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{item.imageCount}</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{item.imageTokens.toLocaleString()}</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{item.videoCount}</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{formatDuration(item.videoDurationSec)}</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{item.videoTokens.toLocaleString()}</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{item.totalRate}%</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{item.imageRate}%</div>
+                              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.72)", textAlign: "right" }}>{item.videoRate}%</div>
+                            </button>
+                            {expanded && item.children && (
+                              <div className="px-3 pb-3 flex flex-col gap-1" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                                {item.children.map((child) => {
+                                  if ("type" in child) return null;
+                                  const childRates = deriveCategoryRates(child);
+                                  return (
+                                    <div key={child.name} className="grid px-4 py-2 rounded-lg" style={{ gridTemplateColumns: "140px 90px 90px 90px 90px 100px 100px 90px 100px 100px", background: "rgba(255,255,255,0.025)" }}>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.62)", paddingLeft: "22px" }}>{child.name}</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{child.totalTokens.toLocaleString()}</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{child.imageCount}</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{child.imageTokens.toLocaleString()}</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{child.videoCount}</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{formatDuration(child.videoDurationSec)}</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{child.videoTokens.toLocaleString()}</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{childRates.totalRate}%</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{childRates.imageRate}%</span>
+                                      <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.52)", textAlign: "right" }}>{childRates.videoRate}%</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-                {/* ── Section 1: 成员管理 ── */}
+              );
+            })()}
+
+            {/* ── 成员管理 Tab ── */}
+            {activeTab === "members" && isManager && (
+              <div className="flex flex-col gap-6">
+                {/* ── 成员管理 ── */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
-                      {projectPerm === "管理" ? "成员管理" : "我的信息"}
-                    </span>
-                   
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }} />
                   </div>
 
                   {/* Filter Bar (only 管理) */}
-                  {projectPerm === "管理" && (
+                  {isManager && (
                   <div className="flex items-center gap-3 mb-3 px-1">
                     <FilterDropdown
                       label="成员"
@@ -1842,42 +2344,56 @@ export function ProjectHomePage() {
                       onChange={setFilterMembers}
                     />
                     <PermFilterDropdown value={filterPerm} onChange={setFilterPerm} />
-                    {/*
-                    <div className="flex items-center gap-1.5">
-                      <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
-                        className="px-2 py-1 rounded-lg text-xs outline-none"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", fontSize: "10px" }} />
-                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>~</span>
-                      <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
-                        className="px-2 py-1 rounded-lg text-xs outline-none"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", fontSize: "10px" }} />
+                    <div className="ml-auto flex items-center gap-2">
+                      <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        {PERIOD_LABELS.map(({ key, label }) => (
+                          <button key={key} onClick={() => setPeriod(key)}
+                            className="px-2 py-1 rounded-md text-xs transition-colors"
+                            style={{ background: period === key ? "rgba(232,115,34,0.7)" : "transparent", color: period === key ? "#fff" : "rgba(255,255,255,0.45)" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {period === "custom" && (
+                        <div className="flex items-center gap-1.5">
+                          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                            className="px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", fontSize: "10px" }} />
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>~</span>
+                          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                            className="px-2 py-1 rounded-lg text-xs outline-none"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", colorScheme: "dark", fontSize: "10px" }} />
+                        </div>
+                      )}
                     </div>
-                    */}
                     <button onClick={handleDownloadCSV}
-                      className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
                       style={{ background: "rgba(74,198,120,0.1)", color: "#4AC678", border: "1px solid rgba(74,198,120,0.2)", fontSize: "10px" }}>
                       <DownloadIcon size={10} />下载表格
                     </button>
                   </div>
                   )}
 
-                  {/* Table Header */}
-                  <div className="grid px-4 py-2.5 rounded-lg"
-                    style={{ gridTemplateColumns: "120px 140px 85px 85px 85px 85px 80px  80px 80px 90px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员</span>
-                    <MetricHeader label="消耗/配额" tooltip="点击可修改配额模式（无限制/固定额度）" />
-                    <MetricHeader label="图片生成" tooltip="生成的图片数量" />
-                    <MetricHeader label="图片消耗" tooltip="生成图片消耗的生产栗" />
-                    <MetricHeader label="视频生成" tooltip="生成的视频数量" />
-                    <MetricHeader label="视频消耗" tooltip="生成视频消耗的生产栗" />
-                    <MetricHeader label="视频时长" tooltip="累计生成的视频总时长" />
-                     <MetricHeader label="图片抽卡率" tooltip="xx/生产的内容数" />
-                     <MetricHeader label="视频抽卡率" tooltip="xx/生产的内容数" />
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>操作</span>
-                  </div>
+                  <div className="overflow-x-auto pb-2">
+                    <div style={{ minWidth: "1030px" }}>
+                      {/* Table Header */}
+                      <div className="grid px-4 py-2.5 rounded-lg"
+                        style={{ gridTemplateColumns: "120px 140px 78px 82px 78px 82px 80px 70px 80px 80px 90px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员</span>
+                        <MetricHeader label="消耗/配额" tooltip="点击可修改配额模式（无限制/固定额度）" />
+                        <MetricHeader label="图片生成" tooltip="生成的图片数量" />
+                        <MetricHeader label="图片消耗" tooltip="生成图片消耗的生产栗" />
+                        <MetricHeader label="视频生成" tooltip="生成的视频数量" />
+                        <MetricHeader label="视频消耗" tooltip="生成视频消耗的生产栗" />
+                        <MetricHeader label="视频时长" tooltip="累计生成的视频总时长" />
+                        <MetricHeader label="抽卡率" tooltip="成员维度综合抽卡率，按图片和视频抽卡率加权展示" />
+                        <MetricHeader label="图片抽卡率" tooltip="成员维度图片资产抽卡率" />
+                        <MetricHeader label="视频抽卡率" tooltip="成员维度视频资产抽卡率" />
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>操作</span>
+                      </div>
 
-                  {/* Member Rows */}
-                  <div className="flex flex-col gap-1 mt-2">
+                      {/* Member Rows */}
+                      <div className="flex flex-col gap-1 mt-2">
                     {/* ── 总计 Row ── */}
                     {/*
                     {(() => {
@@ -1934,7 +2450,7 @@ export function ProjectHomePage() {
                         <Fragment key={i}>
                           <div
                             className="grid px-5 py-3 hover:bg-white/[0.02] transition-colors group/row"
-                            style={{ gridTemplateColumns: "120px 140px 75px 75px 75px 75px 70px 70px 70px 90px", alignItems: "center" }}
+                            style={{ gridTemplateColumns: "120px 140px 78px 82px 78px 82px 80px 70px 80px 80px 90px", alignItems: "center" }}
                           >
                             {/* Member Info */}
                             <div className="flex items-center gap-2 min-w-0">
@@ -1993,9 +2509,9 @@ export function ProjectHomePage() {
 
                             {/* Video duration */}
                             <div className="text-right" style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>{m.videoDuration}</div>
-                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoGenerated}%</div>
-
-                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.videoGenerated}%</div>
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{Number((((m.gachaRate * m.imageGenerated) + (m.avgGachaRate * m.videoGenerated)) / Math.max(m.imageGenerated + m.videoGenerated, 1)).toFixed(1))}%</div>
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.gachaRate}%</div>
+                            <div className="text-right" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{m.avgGachaRate}%</div>
 
                             {/* Actions */}
                             <div className="flex items-center gap-1 justify-end">
@@ -2064,343 +2580,98 @@ export function ProjectHomePage() {
                         暂无成员
                       </div>
                     )}
+                      </div>
+                    </div>
                   </div>
 
 
                 
                 </div>
 
-                {/* ── Divider ── */}
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
-
-                {/* ── 按分类消耗 ── */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>按分类消耗</span>
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => setExpandedCategories(new Set(CATEGORY_CONSUMPTION.filter(c => "type" in c).map(c => c.name)))}
-                        className="px-2 py-0.5 rounded text-xs hover:opacity-80 transition-opacity"
-                        style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px" }}>全部展开</button>
-                      <button onClick={() => setExpandedCategories(new Set())}
-                        className="px-2 py-0.5 rounded text-xs hover:opacity-80 transition-opacity"
-                        style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px" }}>全部收起</button>
-                    </div>
-                     <button onClick={handleDownloadCSV}
-                      className="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all hover:opacity-80"
-                      style={{ background: "rgba(74,198,120,0.1)", color: "#4AC678", border: "1px solid rgba(74,198,120,0.2)", fontSize: "10px" }}>
-                      <DownloadIcon size={10} />下载表格
-                    </button>
-                  </div>
-                  
-                  <div className="overflow-auto rounded-lg" style={{ maxHeight: "380px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
-                    {/* Header */}
-                    <div className="grid grid-cols-9 gap-2 px-4 py-2 text-xs sticky top-0 z-10"
-                      style={{ background: "rgba(30,26,20,0.95)", borderBottom: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}>
-                      <span className="col-span-1 flex items-center gap-1">类别</span>
-                      <MetricHeader label="总消耗" tooltip="该分类下所有生成消耗的总生产栗数" />
-                      <MetricHeader label="图片生成" tooltip="生成的图片数量" />
-                      <MetricHeader label="图片消耗" tooltip="生成图片消耗的生产栗" />
-                      <MetricHeader label="视频生成" tooltip="生成的视频数量" />
-                      <MetricHeader label="视频时长" tooltip="生成视频的总时长" />
-                      <MetricHeader label="视频消耗" tooltip="生成视频消耗的生产栗" />
-                      <MetricHeader label="图片抽卡率" tooltip="xx/xx" />
-                      <MetricHeader label="视频抽卡率" tooltip="xx/xx" />
-
-                    </div>
-                    {/* Rows */}
-                    <div className="flex flex-col">
-                      {CATEGORY_CONSUMPTION.map((cat, i) => {
-                        const isFolder = "type" in cat;
-                        const isExp = isFolder && expandedCategories.has(cat.name);
-                        const leaf = isFolder ? null : (cat as CategoryLeaf);
-                        const totalTokens = isFolder ? sumCat(cat.children, "totalTokens") : (leaf?.totalTokens ?? 0);
-                        const imageCount = isFolder ? sumCat(cat.children, "imageCount") : (leaf?.imageCount ?? 0);
-                        const imageTokens = isFolder ? sumCat(cat.children, "imageTokens") : (leaf?.imageTokens ?? 0);
-                        const videoCount = isFolder ? sumCat(cat.children, "videoCount") : (leaf?.videoCount ?? 0);
-                        const videoDuration = isFolder ? sumCat(cat.children, "videoDurationSec") : (leaf?.videoDurationSec ?? 0);
-                        const videoTokens = isFolder ? sumCat(cat.children, "videoTokens") : (leaf?.videoTokens ?? 0);
-                        const Icon = isFolder ? (isExp ? ChevronDown : ChevronRight) : MessageCircle;
-                        const iconColor = isFolder ? "#E87322" : "rgba(74,158,224,0.5)";
-
-                        return (
-                          <Fragment key={i}>
-                            {/* Parent/Leaf row */}
-                            <button onClick={() => {
-                              if (isFolder) {
-                                const next = new Set(expandedCategories);
-                                isExp ? next.delete(cat.name) : next.add(cat.name);
-                                setExpandedCategories(next);
-                              }
-                            }}
-                              className={`w-full grid grid-cols-7 gap-2 px-4 py-2.5 text-xs transition-colors hover:bg-white/[0.02] ${isFolder ? "cursor-pointer" : "cursor-default"}`}
-                              style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: "rgba(255,255,255,0.01)" }}>
-                              <span className="col-span-1 flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>
-                                <Icon size={10} style={{ color: iconColor }} />
-                                {cat.name}
-                              </span>
-                              <span className="text-center" style={{ fontSize: "12px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{totalTokens.toLocaleString()}</span>
-                              <MetricCell value={imageCount.toString()} tooltip={`图片生成: ${imageCount} 张`} />
-                              <MetricCell value={imageTokens.toLocaleString()} tooltip={`图片消耗: ${imageTokens} 颗`} />
-                              <MetricCell value={videoCount.toString()} tooltip={`视频生成: ${videoCount} 个`} />
-                              <MetricCell value={formatDuration(videoDuration)} tooltip={`视频时长: ${videoDuration}秒`} />
-                              <MetricCell value={videoTokens.toLocaleString()} tooltip={`视频消耗: ${videoTokens} 颗`} />
-
-                            </button>
-                            {/* Expanded children */}
-                            {isExp && isFolder && (cat as { children: CategoryNode[] }).children.map((child, cIdx) => {
-                              const cl = child as CategoryLeaf;
-                              return (
-                                <div key={cIdx} className="grid grid-cols-9 gap-2 px-4 pl-8 py-2 text-xs"
-                                  style={{ background: "rgba(255,255,255,0.015)", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                                  <span className="col-span-1 flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.55)", fontSize: "11px" }}>
-                                    <MessageCircle size={9} style={{ color: "rgba(74,158,224,0.5)", flexShrink: 0 }} />
-                                    {cl.name}
-                                  </span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>{cl.totalTokens.toLocaleString()}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.imageCount}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.imageTokens.toLocaleString()}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoCount}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{formatDuration(cl.videoDurationSec)}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoTokens.toLocaleString()}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{formatDuration(cl.videoDurationSec)}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoTokens.toLocaleString()}</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoCount}%</span>
-                                  <span className="text-right" style={{ color: "rgba(255,255,255,0.5)" }}>{cl.videoCount}%</span>
-
-                                </div>
-                              );
-                            })}
-                          </Fragment>
-                        );
-                      })}
-                      {/* Totals row */}
-                      
-                    </div>
-                  </div>
-                </div>
-                  <div className="grid grid-cols-2 gap-5">
-                    {/* ── 按成员消耗 ── */}
-                    <div>
-                      {(() => {
-                        const visibleMembers = projectPerm === "管理"
-                          ? activeMembersIndexed
-                          : activeMembersIndexed.filter(({ i }) => i === 0);
-                        const barData = visibleMembers.map(({ m, i }) => ({
-                          name: m.name,
-                          imageTokens: m.imageTokenUsed,
-                          videoTokens: m.videoTokenUsed,
-                          total: memberPeriodConsumed[i] ?? 0,
-                        }));
-                        const totalConsumed = barData.reduce((s, d) => s + d.total, 0);
-
-                        return (
-                          <>
-                          <div className="flex items-center justify-between mb-3">
-                            <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
-                              {projectPerm === "管理" ? "按成员消耗" : "我的消耗"}
-                            </span>
-                           
-                          </div>
-
-                          {/* Bar chart: image vs video per member */}
-                          <div className="rounded-lg px-2 pt-2 pb-1 mb-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                            <div className="flex items-center gap-3 px-2 mb-1">
-                              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#4A9EE0" }} /><span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片消耗</span></div>
-                              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#9B59B6" }} /><span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频消耗</span></div>
-                            </div>
-                            <ResponsiveContainer width="100%" height={180}>
-                              <BarChart data={barData} barCategoryGap="15%" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                                <XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                                <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)} />
-                                <ReTooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={({ active, payload }) => {
-                                  if (!active || !payload?.length) return null;
-                                  const d = payload[0].payload;
-                                  return (
-                                    <div className="px-3 py-2 rounded-lg shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(232,115,34,0.3)" }}>
-                                      <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginBottom: "4px" }}>{d.name}</p>
-                                      <p style={{ fontSize: "11px", color: "#4A9EE0" }}>图片 {d.imageTokens.toLocaleString()} 颗</p>
-                                      <p style={{ fontSize: "11px", color: "#9B59B6" }}>视频 {d.videoTokens.toLocaleString()} 颗</p>
-                                      <p style={{ fontSize: "11px", color: "#E87322", fontWeight: 600 }}>合计 {d.total.toLocaleString()} 颗</p>
-                                    </div>
-                                  );
-                                }} />
-                                <Bar dataKey="imageTokens" fill="#4A9EE0" stackId="tokens" radius={[3, 3, 0, 0]} />
-                                <Bar dataKey="videoTokens" fill="#9B59B6" stackId="tokens" radius={[0, 0, 3, 3]} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-
-                    {/* ── 按分类消耗图表 ── */}
-                    <div>
-                      {(() => {
-                        const categoryBarData: Array<{ name: string; imageTokens: number; videoTokens: number; total: number; isFolder: boolean }> = CATEGORY_CONSUMPTION.map(cat => {
-                          const isFolder = "type" in cat;
-                          const imageTokens = isFolder ? sumCat(cat.children, "imageTokens") : (cat as CategoryLeaf).imageTokens;
-                          const videoTokens = isFolder ? sumCat(cat.children, "videoTokens") : (cat as CategoryLeaf).videoTokens;
-                          return { name: cat.name, imageTokens, videoTokens, total: imageTokens + videoTokens, isFolder };
-                        });
-                        const catTotal = categoryBarData.reduce((s, d) => s + d.total, 0);
-
-                        return (
-                          <>
-                          <div className="flex items-center justify-between mb-3">
-                            <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>按分类消耗</span>
-                          
-                          </div>
-
-                          {/* Bar chart: image vs video per category */}
-                          <div className="rounded-lg px-2 pt-2 pb-1 mb-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                            <div className="flex items-center gap-3 px-2 mb-1">
-                              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#4A9EE0" }} /><span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>图片消耗</span></div>
-                              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ background: "#9B59B6" }} /><span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>视频消耗</span></div>
-                            </div>
-                            <ResponsiveContainer width="100%" height={180}>
-                              <BarChart data={categoryBarData} barCategoryGap="15%" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                                <XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                                <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)} />
-                                <ReTooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={({ active, payload }) => {
-                                  if (!active || !payload?.length) return null;
-                                  const d = payload[0].payload;
-                                  return (
-                                    <div className="px-3 py-2 rounded-lg shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(232,115,34,0.3)" }}>
-                                      <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)", marginBottom: "4px" }}>{d.name}</p>
-                                      <p style={{ fontSize: "11px", color: "#4A9EE0" }}>图片 {d.imageTokens.toLocaleString()} 颗</p>
-                                      <p style={{ fontSize: "11px", color: "#9B59B6" }}>视频 {d.videoTokens.toLocaleString()} 颗</p>
-                                      <p style={{ fontSize: "11px", color: "#E87322", fontWeight: 600 }}>合计 {d.total.toLocaleString()} 颗</p>
-                                    </div>
-                                  );
-                                }} />
-                                <Bar dataKey="imageTokens" fill="#4A9EE0" stackId="tokens" radius={[3, 3, 0, 0]} />
-                                <Bar dataKey="videoTokens" fill="#9B59B6" stackId="tokens" radius={[0, 0, 3, 3]} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-
-                  </div>
-
               </div>
             )}
 
             {/* ── 分镜进度 Tab ── */}
             {activeTab === "progress" && (
-              <div className="flex flex-col gap-2">
-                {/* Summary bar */}
-                <div className="flex items-center gap-4 px-4 py-2.5 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: "#4AC678" }} />
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-                      已完成 <span style={{ color: "#4AC678", fontWeight: 600 }}>{project.episodeStats.filter(ep => ep.progress === 100).length}</span>
-                    </span>
-                  </div>
-                  <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: "#E87322" }} />
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-                      进行中 <span style={{ color: "#E87322", fontWeight: 600 }}>{project.episodeStats.filter(ep => ep.progress > 0 && ep.progress < 100).length}</span>
-                    </span>
-                  </div>
-                  <div className="w-px h-3" style={{ background: "rgba(255,255,255,0.1)" }} />
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: "rgba(255,255,255,0.15)" }} />
-                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
-                      未开始 <span style={{ color: "rgba(255,255,255,0.35)", fontWeight: 600 }}>{project.episodeStats.filter(ep => ep.progress === 0).length}</span>
-                    </span>
-                  </div>
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <button onClick={() => setExpandedEpisodes(new Set(project.episodeStats.map((_, i) => i)))}
-                      className="px-2 py-0.5 rounded text-xs hover:opacity-80"
-                      style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px" }}>全部展开</button>
-                    <button onClick={() => setExpandedEpisodes(new Set())}
-                      className="px-2 py-0.5 rounded text-xs hover:opacity-80"
-                      style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px" }}>全部收起</button>
-                  </div>
-                </div>
-
-                {/* Episode list */}
+              <div className="flex flex-col gap-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {project.episodeStats.map((ep, idx) => {
-                  const stages = deriveStages(ep.progress);
-                  const isExpanded = expandedEpisodes.has(idx);
+                  const mediaProgress = deriveEpisodeMediaProgress(ep.progress);
                   const statusColor = ep.progress === 100 ? "#4AC678" : ep.progress > 0 ? "#E87322" : "rgba(255,255,255,0.2)";
                   const StatusIcon = ep.progress === 100 ? CheckCircle2 : ep.progress > 0 ? Loader2 : Circle;
+                  const statusLabel = ep.progress === 100 ? "已完成" : ep.progress > 0 ? "进行中" : "未开始";
 
                   return (
-                    <div key={idx} className="rounded-lg overflow-hidden transition-all"
-                      style={{ background: isExpanded ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.02)", border: `1px solid ${isExpanded ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.04)"}` }}>
-                      {/* Header row — always visible */}
-                      <button onClick={() => {
-                        setExpandedEpisodes(prev => {
-                          const next = new Set(prev);
-                          next.has(idx) ? next.delete(idx) : next.add(idx);
-                          return next;
-                        });
-                      }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.01] transition-colors">
-                        <div className="flex items-center gap-3">
+                    <div key={idx} className="rounded-[20px] p-4 transition-all"
+                      style={{
+                        background: "rgba(255,255,255,0.025)",
+                        border: `1px solid ${ep.progress > 0 ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.05)"}`,
+                        boxShadow: ep.progress > 0 ? `0 12px 24px ${statusColor}08` : "none",
+                      }}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex min-w-0 items-center gap-2.5">
                           <StatusIcon size={14} style={{ color: statusColor }} />
-                          <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{ep.name}</span>
-                          {/* Mini stage pills */}
-                          <div className="flex items-center gap-1.5">
-                            {stages.map(s => (
-                              <span key={s.label} className="flex items-center gap-1 px-1.5 py-0.5 rounded"
-                                style={{
-                                  background: s.progress === 100 ? "rgba(74,198,120,0.1)" : s.progress > 0 ? "rgba(232,115,34,0.08)" : "rgba(255,255,255,0.03)",
-                                  fontSize: "9px",
-                                  color: s.progress === 100 ? "#4AC678" : s.progress > 0 ? "#E87322" : "rgba(255,255,255,0.2)",
-                                }}>
-                                {s.label} {s.progress}%
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/* Overall mini bar */}
-                          <div className="w-20 rounded-full overflow-hidden" style={{ height: "4px", background: "rgba(255,255,255,0.06)" }}>
-                            <div className="h-full rounded-full" style={{ width: `${ep.progress}%`, background: statusColor, transition: "width 0.5s" }} />
-                          </div>
-                          <span style={{ fontSize: "13px", fontWeight: 600, color: statusColor, width: "32px", textAlign: "right" }}>
-                            {ep.progress}%
+                          <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.84)", fontWeight: 600 }}>{ep.name}</span>
+                          <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", color: statusColor, background: `${statusColor}14` }}>
+                            {statusLabel}
                           </span>
-                          {isExpanded
-                            ? <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.25)" }} />
-                            : <ChevronRight size={14} style={{ color: "rgba(255,255,255,0.25)" }} />}
                         </div>
-                      </button>
-
-                      {/* Expanded stage details */}
-                      {isExpanded && (
-                        <div className="px-5 pb-3 pt-0 flex flex-col gap-2.5" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                          {stages.map((stage) => {
-                            const StageIcon = stage.label === "草分绘制" ? Edit2 : stage.label === "静帧生成" ? LucideImage : Zap;
-                            return (
-                              <div key={stage.label} className="flex items-center gap-3">
-                                <StageIcon size={12} style={{ color: stage.progress === 100 ? "#4AC678" : "rgba(255,255,255,0.25)", flexShrink: 0 }} />
-                                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", width: "56px", flexShrink: 0 }}>{stage.label}</span>
-                                <div className="flex-1 rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.06)" }}>
-                                  <div className="h-full rounded-full"
-                                    style={{
-                                      width: `${stage.progress}%`,
-                                      background: stage.progress === 100 ? "#4AC678" : stage.progress > 0 ? "linear-gradient(90deg,#E87322,#F5A623)" : "rgba(255,255,255,0.04)",
-                                      transition: "width 0.5s",
-                                    }} />
-                                </div>
-                                <span style={{ fontSize: "11px", fontWeight: 600, color: stage.progress === 100 ? "#4AC678" : stage.progress > 0 ? "#E87322" : "rgba(255,255,255,0.2)", width: "32px", textAlign: "right" }}>
-                                  {stage.progress}%
-                                </span>
+                        <span style={{ fontSize: "18px", color: statusColor, fontWeight: 700 }}>{ep.progress}%</span>
+                      </div>
+                      <div className="mt-4 flex flex-col gap-2.5">
+                        {mediaProgress.map((stage) => {
+                          const StageIcon = stage.label === "图片进度" ? LucideImage : Video;
+                          return (
+                            <div key={stage.label} className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 min-w-0 shrink-0">
+                                <StageIcon size={12} style={{ color: stage.progress > 0 ? stage.color : "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+                                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.55)" }}>{stage.label}</span>
                               </div>
-                            );
-                          })}
+                              <div className="flex-1 rounded-full overflow-hidden" style={{ height: "6px", background: "rgba(255,255,255,0.06)" }}>
+                                <div className="h-full rounded-full"
+                                  style={{
+                                    width: `${stage.progress}%`,
+                                    background: stage.progress > 0 ? stage.color : "rgba(255,255,255,0.04)",
+                                    transition: "width 0.5s",
+                                  }} />
+                              </div>
+                              <span style={{ fontSize: "11px", color: stage.progress > 0 ? stage.color : "rgba(255,255,255,0.22)", fontWeight: 600, flexShrink: 0 }}>{stage.progress}%</span>
+                            </div>
+                          );
+                        })}
+                        <div className="mt-1 flex items-center justify-between gap-3">
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>快捷跳转</span>
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
+                          <button
+                            onClick={() => navigate(`/project/${id}/script`)}
+                            className="transition-colors"
+                            style={{ fontSize: "10px", color: "rgba(255,255,255,0.46)", fontWeight: 500 }}
+                          >
+                            查看剧本
+                          </button>
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.14)" }}>/</span>
+                          <button
+                            onClick={() => navigate(`/project/${id}/generate`)}
+                            className="transition-colors"
+                            style={{ fontSize: "10px", color: "rgba(255,255,255,0.46)", fontWeight: 500 }}
+                          >
+                            跳转生成
+                          </button>
+                          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.14)" }}>/</span>
+                          <button
+                            onClick={() => navigate(`/project/${id}/storyboard`, { state: { episode: ep.name } })}
+                            className="transition-colors"
+                            style={{ fontSize: "10px", color: "#E87322", fontWeight: 700 }}
+                          >
+                            查看分镜 →
+                          </button>
+                          </div>
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
 
@@ -2436,9 +2707,7 @@ export function ProjectHomePage() {
                             {item.similarity}%
                           </span>
                         </div>
-                        <span style={{ fontSize: "9px", color: isHigh ? "#ff6b6b" : "#E87322", fontWeight: 500 }}>
-                          {isHigh ? "高危" : "注意"}
-                        </span>
+                       
                       </div>
 
                       {/* Prompt + person + episode */}
@@ -2487,7 +2756,7 @@ export function ProjectHomePage() {
       </div>
 
       {/* ── Member Management Modal ── */}
-      {showMemberModal && (
+      {isManager && showMemberModal && (
         <EditProjectMembersDialog
           projectName={projectName}
           initialMembers={dialogMembers}
@@ -2497,7 +2766,7 @@ export function ProjectHomePage() {
       )}
 
       {/* ── Allocate Member Token Dialog ── */}
-      {showAllocateDialog && (
+      {isManager && showAllocateDialog && (
         <AllocateMemberTokenDialog
           projectName={projectName}
           members={activeMembers.map((m, i) => ({
