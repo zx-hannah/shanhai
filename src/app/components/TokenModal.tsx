@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { PROJECTS_DATA } from "../data/projectsData";
 
-type TotalTxTab = "personal" | "projects";
+type TotalTxTab = "all" | "consume" | "gain";
 type ProjectTxTab = "consume";
 
 export interface TokenModalProps {
@@ -15,6 +15,21 @@ export interface TokenModalProps {
 }
 
 export const PERSONAL_TOKEN_BALANCE = 517;
+
+const PERSONAL_TX_LIST: Array<{
+  id: string;
+  desc: string;
+  amount: number;
+  date: string;
+  type: "consume" | "gain";
+}> = [
+  { id: "t-1", desc: "图片生成消耗 · 角色表情包", amount: -62, date: "2026-05-17 20:18", type: "consume" },
+  { id: "t-2", desc: "工具使用消耗 · 智能抠图", amount: -18, date: "2026-05-17 17:42", type: "consume" },
+  { id: "t-3", desc: "运营发放 · 月度补充", amount: 300, date: "2026-05-16 10:00", type: "gain" },
+  { id: "t-4", desc: "图片生成消耗 · 海报草稿", amount: -41, date: "2026-05-15 15:26", type: "consume" },
+  { id: "t-5", desc: "系统返还 · 任务取消", amount: 24, date: "2026-05-15 12:08", type: "gain" },
+  { id: "t-6", desc: "工具使用消耗 · 高清修复", amount: -12, date: "2026-05-14 21:03", type: "consume" },
+];
 
 const PROJECT_CONSUME_MAP: Record<string, Array<{ id: string; desc: string; amount: number; date: string }>> = {
   "1": [
@@ -60,11 +75,19 @@ function FormulaCard({
   total,
   items,
   highlight,
+  note,
+  hideTotalValue,
+  hideItemValues,
+  hideItems,
 }: {
   title: string;
   total: number;
   items: { label: string; value: number }[];
   highlight?: boolean;
+  note?: string;
+  hideTotalValue?: boolean;
+  hideItemValues?: boolean;
+  hideItems?: boolean;
 }) {
   return (
     <div
@@ -74,30 +97,43 @@ function FormulaCard({
         border: highlight ? "1px solid rgba(232,115,34,0.2)" : "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      <div className="flex items-center gap-1.5 mb-2">
-        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>{title}</span>
-        {highlight && (
-          <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", fontSize: "9px" }}>
-            当前
-          </span>
+      <div className="mb-2">
+        <div className="flex items-center gap-1.5">
+          <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>{title}</span>
+          {highlight && (
+            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", fontSize: "9px" }}>
+              当前
+            </span>
+          )}
+        </div>
+        {note && (
+          <p className="mt-1.5" style={{ fontSize: "11px", color: "rgba(255,255,255,0.34)", lineHeight: 1.55 }}>
+            {note}
+          </p>
         )}
       </div>
-      <div className="mb-3">
-        <span style={{ fontSize: "26px", fontWeight: 800, color: "#E87322", lineHeight: 1 }}>
-          {fmt(total)}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1">
-        {items.map((item, i) => (
-          <div key={item.label} className="flex items-center gap-2">
-            <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", width: "12px", flexShrink: 0 }}>
-              {i === 0 ? "=" : "+"}
-            </span>
-            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", flex: 1 }}>{item.label}</span>
-            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.68)", fontWeight: 500 }}>{fmt(item.value)}</span>
-          </div>
-        ))}
-      </div>
+      {!hideTotalValue && (
+        <div className="mb-3">
+          <span style={{ fontSize: "26px", fontWeight: 800, color: "#E87322", lineHeight: 1 }}>
+            {fmt(total)}
+          </span>
+        </div>
+      )}
+      {!hideItems && (
+        <div className="flex flex-col gap-1">
+          {items.map((item, i) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)", width: "12px", flexShrink: 0 }}>
+                {i === 0 ? "=" : "-"}
+              </span>
+              <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)", flex: 1 }}>{item.label}</span>
+              {!hideItemValues && (
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.68)", fontWeight: 500 }}>{fmt(item.value)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -110,7 +146,7 @@ export function TokenModal({
   projectAlloc = 0,
   projectUsed = 0,
 }: TokenModalProps) {
-  const [activeTab, setActiveTab] = useState<TotalTxTab | ProjectTxTab>(mode === "project" ? "consume" : "personal");
+  const [activeTab, setActiveTab] = useState<TotalTxTab | ProjectTxTab>(mode === "project" ? "consume" : "all");
 
   const projectAvailable = Math.max(projectAlloc - projectUsed, 0);
   const currentProjectTx = useMemo(() => {
@@ -118,9 +154,16 @@ export function TokenModal({
     return PROJECT_CONSUME_MAP[projectId] ?? [];
   }, [projectId]);
 
+  const totalTxList = useMemo(() => {
+    if (activeTab === "consume") return PERSONAL_TX_LIST.filter((tx) => tx.type === "consume");
+    if (activeTab === "gain") return PERSONAL_TX_LIST.filter((tx) => tx.type === "gain");
+    return PERSONAL_TX_LIST;
+  }, [activeTab]);
+
   const totalTabs: { key: TotalTxTab; label: string }[] = [
-    { key: "personal", label: "个人生产栗" },
-    { key: "projects", label: "项目额度" },
+    { key: "all", label: "全部" },
+    { key: "consume", label: "消耗" },
+    { key: "gain", label: "获得" },
   ];
 
   return (
@@ -143,7 +186,7 @@ export function TokenModal({
           <div>
             <h2 className="text-white" style={{ fontSize: "18px", fontWeight: 700 }}>生产栗详情</h2>
             <p className="mt-0.5" style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>
-              {mode === "project" ? `当前项目：${projectName ?? "未命名项目"}` : "当前展示个人生产栗余额与各项目额度"}
+              {mode === "project" ? `当前项目：${projectName ?? "未命名项目"}` : "当前展示个人生产栗余额与项目额度说明"}
             </p>
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10">
@@ -155,21 +198,23 @@ export function TokenModal({
           {mode === "project" ? (
             <>
               <FormulaCard
-                title="当前项目可用额度"
+                title="个人生产栗余额"
+                total={PERSONAL_TOKEN_BALANCE}
+                items={[
+                  { label: "个人账户可用余额", value: PERSONAL_TOKEN_BALANCE },
+                ]}
+                note="个人生产栗用于项目外的个人生成、工具使用等场景，不跟随单个项目额度变化。"
+                hideItems
+              />
+              <FormulaCard
+                title="项目额度"
                 total={projectAvailable}
                 items={[
                   { label: `项目额度（${projectName ?? "当前项目"}）`, value: projectAlloc },
                   { label: "已消耗", value: -projectUsed },
                 ].map((item) => ({ ...item, value: Math.abs(item.value) }))}
                 highlight
-              />
-              <FormulaCard
-                title="项目消耗概览"
-                total={projectUsed}
-                items={[
-                  { label: "图片与视频累计消耗", value: projectUsed },
-                  { label: "当前剩余额度", value: projectAvailable },
-                ]}
+                note="该生产栗用于项目内的生成，需要进入项目内查看当前项目的剩余可用额度与消耗情况。"
               />
             </>
           ) : (
@@ -181,127 +226,124 @@ export function TokenModal({
                   { label: "个人账户可用余额", value: PERSONAL_TOKEN_BALANCE },
                 ]}
                 highlight
+                note="个人生产栗用于项目外的个人生成、工具使用等场景，不跟随单个项目额度变化。"
+                hideItems
               />
               <FormulaCard
-                title="项目额度总览"
-                total={PROJECTS_DATA.reduce((sum, project) => sum + Math.max(project.tokenTotal - project.tokenUsed, 0), 0)}
-                items={PROJECTS_DATA.slice(0, 4).map((project) => ({
-                  label: project.name,
-                  value: Math.max(project.tokenTotal - project.tokenUsed, 0),
-                }))}
+                title="项目额度"
+                total={0}
+                items={[
+                  { label: "项目内生成使用", value: 0 },
+                ]}
+                note="该生产栗用于项目内的生成。由于不同项目额度独立且数值不同，此处不展示具体额度，请进入对应项目内查看。"
+                hideTotalValue
+                hideItems
               />
             </>
           )}
         </div>
 
-        {mode === "total" && (
-          <div
-            className="flex items-center gap-5 px-6 flex-shrink-0"
-            style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            {totalTabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className="py-3 text-sm transition-colors"
-                style={{
-                  color: activeTab === tab.key ? "#E87322" : "rgba(255,255,255,0.45)",
-                  borderBottom: activeTab === tab.key ? "2px solid #E87322" : "2px solid transparent",
-                  marginBottom: "-1px",
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        )}
+        <div
+          className="flex items-center gap-5 px-6 flex-shrink-0"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          {(mode === "project" ? [{ key: "consume" as const, label: "消耗" }] : totalTabs).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="py-3 text-sm transition-colors"
+              style={{
+                color: activeTab === tab.key ? "#E87322" : "rgba(255,255,255,0.45)",
+                borderBottom: activeTab === tab.key ? "2px solid #E87322" : "2px solid transparent",
+                marginBottom: "-1px",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
         <div className="flex-1 overflow-auto">
           {mode === "project" ? (
-            currentProjectTx.length === 0 ? (
-              <div className="flex items-center justify-center py-12 text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
-                暂无项目消耗记录
-              </div>
-            ) : (
-              currentProjectTx.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between px-6 py-3"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: "rgba(255,100,100,0.1)" }}
-                    >
-                      <span style={{ fontSize: "14px" }}>🔥</span>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.8)" }}>{tx.desc}</div>
-                      <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "2px" }}>{tx.date}</div>
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 600,
-                      color: "rgba(255,120,120,0.8)",
-                      flexShrink: 0,
-                      marginLeft: "16px",
-                    }}
-                  >
-                    {fmt(tx.amount)}
-                  </span>
-                </div>
-              ))
-            )
-          ) : activeTab === "personal" ? (
             <div className="px-6 py-5">
-              <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center justify-between">
-                  <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.68)", fontWeight: 600 }}>个人生产栗余额</span>
-                  <span style={{ fontSize: "22px", color: "#E87322", fontWeight: 800 }}>{fmt(PERSONAL_TOKEN_BALANCE)}</span>
+              {currentProjectTx.length === 0 ? (
+                <div className="flex items-center justify-center py-12 text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  暂无项目消耗记录
                 </div>
-                <p className="mt-2" style={{ fontSize: "12px", color: "rgba(255,255,255,0.38)", lineHeight: 1.7 }}>
-                  个人生产栗用于项目外的个人生成、工具使用等场景，不跟随单个项目额度变化。
-                </p>
-              </div>
-            </div>
-          ) : (
-            PROJECTS_DATA.map((project) => {
-              const remain = Math.max(project.tokenTotal - project.tokenUsed, 0);
-              const pct = project.tokenTotal > 0 ? Math.round((project.tokenUsed / project.tokenTotal) * 100) : 0;
-              return (
-                <div
-                  key={project.id}
-                  className="px-6 py-4"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.82)", fontWeight: 600 }}>{project.name}</div>
-                      <div className="mt-1 flex items-center gap-3" style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>
-                        <span>项目额度 {fmt(project.tokenTotal)}</span>
-                        <span>已消耗 {fmt(project.tokenUsed)}</span>
+              ) : (
+                currentProjectTx.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between py-3"
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: "rgba(255,100,100,0.1)" }}
+                      >
+                        <span style={{ fontSize: "14px" }}>🔥</span>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.8)" }}>{tx.desc}</div>
+                        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "2px" }}>{tx.date}</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div style={{ fontSize: "18px", color: "#E87322", fontWeight: 800 }}>{fmt(remain)}</div>
-                      <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>剩余可用</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-                    <div
+                    <span
                       style={{
-                        width: `${Math.min(100, pct)}%`,
-                        height: "100%",
-                        background: pct > 80 ? "linear-gradient(90deg, #ff6b6b, #ff9b9b)" : "linear-gradient(90deg, #E87322, #F5A623)",
+                        fontSize: "15px",
+                        fontWeight: 600,
+                        color: "rgba(255,120,120,0.8)",
+                        flexShrink: 0,
+                        marginLeft: "16px",
                       }}
-                    />
+                    >
+                      {fmt(tx.amount)}
+                    </span>
                   </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="px-6 py-5">
+              {totalTxList.length === 0 ? (
+                <div className="flex items-center justify-center py-12 text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  暂无记录
                 </div>
-              );
-            })
+              ) : (
+                totalTxList.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between py-3"
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: tx.amount > 0 ? "rgba(78,205,132,0.12)" : "rgba(255,100,100,0.1)" }}
+                      >
+                        <span style={{ fontSize: "14px" }}>{tx.amount > 0 ? "↘" : "🔥"}</span>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.8)" }}>{tx.desc}</div>
+                        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "2px" }}>{tx.date}</div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "15px",
+                        fontWeight: 600,
+                        color: tx.amount > 0 ? "rgba(90,214,152,0.92)" : "rgba(255,120,120,0.8)",
+                        flexShrink: 0,
+                        marginLeft: "16px",
+                      }}
+                    >
+                      {tx.amount > 0 ? `+${fmt(tx.amount)}` : fmt(tx.amount)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
 
@@ -310,7 +352,7 @@ export function TokenModal({
           style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
         >
           <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.28)" }}>
-            ⓘ 项目内仅展示当前项目额度与消耗明细，项目外展示个人生产栗余额与各项目额度概览。
+            ⓘ 项目外展示个人生产栗余额、说明与全部/消耗/获得记录，项目内仅展示当前项目剩余可用额度与消耗明细。
           </span>
         </div>
       </div>
