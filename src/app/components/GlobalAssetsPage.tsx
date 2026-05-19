@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Image as LucideImage, Video, Music, Download, Star, Trash2, Check, Search,
   ChevronDown, ChevronRight, X, Grid3X3, LayoutList, Pencil, ArrowDown, ArrowUp,
@@ -38,6 +38,18 @@ interface SubjectItem {
   updatedAt: string;
   reviewStatus?: ReviewStatus;
   assetType?: "image" | "video" | "audio";
+}
+
+interface MoveAssetsDialogState {
+  assetIds: string[];
+  nonImageCount: number;
+}
+
+interface FolderTargetOption {
+  id: string;
+  name: string;
+  pathLabel: string;
+  kind: "folder" | "flat";
 }
 
 const SUBJECT_TYPE_CONFIG: Record<SubjectType, { label: string; icon: typeof Users; color: string }> = {
@@ -321,77 +333,89 @@ interface FlatFolder {
 
 const PROJECT_FOLDERS: Record<string, FolderGroup[]> = {
   "1": [
-    { id: "g-art", name: "美术设定", folders: [
-      { id: "f-char", name: "人物设定", assetIds: ["p1-1", "p1-4"] },
-      { id: "f-scene", name: "场景设定", assetIds: ["p1-2", "p1-3"] },
-      { id: "f-prop", name: "道具设定", assetIds: [] },
+    { id: "g-subject", name: "主体", folders: [
+      { id: "f-subject-character", name: "人物", assetIds: ["p1-1", "p1-4"] },
+      { id: "f-subject-scene", name: "场景", assetIds: ["p1-2", "p1-3"] },
+      { id: "f-subject-prop", name: "道具", assetIds: [] },
     ]},
     { id: "g-ep1", name: "第一集", folders: [
-      { id: "f-ep1a", name: "分镜1-5", assetIds: ["p1-6"] },
-      { id: "f-ep1b", name: "分镜6-10", assetIds: [] },
+      { id: "f-ep1-seq", name: "分镜1-5", assetIds: ["p1-6"] },
+      { id: "f-ep1-scene", name: "场景草图", assetIds: [] },
     ]},
-    { id: "g-audio", name: "音频素材", folders: [
-      { id: "f-bgm", name: "背景音乐", assetIds: ["p1-5"] },
-      { id: "f-sfx", name: "音效", assetIds: [] },
+    { id: "g-ep2", name: "第二集", folders: [
+      { id: "f-ep2-audio", name: "配乐草案", assetIds: ["p1-5"] },
+      { id: "f-ep2-script", name: "剧情拆解", assetIds: [] },
     ]},
   ],
   "2": [
-    { id: "g-concept", name: "概念设计", folders: [
-      { id: "f-ship", name: "飞船概念", assetIds: ["p2-1"] },
-      { id: "f-map", name: "星际地图", assetIds: ["p2-2", "p2-3"] },
-      { id: "f-char2", name: "角色设定", assetIds: ["p2-4"] },
+    { id: "g-subject", name: "主体", folders: [
+      { id: "f-subject-character", name: "人物", assetIds: ["p2-4"] },
+      { id: "f-subject-scene", name: "场景", assetIds: ["p2-2", "p2-3"] },
+      { id: "f-subject-prop", name: "道具", assetIds: ["p2-1"] },
     ]},
-    { id: "g-audio2", name: "音频素材", folders: [
-      { id: "f-bgm2", name: "背景音乐", assetIds: ["p2-5"] },
+    { id: "g-ep1", name: "第一集", folders: [
+      { id: "f-ep1-board", name: "飞船分镜", assetIds: ["p2-1"] },
+      { id: "f-ep1-ref", name: "镜头参考", assetIds: ["p2-3"] },
     ]},
-    // Flat folders: single-level folders with assets directly
-    { id: "g-chat", name: "未命名对话", folders: [
-      { id: "f-chat-all", name: "对话生成", assetIds: ["p2-1", "p2-3", "p2-4", "p2-5"] },
+    { id: "g-ep2", name: "第二集", folders: [
+      { id: "f-ep2-char", name: "角色出场", assetIds: ["p2-4"] },
+      { id: "f-ep2-audio", name: "配乐方案", assetIds: ["p2-5"] },
     ]},
   ],
   "3": [
-    { id: "g-illust", name: "插画素材", folders: [
-      { id: "f-beast", name: "神兽图鉴", assetIds: ["p3-1", "p3-2"] },
-      { id: "f-scene2", name: "场景参考", assetIds: ["p3-3", "p3-5"] },
+    { id: "g-subject", name: "主体", folders: [
+      { id: "f-subject-character", name: "人物", assetIds: ["p3-2"] },
+      { id: "f-subject-scene", name: "场景", assetIds: ["p3-3", "p3-5"] },
+      { id: "f-subject-prop", name: "道具", assetIds: ["p3-1"] },
     ]},
-    { id: "g-video", name: "视频素材", folders: [
-      { id: "f-intro", name: "片头片尾", assetIds: ["p3-4"] },
+    { id: "g-ep1", name: "第一集", folders: [
+      { id: "f-ep1-creature", name: "神兽登场", assetIds: ["p3-1", "p3-2"] },
+      { id: "f-ep1-scene", name: "环境镜头", assetIds: ["p3-3"] },
+    ]},
+    { id: "g-ep2", name: "第二集", folders: [
+      { id: "f-ep2-op", name: "片头片尾", assetIds: ["p3-4"] },
+      { id: "f-ep2-atmo", name: "氛围补帧", assetIds: ["p3-5"] },
     ]},
   ],
   "4": [
-    { id: "g-concept4", name: "概念稿", folders: [
-      { id: "f-draft", name: "草稿", assetIds: ["p4-1", "p4-2"] },
+    { id: "g-subject", name: "主体", folders: [
+      { id: "f-subject-character", name: "人物", assetIds: ["p4-1"] },
+      { id: "f-subject-scene", name: "场景", assetIds: ["p4-2"] },
+      { id: "f-subject-prop", name: "道具", assetIds: [] },
     ]},
-    { id: "g-audio4", name: "音频素材", folders: [
-      { id: "f-mix", name: "混音", assetIds: ["p4-3"] },
+    { id: "g-ep1", name: "第一集", folders: [
+      { id: "f-ep1-draft", name: "草稿镜头", assetIds: ["p4-1", "p4-2"] },
+      { id: "f-ep1-note", name: "对话记录", assetIds: [] },
     ]},
-    // Flat folder
-    { id: "g-quick", name: "快速生成", folders: [
-      { id: "f-quick-all", name: "快速对话资产", assetIds: ["p4-1", "p4-2", "p4-3"] },
+    { id: "g-ep2", name: "第二集", folders: [
+      { id: "f-ep2-mix", name: "混音文件", assetIds: ["p4-3"] },
+      { id: "f-ep2-output", name: "输出版本", assetIds: [] },
     ]},
   ],
   "5": [
-    { id: "g-design5", name: "视觉设计", folders: [
-      { id: "f-emblem", name: "纹章设计", assetIds: ["p5-1"] },
-      { id: "f-scene5", name: "场景设定", assetIds: ["p5-2", "p5-3"] },
+    { id: "g-subject", name: "主体", folders: [
+      { id: "f-subject-character", name: "人物", assetIds: ["p5-1"] },
+      { id: "f-subject-scene", name: "场景", assetIds: ["p5-2", "p5-3"] },
+      { id: "f-subject-prop", name: "道具", assetIds: [] },
     ]},
-    { id: "g-audio5", name: "音频素材", folders: [
-      { id: "f-bgm5", name: "战斗音效", assetIds: ["p5-4"] },
+    { id: "g-ep1", name: "第一集", folders: [
+      { id: "f-ep1-emblem", name: "纹章设计", assetIds: ["p5-1"] },
+      { id: "f-ep1-scene", name: "史诗场景", assetIds: ["p5-2"] },
+    ]},
+    { id: "g-ep2", name: "第二集", folders: [
+      { id: "f-ep2-bg", name: "龙族圣地", assetIds: ["p5-3"] },
+      { id: "f-ep2-sfx", name: "战斗音效", assetIds: ["p5-4"] },
     ]},
   ],
 };
 
 /** Flat folders per project: single-level folders containing assets directly */
 const PROJECT_FLAT_FOLDERS: Record<string, FlatFolder[]> = {
-  "2": [
-    { id: "ff-chat", name: "未命名对话", assetIds: ["p2-1", "p2-2", "p2-3", "p2-4"] },
-  ],
-  "4": [
-    { id: "ff-quick", name: "快速生成", assetIds: ["p4-1", "p4-2", "p4-3"] },
-  ],
-  "5": [
-    { id: "ff-misc", name: "其他资产", assetIds: ["p5-1", "p5-2"] },
-  ],
+  "1": [],
+  "2": [],
+  "3": [],
+  "4": [],
+  "5": [],
 };
 
 // Lookup helpers
@@ -474,14 +498,168 @@ function AssetDetailModal({ asset, onClose }: { asset: AssetItem; onClose: () =>
   );
 }
 
+function MoveAssetsDialog({
+  state,
+  assetMap,
+  folderOptions,
+  onClose,
+  onConfirm,
+}: {
+  state: MoveAssetsDialogState;
+  assetMap: Map<string, AssetItem>;
+  folderOptions: FolderTargetOption[];
+  onClose: () => void;
+  onConfirm: (targetFolderId: string) => void;
+}) {
+  const [targetFolderId, setTargetFolderId] = useState<string>("");
+
+  useEffect(() => {
+    setTargetFolderId(folderOptions[0]?.id ?? "");
+  }, [folderOptions, state.assetIds]);
+
+  const movableAssets = state.assetIds
+    .map((id) => assetMap.get(id))
+    .filter((asset): asset is AssetItem => Boolean(asset));
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.76)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-[520px] rounded-3xl overflow-hidden"
+        style={{ background: "#17120D", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 28px 90px rgba(0,0,0,0.5)" }}
+      >
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div>
+            <div style={{ fontSize: "16px", color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>移动图片到项目</div>
+            <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.42)", marginTop: "6px" }}>
+              移动后，项目内生成模块的对话记录会同步移动到目标项目。
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10">
+            <X size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.82)", fontWeight: 500 }}>
+                  待移动图片 {movableAssets.length} 张
+                </div>
+                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.36)", marginTop: "6px" }}>
+                  仅支持移动图片资产；视频、音频、脚本不会参与本次移动。
+                </div>
+              </div>
+              <div className="px-2.5 py-1 rounded-full" style={{ background: "rgba(232,115,34,0.14)", color: "#E87322", fontSize: "11px" }}>
+                {movableAssets.length} 张图片
+              </div>
+            </div>
+
+            {state.nonImageCount > 0 && (
+              <div
+                className="mt-4 rounded-xl px-3 py-2"
+                style={{ background: "rgba(255,193,7,0.08)", border: "1px solid rgba(255,193,7,0.18)", color: "rgba(255,225,145,0.86)", fontSize: "12px" }}
+              >
+                已自动忽略 {state.nonImageCount} 个非图片资产。
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {movableAssets.slice(0, 6).map((asset) => (
+                <div
+                  key={asset.id}
+                  className="flex items-center gap-2 rounded-xl px-2.5 py-2 min-w-0"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0" style={{ background: "#231E17" }}>
+                    {asset.src ? <img src={asset.src} alt={asset.name} className="w-full h-full object-cover" /> : null}
+                  </div>
+                  <span className="truncate" style={{ maxWidth: "120px", fontSize: "12px", color: "rgba(255,255,255,0.72)" }}>
+                    {asset.name}
+                  </span>
+                </div>
+              ))}
+              {movableAssets.length > 6 && (
+                <div className="flex items-center rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.38)", fontSize: "12px" }}>
+                  +{movableAssets.length - 6}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.46)", marginBottom: "10px" }}>目标文件夹</div>
+            <div className="grid gap-2">
+              {folderOptions.map((folder) => {
+                const active = targetFolderId === folder.id;
+                return (
+                  <button
+                    key={folder.id}
+                    onClick={() => setTargetFolderId(folder.id)}
+                    className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors"
+                    style={{
+                      background: active ? "rgba(232,115,34,0.14)" : "rgba(255,255,255,0.03)",
+                      border: active ? "1px solid rgba(232,115,34,0.32)" : "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: active ? "rgba(232,115,34,0.18)" : "rgba(255,255,255,0.05)" }}>
+                      <Folder size={16} style={{ color: active ? "#E87322" : "rgba(255,255,255,0.45)" }} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div style={{ fontSize: "13px", color: active ? "#FFFFFF" : "rgba(255,255,255,0.78)", fontWeight: 500 }} className="truncate">
+                        {folder.name}
+                      </div>
+                      <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.36)", marginTop: "4px" }}>
+                        {folder.pathLabel}
+                      </div>
+                    </div>
+                    {active && <Check size={14} style={{ color: "#E87322" }} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm"
+            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)" }}
+          >
+            取消
+          </button>
+          <button
+            onClick={() => targetFolderId && onConfirm(targetFolderId)}
+            disabled={!targetFolderId || movableAssets.length === 0}
+            className="px-4 py-2 rounded-xl text-sm"
+            style={{
+              background: !targetFolderId || movableAssets.length === 0 ? "rgba(232,115,34,0.35)" : "#E87322",
+              color: "#fff",
+              opacity: !targetFolderId || movableAssets.length === 0 ? 0.65 : 1,
+            }}
+          >
+            确认移动
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Project Folder View (right panel, shows folder groups & folders) ────────
-function ProjectFolderView({ projectId, groupId, setSel }: {
+function ProjectFolderView({ projectId, groupId, folderGroups, flatFolders, setSel }: {
   projectId: string;
   groupId?: string;
+  folderGroups: FolderGroup[];
+  flatFolders: FlatFolder[];
   setSel: (s: SidebarSel) => void;
 }) {
-  const groups = PROJECT_FOLDERS[projectId] ?? [];
-  const flatFolders = PROJECT_FLAT_FOLDERS[projectId] ?? [];
+  const groups = folderGroups;
   const allAssets = PROJECT_ASSETS[projectId] ?? [];
   const [assetTab, setAssetTab] = useState<"全部生成" | "历史上传" | "主体资产" | "全部收藏">("全部生成");
   const [searchText, setSearchText] = useState("");
@@ -1012,7 +1190,26 @@ function ProjectFolderView({ projectId, groupId, setSel }: {
 }
 
 // ─── Assets Content (grid/list) ──────────────────────────────────────────────
-function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }: { assets: AssetItem[]; showMemberFilter?: boolean }) {
+function AssetsContent({
+  assets,
+  showMemberFilter: enableMemberFilter = false,
+  currentProjectId,
+  currentFolderId,
+  currentFlatFolderId,
+  targetFolderOptions = [],
+  canMoveAssets = false,
+  onMoveAssets,
+}: {
+  assets: AssetItem[];
+  showMemberFilter?: boolean;
+  currentProjectId?: string;
+  currentFolderId?: string;
+  currentFlatFolderId?: string;
+  targetFolderOptions?: FolderTargetOption[];
+  canMoveAssets?: boolean;
+  onMoveAssets: (assetIds: string[], targetFolderId: string) => void;
+}) {
+  const [localAssets, setLocalAssets] = useState<AssetItem[]>(assets);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [typeFilter, setTypeFilter] = useState<AssetType>("all");
   const [showTypeMenu, setShowTypeMenu] = useState(false);
@@ -1020,6 +1217,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
   const [detailAsset, setDetailAsset] = useState<AssetItem | null>(null);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moveDialogState, setMoveDialogState] = useState<MoveAssetsDialogState | null>(null);
   const supportsSubjectTab = enableMemberFilter;
   const [collectedIds, setCollectedIds] = useState<Set<string>>(
     new Set(assets.filter((a) => a.collected).map((a) => a.id))
@@ -1053,7 +1251,18 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
   // Collected filter
   const [collectedFilter, setCollectedFilter] = useState(false);
 
-  const filtered = assets
+  useEffect(() => {
+    setLocalAssets(assets);
+    setCollectedIds(new Set(assets.filter((a) => a.collected).map((a) => a.id)));
+    setSelectedIds(new Set());
+    setBatchMode(false);
+    setDetailAsset(null);
+    setMoveDialogState(null);
+  }, [assets]);
+
+  const assetMap = new Map(localAssets.map((asset) => [asset.id, asset] as const));
+
+  const filtered = localAssets
     .filter((a) => {
       // Tab filter
       if (assetTab === "全部收藏" && !collectedIds.has(a.id)) return false;
@@ -1080,6 +1289,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
       return true;
     })
     .sort((a, b) => sortOrder === "desc" ? b.dateTs - a.dateTs : a.dateTs - b.dateTs);
+  const hideSizeAndDate = assetTab === "全部生成" || assetTab === "历史上传" || assetTab === "全部收藏";
 
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -1102,9 +1312,62 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
   };
 
   const handleDelete = (id: string) => {
+    setLocalAssets((prev) => prev.filter((asset) => asset.id !== id));
     setCollectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
     setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+    if (detailAsset?.id === id) setDetailAsset(null);
     toast.success("已删除");
+  };
+
+  const openMoveDialog = (candidateIds: string[]) => {
+    const movableIds = candidateIds.filter((id) => assetMap.get(id)?.type === "image");
+    const nonImageCount = candidateIds.length - movableIds.length;
+
+    if (movableIds.length === 0) {
+      toast.error("仅支持移动图片资产");
+      return;
+    }
+
+    if (!canMoveAssets) return;
+
+    const availableTargetIds = new Set(targetFolderOptions.map((item) => item.id));
+    const filteredMovableIds = movableIds.filter((id) => {
+      if (!currentFolderId && !currentFlatFolderId) return true;
+      const sourceFolderId = currentFlatFolderId ?? currentFolderId;
+      return sourceFolderId ? availableTargetIds.size > 0 && sourceFolderId !== "" : true;
+    });
+
+    if (filteredMovableIds.length === 0 || targetFolderOptions.length === 0) {
+      toast.error("当前没有可移动到的其他文件夹");
+      return;
+    }
+    setMoveDialogState({ assetIds: filteredMovableIds, nonImageCount });
+  };
+
+  const confirmMoveAssets = (targetFolderId: string) => {
+    if (!moveDialogState) return;
+
+    const movingIds = new Set(moveDialogState.assetIds);
+    onMoveAssets(moveDialogState.assetIds, targetFolderId);
+    setLocalAssets((prev) => prev.filter((asset) => !movingIds.has(asset.id)));
+    setCollectedIds((prev) => {
+      const next = new Set(prev);
+      moveDialogState.assetIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      moveDialogState.assetIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    if (detailAsset && movingIds.has(detailAsset.id)) {
+      setDetailAsset(null);
+    }
+
+    const targetFolderName = targetFolderOptions.find((folder) => folder.id === targetFolderId)?.name ?? "目标文件夹";
+    toast.success(`已移动 ${moveDialogState.assetIds.length} 张图片到 ${targetFolderName}，项目内生成模块对话记录已同步移动`);
+    setMoveDialogState(null);
+    setBatchMode(false);
   };
 
   const selectAll = () => {
@@ -1145,11 +1408,31 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
             </div>
           )}
           <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+            {canMoveAssets && (
+              <button
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+                onClick={(e) => { e.stopPropagation(); openMoveDialog([asset.id]); }}
+                title="移动到项目"
+              >
+                <Folder size={12} style={{ color: "rgba(255,255,255,0.8)" }} />
+              </button>
+            )}
             <button className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
               onClick={(e) => { e.stopPropagation(); toggleCollect(asset.id, e); }}>
               <Star size={12} style={{ color: isCollected ? "#E87322" : "white", fill: isCollected ? "#E87322" : "transparent" }} />
             </button>
+            {asset.type === "image" && (
+              <button
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+                onClick={(e) => { e.stopPropagation(); toast.success("下载已开始"); }}
+                title="下载"
+              >
+                <Download size={12} style={{ color: "rgba(255,255,255,0.8)" }} />
+              </button>
+            )}
             <button className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
               onClick={(e) => { e.stopPropagation(); handleDelete(asset.id); }}>
@@ -1159,9 +1442,11 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
         </div>
         <div className="px-2.5 py-2">
           <div className="text-xs text-white truncate">{asset.name}</div>
-          <div className="flex items-center justify-between mt-0.5" style={{ color: "rgba(255,255,255,0.3)", fontSize: "10px" }}>
-            <span>{asset.size}</span><span>{asset.date}</span>
-          </div>
+          {!hideSizeAndDate && (
+            <div className="flex items-center justify-between mt-0.5" style={{ color: "rgba(255,255,255,0.3)", fontSize: "10px" }}>
+              <span>{asset.size}</span><span>{asset.date}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1175,7 +1460,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
     return (
       <div key={asset.id}
         className="grid items-center px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer group"
-        style={{ gridTemplateColumns: batchMode ? "28px 28px 1fr 64px 64px 64px" : "28px 1fr 64px 64px 64px", gap: "10px", background: isSelected ? "rgba(232,115,34,0.06)" : "transparent" }}
+        style={{ gridTemplateColumns: hideSizeAndDate ? (batchMode ? "28px 28px 1fr 64px" : "28px 1fr 64px") : (batchMode ? "28px 28px 1fr 64px 64px 64px" : "28px 1fr 64px 64px 64px"), gap: "10px", background: isSelected ? "rgba(232,115,34,0.06)" : "transparent" }}
         onClick={() => { if (batchMode) { toggleSelect(asset.id); return; } setDetailAsset(asset); }}>
         {batchMode && (
           <button onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}>
@@ -1191,9 +1476,18 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
           </div>
           <span className="text-xs text-white truncate">{asset.name}</span>
         </div>
-        <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{asset.size}</span>
-        <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{asset.date}</span>
+        {!hideSizeAndDate && (
+          <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{asset.size}</span>
+        )}
+        {!hideSizeAndDate && (
+          <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{asset.date}</span>
+        )}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+          {canMoveAssets && (
+            <button onClick={(e) => { e.stopPropagation(); openMoveDialog([asset.id]); }} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10">
+              <Folder size={11} style={{ color: "rgba(255,255,255,0.35)" }} />
+            </button>
+          )}
           <button onClick={(e) => { e.stopPropagation(); toggleCollect(asset.id, e); }} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10">
             <Star size={11} style={{ color: isCollected ? "#E87322" : "rgba(255,255,255,0.35)", fill: isCollected ? "#E87322" : "transparent" }} />
           </button>
@@ -1424,6 +1718,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
           <div className="h-4 w-px" style={{ background: "rgba(255,255,255,0.1)" }} />
           {[
             { label: "收藏", icon: <Star size={11} />, action: () => { setCollectedIds((p) => { const n = new Set(p); selectedIds.forEach((id) => n.add(id)); return n; }); toast.success(`已收藏 ${selectedIds.size} 项`); } },
+            ...(canMoveAssets ? [{ label: "移动", icon: <Folder size={11} />, action: () => openMoveDialog(Array.from(selectedIds)) }] : []),
             { label: "下载", icon: <Download size={11} />, action: () => toast.success("下载已开始") },
           ].map(({ label, icon, action }) => (
             <button key={label} onClick={action} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10"
@@ -1464,7 +1759,7 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
         ) : (
           <div className="flex flex-col gap-1">
             <div className="grid text-xs px-3 py-2 mb-1"
-              style={{ color: "rgba(255,255,255,0.3)", gridTemplateColumns: batchMode ? "28px 28px 1fr 64px 64px 64px" : "28px 1fr 64px 64px 64px", gap: "10px" }}>
+              style={{ color: "rgba(255,255,255,0.3)", gridTemplateColumns: hideSizeAndDate ? (batchMode ? "28px 28px 1fr 64px" : "28px 1fr 64px") : (batchMode ? "28px 28px 1fr 64px 64px 64px" : "28px 1fr 64px 64px 64px"), gap: "10px" }}>
               {batchMode && (
                 <button onClick={selectAll}>
                   <div className="w-4 h-4 rounded flex items-center justify-center"
@@ -1473,7 +1768,10 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
                   </div>
                 </button>
               )}
-              <span>文件名</span><span>大小</span><span>日期</span><span>操作</span>
+              <span>文件名</span>
+              {!hideSizeAndDate && <span>大小</span>}
+              {!hideSizeAndDate && <span>日期</span>}
+              <span>操作</span>
             </div>
             {filtered.map((a) => renderListRow(a))}
             {filtered.length === 0 && (
@@ -1487,6 +1785,15 @@ function AssetsContent({ assets, showMemberFilter: enableMemberFilter = false }:
       </div>
 
       {detailAsset && <AssetDetailModal asset={detailAsset} onClose={() => setDetailAsset(null)} />}
+      {moveDialogState && (
+        <MoveAssetsDialog
+          state={moveDialogState}
+          assetMap={assetMap}
+          folderOptions={targetFolderOptions}
+          onClose={() => setMoveDialogState(null)}
+          onConfirm={confirmMoveAssets}
+        />
+      )}
     </div>
   );
 }
@@ -1502,6 +1809,10 @@ const STATUS_COLORS: Record<string, string> = { "进行中": "#E87322", "已完�
 export function GlobalAssetsPage() {
   const { spaceId } = useSpace();
   const [sel, setSel] = useState<SidebarSel>({ section: "my" });
+  const [sharedProjectAssets, setSharedProjectAssets] = useState<Record<string, AssetItem[]>>(PROJECT_ASSETS);
+  const [sharedMemberAssets, setSharedMemberAssets] = useState<Record<string, AssetItem[]>>(MEMBER_ASSETS);
+  const [sharedProjectFolders, setSharedProjectFolders] = useState<Record<string, FolderGroup[]>>(PROJECT_FOLDERS);
+  const [sharedProjectFlatFolders, setSharedProjectFlatFolders] = useState<Record<string, FlatFolder[]>>(PROJECT_FLAT_FOLDERS);
 
   // Section collapse
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({
@@ -1510,21 +1821,64 @@ export function GlobalAssetsPage() {
 
   const toggleSection = (key: string) => setSectionOpen((p) => ({ ...p, [key]: !p[key] }));
 
+  const moveAssetsToProject = (assetIds: string[], targetFolderId: string) => {
+    const movingIdSet = new Set(assetIds);
+    if (sel.section !== "project" || sel.projectId === "all") return;
+
+    setSharedProjectFolders((prev) => {
+      const nextGroups = (prev[sel.projectId] ?? []).map((group) => ({
+        ...group,
+        folders: group.folders.map((folder) => ({
+          ...folder,
+          assetIds: folder.id === targetFolderId
+            ? [...folder.assetIds.filter((id) => !movingIdSet.has(id)), ...assetIds.filter((id) => !folder.assetIds.includes(id))]
+            : folder.assetIds.filter((id) => !movingIdSet.has(id)),
+        })),
+      }));
+      return { ...prev, [sel.projectId]: nextGroups };
+    });
+
+    setSharedProjectFlatFolders((prev) => {
+      const nextFlatFolders = (prev[sel.projectId] ?? []).map((folder) => ({
+        ...folder,
+        assetIds: folder.id === targetFolderId
+          ? [...folder.assetIds.filter((id) => !movingIdSet.has(id)), ...assetIds.filter((id) => !folder.assetIds.includes(id))]
+          : folder.assetIds.filter((id) => !movingIdSet.has(id)),
+      }));
+      return { ...prev, [sel.projectId]: nextFlatFolders };
+    });
+  };
+
   // Panel content
   const panelAssets = sel.section === "my"
     ? MY_ASSETS
     : sel.section === "project" && sel.projectId === "all"
-      ? Object.values(PROJECT_ASSETS).flat()
+      ? Object.values(sharedProjectAssets).flat()
       : sel.section === "project" && sel.flatFolderId
         ? (() => {
-            const ff = (PROJECT_FLAT_FOLDERS[sel.projectId] ?? []).find(f => f.id === sel.flatFolderId);
-            return ff ? ff.assetIds.map(id => getProjectAsset(id)).filter(Boolean) as AssetItem[] : [];
+            const ff = (sharedProjectFlatFolders[sel.projectId] ?? []).find(f => f.id === sel.flatFolderId);
+            return ff
+              ? ff.assetIds
+                  .map((id) => (sharedProjectAssets[sel.projectId] ?? []).find((asset) => asset.id === id))
+                  .filter(Boolean) as AssetItem[]
+              : [];
           })()
         : sel.section === "project" && sel.folderId
-          ? getFolderAssets(sel.projectId, sel.folderId)
+          ? (() => {
+              const groups = sharedProjectFolders[sel.projectId] ?? [];
+              for (const group of groups) {
+                const folder = group.folders.find((item) => item.id === sel.folderId);
+                if (folder) {
+                  return folder.assetIds
+                    .map((id) => (sharedProjectAssets[sel.projectId] ?? []).find((asset) => asset.id === id))
+                    .filter(Boolean) as AssetItem[];
+                }
+              }
+              return [];
+            })()
           : sel.section === "project"
-            ? PROJECT_ASSETS[sel.projectId] ?? []
-            : MEMBER_ASSETS[sel.memberId] ?? [];
+            ? sharedProjectAssets[sel.projectId] ?? []
+            : sharedMemberAssets[sel.memberId] ?? [];
 
   const breadcrumbLabel = sel.section === "my"
     ? "个人资产"
@@ -1604,10 +1958,10 @@ export function GlobalAssetsPage() {
                   style={{ background: sel.section === "project" && sel.projectId === "all" ? "rgba(232,115,34,0.12)" : "transparent" }}>
                   <span className="text-xs" style={{ color: sel.section === "project" && sel.projectId === "all" ? "#E87322" : "rgba(255,255,255,0.55)" }}>全部项目</span>
                   <span className="ml-auto text-xs px-1.5 py-0.5 rounded-full"
-                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}>{Object.values(PROJECT_ASSETS).flat().length}</span>
+                    style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}>{Object.values(sharedProjectAssets).flat().length}</span>
                 </button>
                 {PROJECTS_DATA.map((project) => {
-                  const count = (PROJECT_ASSETS[project.id] ?? []).length;
+                  const count = (sharedProjectAssets[project.id] ?? []).length;
                   const isActive = sel.section === "project" && sel.projectId === project.id;
                   return (
                     <button key={project.id} onClick={() => setSel({ section: "project", projectId: project.id })}
@@ -1645,7 +1999,7 @@ export function GlobalAssetsPage() {
               <div className="ml-2" style={{ borderLeft: "2px solid rgba(34,197,94,0.15)", paddingLeft: "8px" }}>
                 {MEMBER_DATA.map((member) => {
                   const isActive = sel.section === "member" && sel.memberId === member.id;
-                  const count = (MEMBER_ASSETS[member.id] ?? []).length;
+                  const count = (sharedMemberAssets[member.id] ?? []).length;
                   return (
                     <button key={member.id} onClick={() => setSel({ section: "member", memberId: member.id })}
                       className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg text-left"
@@ -1775,9 +2129,53 @@ export function GlobalAssetsPage() {
         </div>
         <div className="flex-1 overflow-hidden">
           {sel.section === "project" && sel.projectId !== "all" && !sel.folderId && !sel.flatFolderId ? (
-            <ProjectFolderView key={sel.projectId + (sel.groupId ?? "")} projectId={sel.projectId} groupId={sel.groupId} setSel={setSel} />
+            <ProjectFolderView
+              key={sel.projectId + (sel.groupId ?? "")}
+              projectId={sel.projectId}
+              groupId={sel.groupId}
+              folderGroups={sharedProjectFolders[sel.projectId] ?? []}
+              flatFolders={sharedProjectFlatFolders[sel.projectId] ?? []}
+              setSel={setSel}
+            />
           ) : (
-            <AssetsContent key={JSON.stringify(sel)} assets={panelAssets} showMemberFilter={sel.section === "project"} />
+            (() => {
+              const targetFolderOptions = sel.section === "project" && sel.projectId !== "all"
+                ? [
+                    ...(sharedProjectFolders[sel.projectId] ?? []).flatMap((group) =>
+                      group.folders
+                        .filter((folder) => folder.id !== sel.folderId)
+                        .map((folder) => ({
+                          id: folder.id,
+                          name: folder.name,
+                          pathLabel: `${group.name} / ${folder.name}`,
+                          kind: "folder" as const,
+                        }))
+                    ),
+                    ...(sharedProjectFlatFolders[sel.projectId] ?? [])
+                      .filter((folder) => folder.id !== sel.flatFolderId)
+                      .map((folder) => ({
+                        id: folder.id,
+                        name: folder.name,
+                        pathLabel: folder.name,
+                        kind: "flat" as const,
+                      })),
+                  ]
+                : [];
+
+              return (
+            <AssetsContent
+              key={JSON.stringify(sel)}
+              assets={panelAssets}
+              showMemberFilter={sel.section === "project"}
+              currentProjectId={sel.section === "project" && sel.projectId !== "all" ? sel.projectId : undefined}
+              currentFolderId={sel.section === "project" ? sel.folderId : undefined}
+              currentFlatFolderId={sel.section === "project" ? sel.flatFolderId : undefined}
+              targetFolderOptions={targetFolderOptions}
+              canMoveAssets={sel.section === "project" && sel.projectId !== "all"}
+              onMoveAssets={moveAssetsToProject}
+            />
+              );
+            })()
           )}
         </div>
       </div>

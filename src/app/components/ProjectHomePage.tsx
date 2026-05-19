@@ -74,6 +74,30 @@ const PERIOD_LABELS: { key: PeriodKey; label: string }[] = [
   { key: "custom", label: "起止时间" },
 ];
 
+const BASIC_INFO_OPTIONS = {
+  aspectRatio: [
+    { key: "16:9", label: "16:9（横屏）" },
+    { key: "9:16", label: "9:16（竖屏）" },
+    { key: "1:1", label: "1:1（方形）" },
+    { key: "4:3", label: "4:3（标准）" },
+    { key: "21:9", label: "21:9（超宽）" },
+  ],
+  resolution: [
+    { key: "1920×1080", label: "1920×1080（1080p）" },
+    { key: "3840×2160", label: "3840×2160（4K）" },
+    { key: "1280×720", label: "1280×720（720p）" },
+    { key: "2560×1440", label: "2560×1440（2K）" },
+    { key: "7680×4320", label: "7680×4320（8K）" },
+  ],
+  frameRate: [
+    { key: "24", label: "24 fps（电影）" },
+    { key: "25", label: "25 fps（PAL）" },
+    { key: "30", label: "30 fps（标准）" },
+    { key: "60", label: "60 fps（高帧率）" },
+    { key: "120", label: "120 fps（超高帧率）" },
+  ],
+} as const;
+
 // ─── Tab Types ────────────────────────────────────────────────────────────────
 type ProjectTab = "cost" | "members" | "progress" | "warnings";
 
@@ -665,10 +689,10 @@ function HoverCard({
 }
 
 const CATEGORY_CONSUMPTION: CategoryNode[] = [
-  { type: "folder", name: "美术设定", children: [
-    { name: "人物设定", totalTokens: 4800, imageCount: 98, imageTokens: 3200, videoCount: 12, videoDurationSec: 240, videoTokens: 1600 },
-    { name: "场景设定", totalTokens: 3200, imageCount: 72, imageTokens: 2100, videoCount: 8, videoDurationSec: 180, videoTokens: 1100 },
-    { name: "道具设定", totalTokens: 1800, imageCount: 38, imageTokens: 1200, videoCount: 5, videoDurationSec: 90, videoTokens: 600 },
+  { type: "folder", name: "主体", children: [
+    { name: "人物", totalTokens: 4800, imageCount: 98, imageTokens: 3200, videoCount: 12, videoDurationSec: 240, videoTokens: 1600 },
+    { name: "场景", totalTokens: 3200, imageCount: 72, imageTokens: 2100, videoCount: 8, videoDurationSec: 180, videoTokens: 1100 },
+    { name: "道具", totalTokens: 1800, imageCount: 38, imageTokens: 1200, videoCount: 5, videoDurationSec: 90, videoTokens: 600 },
   ] },
   { type: "folder", name: "第一集", children: [
     { name: "分镜1-5", totalTokens: 2800, imageCount: 60, imageTokens: 1800, videoCount: 15, videoDurationSec: 360, videoTokens: 1000 },
@@ -836,6 +860,88 @@ function InlineEditBadge({
       <Edit2 size={9} className="opacity-0 group-hover:opacity-60 transition-opacity" />
     </button>
     )
+  );
+}
+
+function InlineSelectBadge({
+  label,
+  value,
+  icon: Icon,
+  options,
+  suffix,
+  onSave,
+  readOnly,
+}: {
+  label: string;
+  value: string;
+  icon: ComponentType<{ size?: number; style?: CSSProperties }>;
+  options: readonly { key: string; label: string }[];
+  suffix?: string;
+  onSave: (v: string) => void;
+  readOnly?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((opt) => opt.key === value);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [value]);
+
+  if (readOnly) {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}
+      >
+        <Icon size={11} style={{ color: "rgba(255,255,255,0.35)" }} />
+        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{label}:</span>
+        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.75)" }}>
+          {current?.key ?? value}{suffix ? ` ${suffix}` : ""}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative" onBlur={(e) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+    }}>
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all group hover:border-orange-500/30"
+        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}
+        title={`点击选择${label}`}
+      >
+        <Icon size={11} style={{ color: "rgba(255,255,255,0.35)" }} />
+        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{label}:</span>
+        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.75)" }}>
+          {current?.key ?? value}{suffix ? ` ${suffix}` : ""}
+        </span>
+        <ChevronDown size={10} className="opacity-70" />
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-1 rounded-xl overflow-hidden z-30 shadow-2xl min-w-[168px]"
+          style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)" }}
+        >
+          {options.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => {
+                onSave(opt.key);
+                setOpen(false);
+                toast.success(`${label}已更新`);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-sm text-left hover:bg-white/5"
+              style={{ color: value === opt.key ? "#E87322" : "rgba(255,255,255,0.72)" }}
+            >
+              <span>{opt.label}</span>
+              {value === opt.key && <Check size={12} style={{ color: "#E87322" }} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1879,24 +1985,27 @@ export function ProjectHomePage() {
 
           {/* ── Basic Info inline-edit badges ── */}
           <div className="flex items-center gap-2 flex-wrap">
-            <InlineEditBadge
+            <InlineSelectBadge
               label="比例"
               value={basicInfo.aspectRatio}
               icon={Monitor}
+              options={BASIC_INFO_OPTIONS.aspectRatio}
               onSave={(v) => setBasicInfo(prev => ({ ...prev, aspectRatio: v }))}
               readOnly={projectPerm === "阅读"}
             />
-            <InlineEditBadge
+            <InlineSelectBadge
               label="分辨率"
               value={basicInfo.resolution}
               icon={Layers}
+              options={BASIC_INFO_OPTIONS.resolution}
               onSave={(v) => setBasicInfo(prev => ({ ...prev, resolution: v }))}
               readOnly={projectPerm === "阅读"}
             />
-            <InlineEditBadge
+            <InlineSelectBadge
               label="帧率"
               value={basicInfo.frameRate}
               icon={Zap}
+              options={BASIC_INFO_OPTIONS.frameRate}
               suffix="fps"
               onSave={(v) => setBasicInfo(prev => ({ ...prev, frameRate: v }))}
               readOnly={projectPerm === "阅读"}
@@ -2121,9 +2230,7 @@ export function ProjectHomePage() {
               return (
                 <div className="flex flex-col gap-5">
                   <div className="flex items-center justify-between">
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
-                      时间筛选
-                    </span>
+                  
                     <div className="flex items-center gap-2">
                       <div className="flex gap-0.5 p-0.5 rounded-lg" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
                         {PERIOD_LABELS.map(({ key, label }) => (
@@ -2150,7 +2257,6 @@ export function ProjectHomePage() {
 
                   {/* ── Stats Grid ── */}
                   <div>
-                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500, display: "block", marginBottom: "10px" }}>{isEditor ? "我的消耗明细" : "统计明细"}</span>
                     <div className="grid grid-cols-4 gap-2.5">
                       {metricCards.map(({ key, label, value, tooltip, unit }) => (
                         <button
@@ -2239,7 +2345,7 @@ export function ProjectHomePage() {
 
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{isEditor ? "我的分类消耗" : "按分类消耗"}</span>
+                      <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{isEditor ? "我的生成消耗" : "生成消耗"}</span>
                       <div className="flex items-center gap-2">
                         <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>点击分类行查看明细</span>
                         <button onClick={handleDownloadCategoryCSV}
