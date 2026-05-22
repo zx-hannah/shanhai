@@ -2700,6 +2700,32 @@ export function ProjectHomePage() {
             {/* ── 分镜进度 Tab ── */}
             {activeTab === "progress" && (
               <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2 px-1">
+                  <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.82)", fontWeight: 600 }}>项目进度</span>
+                  <div className="relative group">
+                    <div
+                      className="w-4 h-4 rounded-full flex items-center justify-center cursor-help"
+                      style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(232,115,34,0.82)" }}
+                    >
+                      <Info size={10} />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute left-0 top-full mt-2 w-[360px] rounded-xl px-3 py-2 opacity-0 translate-y-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0"
+                      style={{
+                        background: "#17120D",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
+                        zIndex: 20,
+                      }}
+                    >
+                      <div className="flex flex-col gap-1" style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)", lineHeight: 1.65 }}>
+                        <span>总进度：分镜总表中「总进度」为 ✅ 的行数 / 总行数</span>
+                        <span>视频进度：视频表中「视频进度」为 ✅ 的行数 / 总行数</span>
+                        <span>图片进度：画面表中「画面进度」为 ✅ 的行数 / 总行数</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {project.episodeStats.map((ep, idx) => {
                   const mediaProgress = deriveEpisodeMediaProgress(ep.progress);
