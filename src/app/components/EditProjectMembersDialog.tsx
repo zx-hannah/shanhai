@@ -61,11 +61,12 @@ export function EditProjectMembersDialog({ projectName, initialMembers, onClose,
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[55] flex items-center justify-center"
       style={{ background: "rgba(0,0,0,0.75)" }}
       onClick={() => { setPermDropdownId(null); onClose(); }}
     >
       <div
+        data-guide-target="member-dialog"
         className="w-[520px] rounded-2xl overflow-hidden shadow-2xl"
         style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)", maxHeight: "85vh", display: "flex", flexDirection: "column" }}
         onClick={(e) => e.stopPropagation()}

@@ -238,7 +238,7 @@ export function TokenModal({
                 note="该生产栗用于项目内的生成。由于不同项目额度独立且数值不同，此处不展示具体额度，请进入对应项目内查看。"
                 hideTotalValue
                 hideItems
-              />
+               />
             </>
           )}
         </div>

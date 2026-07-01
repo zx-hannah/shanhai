@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useParams, useNavigate } from "react-router";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, type CSSProperties, type ReactNode } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router";
 import {
   Users, User, TreePalm, Package, Sparkles, Upload,
   Search, X, Pencil, Trash2, Star,
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+import { ProjectAssetsSidebarPanel } from "./ProjectAssetsSidebarPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 type SubjectType = "sd_ip" | "character" | "scene" | "prop";
@@ -17,6 +18,7 @@ type ReviewStatusFilter = "all" | ReviewStatus;
 type ExpiryType = "permanent" | "date_range";
 type SubTab = "generate" | "upload" | "subject" | "collect";
 type VirtualIpAssetType = "image" | "video" | "audio";
+type SubjectGuideTarget = "subject-list-card" | "subject-detail-view" | "subject-edit-button" | "subject-drag-workspace";
 
 interface SubjectItem {
   id: string;
@@ -74,6 +76,29 @@ const TYPE_CONFIG: Record<SubjectType, { icon: typeof Users; label: string; colo
 
 };
 
+const SUBJECT_GUIDE_STEPS: { target: SubjectGuideTarget; title: string; body: ReactNode }[] = [
+  {
+    target: "subject-list-card",
+    title: "查看主体列表",
+    body: "主体列表按人物、场景、道具分类管理项目核心设定。点击一张主体卡片查看详情。",
+  },
+  {
+    target: "subject-detail-view",
+    title: "主体详情",
+    body: "查看主体详情，其出现在剧集数及占比数据，以及生图信息。",
+  },
+  {
+    target: "subject-edit-button",
+    title: "编辑主体",
+    body: "点击右上角「编辑」，调整主体名称、描述，并替换主体图片。",
+  },
+  {
+    target: "subject-drag-workspace",
+    title: "拖拽资产替换图片",
+    body: "拖拽左侧资产图片到主体图片上松开，即可覆盖当前图片。",
+  },
+];
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
 function extractFilename(src: string): string {
   const parts = src.split("/");
@@ -100,18 +125,287 @@ function createVirtualIpPlaceholder(type: VirtualIpAssetType, fileName: string) 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+function SubjectModuleGuide({
+  step,
+  total,
+  current,
+  onPrev,
+  onNext,
+  onClose,
+}: {
+  step: number;
+  total: number;
+  current: { target: SubjectGuideTarget; title: string; body: ReactNode };
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const [cardPosition, setCardPosition] = useState<CSSProperties>({ right: 24, bottom: 24 });
+  const [targetFrame, setTargetFrame] = useState<CSSProperties | null>(null);
+  const [extraFrames, setExtraFrames] = useState<CSSProperties[]>([]);
+  const [dragDemo, setDragDemo] = useState<{ startX: number; startY: number; endX: number; endY: number; src: string } | null>(null);
+  const isLast = step === total - 1;
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    let tries = 0;
+    const updatePosition = () => {
+      const targets = Array.from(document.querySelectorAll(`[data-subject-guide-target="${current.target}"]`)) as HTMLElement[];
+      const rects = targets
+        .map((target) => target.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0);
+      if (rects.length === 0) {
+        if (tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+      const rect = rects.reduce((acc, next) => ({
+        left: Math.min(acc.left, next.left),
+        top: Math.min(acc.top, next.top),
+        right: Math.max(acc.right, next.right),
+        bottom: Math.max(acc.bottom, next.bottom),
+        width: Math.max(acc.right, next.right) - Math.min(acc.left, next.left),
+        height: Math.max(acc.bottom, next.bottom) - Math.min(acc.top, next.top),
+        x: Math.min(acc.left, next.left),
+        y: Math.min(acc.top, next.top),
+        toJSON: acc.toJSON,
+      } as DOMRect), rects[0]);
+
+      const margin = 18;
+      const gap = 18;
+      const pad = 8;
+      const cardWidth = 360;
+      const cardHeight = 230;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const makeFrame = (box: DOMRect, padding = 8) => {
+        const leftValue = Math.max(margin, box.left - padding);
+        const topValue = Math.max(margin, box.top - padding);
+        const rightValue = Math.min(viewportWidth - margin, box.right + padding);
+        const bottomValue = Math.min(viewportHeight - margin, box.bottom + padding);
+        return {
+          left: leftValue,
+          top: topValue,
+          width: Math.max(0, rightValue - leftValue),
+          height: Math.max(0, bottomValue - topValue),
+        } as CSSProperties;
+      };
+      const frameLeft = Math.max(margin, rect.left - pad);
+      const frameTop = Math.max(margin, rect.top - pad);
+      const frameRight = Math.min(viewportWidth - margin, rect.right + pad);
+      const frameBottom = Math.min(viewportHeight - margin, rect.bottom + pad);
+
+      if (current.target === "subject-drag-workspace") {
+        const sidebar = document.querySelector("[data-subject-drag-sidebar='true']") as HTMLElement | null;
+        const source = document.querySelector("[data-subject-drag-source='true']") as HTMLElement | null;
+        const destination = document.querySelector("[data-subject-drag-destination='true']") as HTMLElement | null;
+        const img = source?.querySelector("img") as HTMLImageElement | null;
+        const sidebarRect = sidebar?.getBoundingClientRect();
+        const sourceRect = source?.getBoundingClientRect();
+        const destinationRect = destination?.getBoundingClientRect();
+        if ((!sidebarRect || !sourceRect || !destinationRect) && tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+          return;
+        }
+        setTargetFrame(null);
+        setExtraFrames([
+          sidebarRect ? makeFrame(sidebarRect, 6) : null,
+          destinationRect ? makeFrame(destinationRect, 8) : null,
+        ].filter(Boolean) as CSSProperties[]);
+        if (sourceRect && destinationRect) {
+          setDragDemo({
+            startX: sourceRect.left + sourceRect.width / 2,
+            startY: sourceRect.top + sourceRect.height / 2,
+            endX: destinationRect.left + destinationRect.width / 2,
+            endY: destinationRect.top + destinationRect.height / 2,
+            src: img?.src ?? "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=160&h=160&fit=crop",
+          });
+        } else {
+          setDragDemo(null);
+        }
+      } else {
+        setTargetFrame({
+          left: frameLeft,
+          top: frameTop,
+          width: Math.max(0, frameRight - frameLeft),
+          height: Math.max(0, frameBottom - frameTop),
+        });
+        setExtraFrames([]);
+        setDragDemo(null);
+      }
+
+      let left = rect.right + gap;
+      let top = rect.top + Math.max(0, (rect.height - cardHeight) / 2);
+      if (left + cardWidth + margin > viewportWidth) left = rect.left - cardWidth - gap;
+      if (left < margin) {
+        left = Math.min(Math.max(rect.left, margin), viewportWidth - cardWidth - margin);
+        top = rect.bottom + gap;
+      }
+      if (top + cardHeight + margin > viewportHeight) top = rect.top - cardHeight - gap;
+      if (top < margin) top = Math.min(Math.max(rect.bottom + gap, margin), viewportHeight - cardHeight - margin);
+
+      setCardPosition({ left, top });
+    };
+
+    frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [current.target]);
+
+  const highlightFrames = extraFrames.length > 0 ? extraFrames : targetFrame ? [targetFrame] : [];
+
+  return (
+    <div className="fixed inset-0 z-[70] pointer-events-none">
+      {dragDemo && (
+        <div
+          className="absolute z-[78]"
+          style={{
+            left: 0,
+            top: 0,
+            ["--drag-start-x" as string]: `${dragDemo.startX - 34}px`,
+            ["--drag-start-y" as string]: `${dragDemo.startY - 34}px`,
+            ["--drag-end-x" as string]: `${dragDemo.endX - 34}px`,
+            ["--drag-end-y" as string]: `${dragDemo.endY - 34}px`,
+          } as CSSProperties}
+        >
+          <div className="subject-guide-drag-ghost">
+            <img src={dragDemo.src} alt="" className="h-full w-full object-cover" />
+            <div className="subject-guide-drag-cursor">
+              <Upload size={13} />
+            </div>
+          </div>
+        </div>
+      )}
+      {highlightFrames.length > 0 ? (
+        <>
+          <svg className="absolute inset-0 h-full w-full" style={{ zIndex: 70 }} aria-hidden="true">
+            <defs>
+              <mask id="subject-module-guide-mask">
+                <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                {highlightFrames.map((frame, index) => (
+                  <rect
+                    key={index}
+                    x={Number(frame.left) || 0}
+                    y={Number(frame.top) || 0}
+                    width={Number(frame.width) || 0}
+                    height={Number(frame.height) || 0}
+                    rx={20}
+                    fill="black"
+                  />
+                ))}
+              </mask>
+            </defs>
+            <rect x="0" y="0" width="100%" height="100%" fill="rgba(4,3,2,0.56)" mask="url(#subject-module-guide-mask)" />
+          </svg>
+          {highlightFrames.map((frame, index) => (
+            <div key={index} className="absolute rounded-[20px]" style={{ ...frame, zIndex: 75, border: "3px solid #F5A623", boxShadow: "0 0 0 6px rgba(245,166,35,0.18), 0 18px 44px rgba(245,166,35,0.24)" }} />
+          ))}
+        </>
+      ) : (
+        <div className="absolute inset-0" style={{ background: "rgba(4,3,2,0.56)" }} />
+      )}
+      <div className="absolute z-[80] w-[360px] rounded-2xl p-4 pointer-events-auto" style={{ ...cardPosition, background: "#1A1510", border: "2px solid #F5A623", boxShadow: "0 28px 70px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.08), 0 0 34px rgba(245,166,35,0.22)" }}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-base font-semibold text-white">{current.title}</h3>
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{ color: "#F5A623", background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.22)" }}
+            >
+              {step + 1}/{total}
+            </span>
+          </div>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-white/10" style={{ color: "rgba(255,255,255,0.45)" }} title="关闭新手引导">
+            <X size={14} />
+          </button>
+        </div>
+        <p className="mb-4 text-sm leading-6" style={{ color: "rgba(255,255,255,0.68)" }}>{current.body}</p>
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={onPrev} className="h-8 rounded-lg px-3 text-xs transition-opacity" style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.68)" }}>
+            上一步
+          </button>
+          <button onClick={onNext} className="h-8 rounded-lg px-3 text-xs font-medium transition-opacity hover:opacity-90" style={{ background: "#E87322", color: "#fff" }}>
+            {step === 0 ? "查看详情" : step === 2 ? "点击编辑" : isLast ? "进入生成模块" : "下一步"}
+          </button>
+        </div>
+      </div>
+      {dragDemo && (
+        <style>{`
+          @keyframes subject-guide-drag-ghost {
+            0% {
+              transform: translate(var(--drag-start-x), var(--drag-start-y)) scale(0.92);
+              opacity: 0;
+            }
+            10% {
+              opacity: 1;
+            }
+            42% {
+              transform: translate(var(--drag-start-x), var(--drag-start-y)) scale(1);
+              opacity: 1;
+            }
+            78% {
+              transform: translate(var(--drag-end-x), var(--drag-end-y)) scale(1.06);
+              opacity: 1;
+            }
+            100% {
+              transform: translate(var(--drag-end-x), var(--drag-end-y)) scale(0.96);
+              opacity: 0;
+            }
+          }
+          .subject-guide-drag-ghost {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 68px;
+            height: 68px;
+            overflow: visible;
+            border-radius: 16px;
+            border: 3px solid rgba(255,138,61,0.95);
+            box-shadow: 0 18px 46px rgba(232,115,34,0.42), 0 0 0 7px rgba(255,138,61,0.18);
+            animation: subject-guide-drag-ghost 2.8s cubic-bezier(.2,.78,.2,1) infinite;
+          }
+          .subject-guide-drag-ghost img {
+            border-radius: 12px;
+          }
+          .subject-guide-drag-cursor {
+            position: absolute;
+            right: -14px;
+            bottom: -14px;
+            width: 32px;
+            height: 32px;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #FF8A3D;
+            color: #2A1408;
+            box-shadow: 0 10px 22px rgba(0,0,0,0.35);
+          }
+        `}</style>
+      )}
+    </div>
+  );
+}
+
 // ─── Subject Detail Full-Screen Page ────────────────────────────────────────────
 interface SubjectDetailProps {
   mode: "create" | "edit" | "view";
   defaultType?: SubjectType;
   subject?: SubjectItem;
   onClose: () => void;
+  onModeChange?: (mode: "create" | "edit" | "view") => void;
   onSave: (data: Omit<SubjectItem, "id" | "updatedAt">) => void;
 }
 
-function SubjectDetailPage({ mode, defaultType, subject, onClose, onSave }: SubjectDetailProps) {
-  const navigate = useNavigate();
-  const { id: projectId } = useParams<{ id: string }>();
+function SubjectDetailPage({ mode, defaultType, subject, onClose, onModeChange, onSave }: SubjectDetailProps) {
   const targetType = subject?.type ?? defaultType ?? "sd_ip";
   const isCreatingSdIp = mode === "create" && targetType === "sd_ip";
 
@@ -362,10 +656,17 @@ function SubjectDetailPage({ mode, defaultType, subject, onClose, onSave }: Subj
           <span style={{ fontSize: "14px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>{subject?.name}</span>
           <span className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: typeConfig.color + "20", color: typeConfig.color }}>{typeConfig.label}</span>
           <div className="flex-1" />
-          <button onClick={() => { setDetailMode("edit"); }} className="px-4 py-1.5 rounded-lg text-sm transition-colors" style={{ background: "rgba(232,115,34,0.15)", color: "#E87322" }}>编辑</button>
+          <button
+            data-subject-guide-target="subject-edit-button"
+            onClick={() => onModeChange?.("edit")}
+            className="px-4 py-1.5 rounded-lg text-sm transition-colors"
+            style={{ background: "rgba(232,115,34,0.15)", color: "#E87322" }}
+          >
+            编辑
+          </button>
         </div>
         <div className="flex-1 overflow-auto">
-          <div className="max-w-5xl mx-auto px-8 py-8 grid grid-cols-5 gap-x-8">
+          <div data-subject-guide-target="subject-detail-view" className="max-w-5xl mx-auto px-8 py-8 grid grid-cols-5 gap-x-8">
             {/* Left: image */}
             <div className="col-span-2">
               <div className="rounded-xl overflow-hidden" style={{ background: "#1A1510", aspectRatio: "3/4" }}>
@@ -381,7 +682,7 @@ function SubjectDetailPage({ mode, defaultType, subject, onClose, onSave }: Subj
               {/* Name */}
               <div className="mb-6">
                 <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "4px" }}>名称</span>
-                <div onClick={() => { setDetailMode("edit"); }} className="cursor-pointer py-1 rounded-lg hover:bg-white/5 transition-colors">
+                <div onClick={() => onModeChange?.("edit")} className="cursor-pointer py-1 rounded-lg hover:bg-white/5 transition-colors">
                   <span style={{ fontSize: "18px", color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>{subject?.name}</span>
                   <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", marginLeft: "8px" }}>点击编辑</span>
                 </div>
@@ -399,7 +700,7 @@ function SubjectDetailPage({ mode, defaultType, subject, onClose, onSave }: Subj
                     </button>
                   )}
                 </div>
-                <div onClick={() => { setDetailMode("edit"); }} className="cursor-pointer py-1 rounded-lg hover:bg-white/5 transition-colors min-h-[40px]">
+                <div onClick={() => onModeChange?.("edit")} className="cursor-pointer py-1 rounded-lg hover:bg-white/5 transition-colors min-h-[40px]">
                   <p style={{ fontSize: "13px", color: subject?.description ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.2)", lineHeight: 1.7 }}>
                     {subject?.description || "暂无描述"}
                   </p>
@@ -537,82 +838,143 @@ function SubjectDetailPage({ mode, defaultType, subject, onClose, onSave }: Subj
     );
   }
 
+  const epCount = subject?.episodes?.length ?? 0;
+  const episodePercent = Math.min(100, Math.round((epCount / 8) * 100));
+
   return (
-    <div className="absolute inset-0 z-30 flex flex-col" style={{ background: "#140F09" }}>
-      {/* Top bar */}
-      <div className="flex items-center gap-3 px-6 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+    <div className="absolute inset-0 z-30 flex flex-col overflow-hidden" style={{ background: "#050403" }}>
+      <div
+        className="flex items-center gap-5 px-8 py-4 flex-shrink-0"
+        style={{
+          minHeight: "82px",
+          background: "linear-gradient(90deg, rgba(58,32,19,0.78) 0%, rgba(12,8,5,0.98) 35%, #050403 100%)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
         <button onClick={onClose}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/5"
-          style={{ color: "rgba(255,255,255,0.6)" }}>
-          <ChevronLeft size={16} />返回
+          className="flex items-center gap-2 rounded-xl px-2 py-2 text-base font-semibold transition-colors hover:bg-white/5"
+          style={{ color: "rgba(255,255,255,0.72)" }}>
+          <ChevronLeft size={20} />返回
         </button>
-        <div style={{ width: "1px", height: "16px", background: "rgba(255,255,255,0.1)" }} />
-        <span style={{ fontSize: "14px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>
-          {mode === "create" ? "新建主体" : subject?.name}
-        </span>
-        <span className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: typeConfig.color + "20", color: typeConfig.color }}>
-          {typeConfig.label}
-        </span>
+        <div style={{ width: "1px", height: "34px", background: "rgba(255,255,255,0.08)" }} />
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="truncate" style={{ fontSize: "26px", color: "#fff", fontWeight: 800, lineHeight: 1.15 }}>
+            {mode === "create" ? `新建${typeConfig.label}` : subject?.name}
+          </span>
+          <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ background: typeConfig.color + "20", color: typeConfig.color, border: `1px solid ${typeConfig.color}40` }}>
+            {typeConfig.label}
+          </span>
+        </div>
         <div className="flex-1" />
-        {mode !== "view" && (
-          <button onClick={handleSave} className="px-5 py-1.5 rounded-lg text-sm font-medium transition-colors" style={{ background: "#E87322", color: "#fff" }}>
-            {mode === "create" ? "创建" : "保存"}
-          </button>
-        )}
+        <button onClick={onClose} className="px-5 py-3 rounded-xl text-sm font-bold transition-colors hover:bg-white/10" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.68)", border: "1px solid rgba(255,255,255,0.12)" }}>
+          取消
+        </button>
+        <button onClick={handleSave} className="px-6 py-3 rounded-xl text-sm font-bold transition-opacity hover:opacity-90" style={{ background: "linear-gradient(180deg, #FFB076 0%, #FF7F35 100%)", color: "#2A1408", boxShadow: "0 14px 32px rgba(232,115,34,0.32)" }}>
+          保存
+        </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <div className="flex justify-center p-8">
-          <div style={{ maxWidth: "560px", width: "100%" }}>
-            {/* Image upload area */}
-            <div className="mb-6">
-              <div
-                className="relative rounded-xl overflow-hidden"
-                style={{ background: "#1A1510", aspectRatio: "16/10", border: isDragOverImage ? "2px dashed #E87322" : "2px dashed rgba(255,255,255,0.1)", transition: "border-color 0.2s" }}
-                onDragOver={handleImageDragOver}
-                onDragLeave={handleImageDragLeave}
-                onDrop={handleImageDrop}
-              >
-                {image ? (
-                  <img src={image} alt={name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center" style={{ color: "rgba(255,255,255,0.15)", fontSize: "13px" }}>暂无图片</div>
-                )}
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                <div className="absolute bottom-3 right-3 flex items-center gap-1">
-                  <button onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
-                    style={{ background: "rgba(0,0,0,0.6)", color: "rgba(255,255,255,0.8)" }}>
-                    <Upload size={12} />{image ? "替换" : "上传"}
-                  </button>
-                  <button
-                    onClick={() => navigate(`/project/${projectId}/generate`)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs transition-colors hover:opacity-80"
-                    style={{ background: "#E87322", color: "#fff" }}>
-                    <Sparkles size={12} />前往生成
-                  </button>
+      <div className="flex-1 overflow-hidden" style={{ background: "radial-gradient(circle at 9% 92%, rgba(232,115,34,0.5), transparent 34%), linear-gradient(135deg, rgba(78,45,27,0.72), #050403 42%, rgba(74,24,8,0.46) 100%)" }}>
+        <div className="grid h-full gap-7 px-8 py-7" style={{ gridTemplateColumns: "minmax(520px, 1fr) 510px" }}>
+          <div className="relative min-h-0 rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.02)" }}>
+            <div
+              data-subject-guide-target={mode === "edit" ? "subject-drag-workspace" : undefined}
+              data-subject-drag-destination={mode === "edit" ? "true" : undefined}
+              className="relative h-full w-full overflow-hidden"
+              style={{
+                border: isDragOverImage ? "2px dashed #FF8A3D" : mode === "edit" ? "2px dashed rgba(255,138,61,0.52)" : "2px solid transparent",
+                transition: "border-color 0.2s",
+              }}
+              onDragOver={handleImageDragOver}
+              onDragLeave={handleImageDragLeave}
+              onDrop={handleImageDrop}
+            >
+              {image ? (
+                <img src={image} alt={name} className="h-full w-full object-contain" />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(232,115,34,0.16)", color: "#FF8A3D" }}>
+                    <ImagePlus size={30} />
+                  </div>
+                  <div style={{ fontSize: "22px", color: "rgba(255,255,255,0.88)", fontWeight: 800, marginBottom: "12px" }}>暂无图片</div>
+                  <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.42)", fontWeight: 700 }}>可上传图片、拖拽左侧资产，或前往生成模块创建</div>
                 </div>
+              )}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity" style={{ background: isDragOverImage ? "rgba(0,0,0,0.46)" : "transparent", opacity: isDragOverImage ? 1 : 0 }}>
+                <div className="rounded-full px-5 py-2.5 text-sm font-bold" style={{ background: "rgba(255,138,61,0.94)", color: "#2A1408" }}>松开后替换主体图片</div>
               </div>
-              <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", marginTop: "6px" }}>
-                支持上传 / 拖拽左侧资产 / 前往生成模块创建
-              </p>
+              <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between gap-3">
+              
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold"
+                  style={{ background: "rgba(5,4,3,0.72)", color: "rgba(255,255,255,0.82)", border: "1px solid rgba(255,255,255,0.12)" }}>
+                  <Upload size={15} />上传
+                </button>
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
             </div>
-            {/* Name */}
-            <div className="mb-5">
-              <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "6px" }}>名称</label>
-              <input className="w-full px-3 py-2.5 rounded-lg outline-none"
-                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.85)", fontSize: "14px", border: "1px solid rgba(255,255,255,0.1)" }}
+          </div>
+
+          <div className="min-h-0 overflow-auto pl-7 pr-3" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
+            <section className="py-7" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+              <label style={{ fontSize: "15px", color: "rgba(255,255,255,0.82)", fontWeight: 800, display: "block", marginBottom: "12px" }}>主体名称</label>
+              <input className="w-full px-4 py-3 rounded-lg outline-none"
+                style={{ background: "rgba(255,255,255,0.09)", color: "rgba(255,255,255,0.9)", fontSize: "15px", border: "1px solid rgba(255,255,255,0.1)" }}
                 value={name} onChange={(e) => setName(e.target.value)}
                 placeholder="输入主体名称" autoFocus />
-            </div>
-            {/* Description */}
-            <div className="mb-5">
-              <label style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: "6px" }}>描述</label>
-              <textarea className="w-full px-3 py-2.5 rounded-lg outline-none resize-none"
-                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", fontSize: "14px", border: "1px solid rgba(255,255,255,0.1)", lineHeight: 1.7 }}
-                rows={3} value={description} onChange={(e) => setDescription(e.target.value)}
-                placeholder="输入主体描述" />
-            </div>
+            </section>
+
+            <section className="py-7" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+              <label style={{ fontSize: "15px", color: "rgba(255,255,255,0.82)", fontWeight: 800, display: "block", marginBottom: "12px" }}>描述</label>
+              <div className="relative">
+                <textarea className="w-full px-4 py-3 rounded-lg outline-none resize-none"
+                  style={{ background: "rgba(255,255,255,0.09)", color: "rgba(255,255,255,0.72)", fontSize: "15px", border: "1px solid rgba(255,255,255,0.1)", lineHeight: 1.7, minHeight: "156px" }}
+                  maxLength={500}
+                  rows={5} value={description} onChange={(e) => setDescription(e.target.value)}
+                  placeholder="输入主体描述" />
+                <span className="absolute bottom-3 right-4" style={{ fontSize: "12px", color: "rgba(255,255,255,0.3)" }}>{description.length} / 500</span>
+              </div>
+            </section>
+
+            <section className="py-7" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.82)", fontWeight: 800, marginBottom: "16px" }}>剧集数据</div>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="rounded-xl p-5 flex flex-col items-center justify-center" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div className="relative h-20 w-20 rounded-full flex items-center justify-center" style={{ background: `conic-gradient(#7B3FC4 ${episodePercent}%, rgba(255,255,255,0.09) 0)` }}>
+                    <div className="absolute inset-3 rounded-full" style={{ background: "#2A231D" }} />
+                    <span className="relative text-lg font-extrabold text-white">{episodePercent}%</span>
+                  </div>
+                  <div className="mt-3 text-xs font-bold" style={{ color: "rgba(255,255,255,0.52)" }}>出现集数占比</div>
+                </div>
+                <div className="rounded-xl p-5 flex flex-col items-center justify-center" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div style={{ fontSize: "36px", color: "#FF7F35", fontWeight: 900, lineHeight: 1 }}>{epCount}</div>
+                  <div className="mt-3 text-xs font-bold" style={{ color: "rgba(255,255,255,0.52)" }}>出现剧集数</div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(subject?.episodes ?? []).map((ep) => (
+                  <span key={ep} className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.1)" }}>{ep}</span>
+                ))}
+              </div>
+            </section>
+
+            <section className="py-7">
+              <div className="mb-4 flex items-center justify-between">
+                <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.82)", fontWeight: 800 }}>图片信息</div>
+                {subject?.promptText && (
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(subject.promptText ?? "").catch(() => {}); toast.success("提示词已复制"); }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-opacity hover:opacity-80"
+                    style={{ color: "rgba(255,255,255,0.65)", background: "rgba(255,255,255,0.08)" }}>
+                    <Copy size={13} />复制
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.46)", fontWeight: 700, marginBottom: "10px" }}>提示词</div>
+              <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.62)", lineHeight: 1.85 }}>
+                {subject?.promptText ?? "暂无提示词，可通过生成模块补充主体图片提示词。"}
+              </p>
+            </section>
           </div>
         </div>
       </div>
@@ -1536,22 +1898,10 @@ const CURRENT_USER = PROJECT_MEMBERS[0];
 export function ProjectSubjectsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // ── Sidebar state ──────────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [assetSubTab, setAssetSubTab] = useState<AssetSubTab>("generate");
-  const [assetTypeFilter, setAssetTypeFilter] = useState<AssetType>("image");
-  const [assetSearch, setAssetSearch] = useState("");
-  const [subjectReviewFilter, setSubjectReviewFilter] = useState<ReviewStatusFilter>("all");
-
-  const [memberFilter, setMemberFilter] = useState<string[]>([CURRENT_USER.id]);
-  const [showMemberMenu, setShowMemberMenu] = useState(false);
-  const [sidebarMoreId, setSidebarMoreId] = useState<string | null>(null);
-  const [sidebarCollectIds, setSidebarCollectIds] = useState<Set<string>>(new Set(["g2", "g4"]));
-  const [sidebarSubjectExpanded, setSidebarSubjectExpanded] = useState<Record<SubjectType, boolean>>({
-    sd_ip: true, character: true, scene: true, prop: true,
-  });
-  const [sidebarDetailAsset, setSidebarDetailAsset] = useState<SidebarAsset | SubjectItem | null>(null);
 
   // ── Subjects state ─────────────────────────────────────────────────────
   const [subjects, setSubjects] = useState<SubjectItem[]>(INITIAL_SUBJECTS);
@@ -1564,24 +1914,21 @@ export function ProjectSubjectsPage() {
   const [inlineEditValue, setInlineEditValue] = useState("");
   const [createType, setCreateType] = useState<SubjectType>("sd_ip");
   const [sdIpView, setSdIpView] = useState<SubjectItem | null>(null);
+  const [showSubjectGuide, setShowSubjectGuide] = useState(false);
+  const [subjectGuideStep, setSubjectGuideStep] = useState(0);
+  const currentSubjectGuideStep = SUBJECT_GUIDE_STEPS[subjectGuideStep];
 
-  const openCreateSubject = (type: SubjectType) => {
+  const openCreateSubject = (type: SubjectType, options?: { keepSidebarOpen?: boolean }) => {
     setCreateType(type);
     setDetailSubject(null);
     setDetailMode("create");
-    setSidebarOpen(false);
+    setSidebarOpen(options?.keepSidebarOpen ?? false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const filteredSubjects = subjects.filter((subject) => {
     if (subject.type !== activeType) return false;
     if (searchKeyword && !subject.name.toLowerCase().includes(searchKeyword.toLowerCase())) return false;
-    return true;
-  });
-
-  const filteredAssets = SIDEBAR_ASSETS[assetSubTab].filter(a => {
-    if (a.type !== assetTypeFilter) return false;
-    if (assetSearch && !a.name.toLowerCase().includes(assetSearch.toLowerCase())) return false;
     return true;
   });
 
@@ -1606,16 +1953,86 @@ export function ProjectSubjectsPage() {
     toast.success("主体已更新");
   };
 
-  const openDetail = (subject: SubjectItem) => { setDetailSubject(subject); setDetailMode("view"); };
+  const openDetail = (subject: SubjectItem) => {
+    setDetailSubject(subject);
+    setDetailMode("view");
+    if (showSubjectGuide && subjectGuideStep === 0 && subject.type !== "sd_ip") {
+      setSidebarOpen(true);
+      setSubjectGuideStep(1);
+    }
+  };
   const openEdit = (subject: SubjectItem) => { setDetailSubject(subject); setDetailMode("edit"); };
   const openCreate = openCreateSubject;
 
+  const showGuideSubjectDetail = () => {
+    const guideSubject = subjects.find((item) => item.type === "character") ?? subjects.find((item) => item.type !== "sd_ip");
+    if (!guideSubject) return;
+    setActiveType(guideSubject.type);
+    setSidebarOpen(true);
+    setDetailSubject(guideSubject);
+    setDetailMode("view");
+  };
+
+  const showGuideSubjectList = () => {
+    setActiveType("character");
+    setSidebarOpen(true);
+    setDetailSubject(null);
+    setDetailMode("view");
+  };
+
+  const enterGuideSubjectEdit = () => {
+    const guideSubject = detailSubject ?? subjects.find((item) => item.type === "character") ?? subjects.find((item) => item.type !== "sd_ip");
+    if (!guideSubject) return;
+    setActiveType(guideSubject.type);
+    setSidebarOpen(true);
+    setDetailSubject(guideSubject);
+    setDetailMode("edit");
+    setSubjectGuideStep(3);
+  };
+
+  const finishSubjectGuide = () => {
+    setShowSubjectGuide(false);
+    setSubjectGuideStep(0);
+    const nextUrl = `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  };
+
+  const startSubjectGuide = (step: number = 0) => {
+    setActiveType("character");
+    setSidebarOpen(true);
+    if (step === SUBJECT_GUIDE_STEPS.length - 1) {
+      const guideSubject = subjects.find((item) => item.type === "character") ?? subjects.find((item) => item.type !== "sd_ip");
+      setDetailSubject(guideSubject ?? null);
+      setDetailMode("edit");
+    } else if (step > 0) {
+      const guideSubject = subjects.find((item) => item.type === "character") ?? subjects.find((item) => item.type !== "sd_ip");
+      setDetailSubject(guideSubject ?? null);
+      setDetailMode("view");
+    } else {
+      setDetailSubject(null);
+      setDetailMode("view");
+    }
+    setShowSubjectGuide(true);
+    setSubjectGuideStep(step);
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-subject-guide-target="${SUBJECT_GUIDE_STEPS[step]?.target ?? "subject-list-card"}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  };
+
   useEffect(() => {
-    const type = new URLSearchParams(window.location.search).get("createType") as SubjectType | null;
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get("createType") as SubjectType | null;
     if (type && ["sd_ip", "character", "scene", "prop"].includes(type)) {
       openCreateSubject(type);
     }
+    if (params.get("guide") === "1") startSubjectGuide(params.get("guideStep") === "last" ? SUBJECT_GUIDE_STEPS.length - 1 : 0);
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("guide") === "1") startSubjectGuide(searchParams.get("guideStep") === "last" ? SUBJECT_GUIDE_STEPS.length - 1 : 0);
+  }, [searchParams]);
 
   const handleDeleteSingle = (subjectId: string) => {
     setSubjects(prev => prev.filter(s => s.id !== subjectId));
@@ -1626,447 +2043,41 @@ export function ProjectSubjectsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const type = params.get("createType");
-    if (type === "character" || type === "scene" || type === "prop" || type === "sd_ip") {
+    if (params.get("guide") !== "1" && (type === "character" || type === "scene" || type === "prop" || type === "sd_ip")) {
       openCreateSubject(type);
     }
   }, []);
 
   return (
     <div className="flex h-full overflow-hidden relative" style={{ background: "#140F09" }}>
-      {/* ── Left Sidebar (absolute, full height to top) ──────────────────── */}
+      {/* ── Left Sidebar ─────────────────────────────────────────────────── */}
       <div
-        className="flex flex-col flex-shrink-0 relative"
+        className="flex flex-col flex-shrink-0"
         style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: sidebarOpen ? "240px" : "0px",
-          background: "#110E0A",
-          borderRight: sidebarOpen ? "1px solid rgba(255,255,255,0.05)" : "none",
+          width: sidebarOpen ? "280px" : "0px",
           transition: "width 0.2s ease",
-          overflow: "visible",
-          zIndex: 20,
+          overflow: "hidden",
         }}
-        onClick={() => { setShowMemberMenu(false); setSidebarMoreId(null); }}
       >
-        <button
-          onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }}
-          className="absolute top-2.5 -right-5 z-10 w-5 h-5 rounded flex items-center justify-center hover:bg-white/10"
-          style={{ color: "rgba(255,255,255,0.35)" }}
-          title={sidebarOpen ? "收起侧边栏" : "展开侧边栏"}
-        >
-          <ChevronLeft size={11} style={{ transform: sidebarOpen ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.2s" }} />
-        </button>
-
         {sidebarOpen && (
-          <div className="flex flex-col h-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center px-3 py-2 flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-              <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>资产</span>
-            </div>
-
-            <div className="flex items-center gap-1 px-2 py-1.5 flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-              {[
-                { key: "generate" as const, label: "生成", icon: Sparkles, color: "#E87322" },
-                { key: "upload" as const, label: "上传", icon: Upload, color: "#3b82f6" },
-                { key: "subject" as const, label: "主体", icon: Package, color: "#4AC678" },
-                { key: "collect" as const, label: "收藏", icon: Star, color: "#a78bfa" },
-              ].map(({ key, label, icon: Icon, color }) => (
-                <button
-                  key={key}
-                  onClick={() => setAssetSubTab(key)}
-                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-xs transition-colors"
-                  style={{
-                    background: assetSubTab === key ? `${color}18` : "transparent",
-                    color: assetSubTab === key ? color : "rgba(255,255,255,0.35)",
-                  }}
-                >
-                  <Icon size={10} />
-                  <span style={{ fontSize: "10px" }}>{label}</span>
-                </button>
-              ))}
-            </div>
-
-            {!(assetSubTab === "subject" && sidebarDetailAsset && "type" in sidebarDetailAsset && !("size" in sidebarDetailAsset)) && (
-            <div className="flex items-center gap-1.5 px-2 py-1.5 flex-shrink-0">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 rounded px-1.5 py-1" style={{ background: "rgba(255,255,255,0.06)" }}>
-                  <Search size={8} style={{ color: "rgba(255,255,255,0.25)" }} />
-                  <input
-                    className="bg-transparent flex-1 outline-none min-w-0"
-                    style={{ fontSize: "10px", color: "rgba(255,255,255,0.6)", caretColor: "#E87322", padding: 0 }}
-                    placeholder="搜索..."
-                    value={assetSearch}
-                    onChange={(e) => setAssetSearch(e.target.value)}
-                  />
-                  {assetSearch && (
-                    <button onClick={() => setAssetSearch("")}>
-                      <X size={8} style={{ color: "rgba(255,255,255,0.25)" }} />
-                    </button>
-                  )}
-                </div>
-              </div>
-              {/* Subject tab: no member filter, but has asset type + review status */}
-              {assetSubTab === "subject" ? (
-                <>
-              <select
-                className="flex-shrink-0 rounded cursor-pointer outline-none"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  color: "rgba(255,255,255,0.6)",
-                  fontSize: "10px",
-                  padding: "2px 4px",
-                  maxWidth: "60px",
-                }}
-                value={assetTypeFilter}
-                onChange={(e) => setAssetTypeFilter(e.target.value as AssetType)}
-              >
-                <option value="image" style={{ background: "#2A2018" }}>图片</option>
-                <option value="video" style={{ background: "#2A2018" }}>视频</option>
-                <option value="audio" style={{ background: "#2A2018" }}>音频</option>
-              </select>
-              <select
-                className="flex-shrink-0 rounded cursor-pointer outline-none"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  color: "rgba(255,255,255,0.6)",
-                  fontSize: "10px",
-                  padding: "2px 4px",
-                  maxWidth: "65px",
-                }}
-                value={subjectReviewFilter}
-                onChange={(e) => setSubjectReviewFilter(e.target.value as ReviewStatusFilter)}
-              >
-                <option value="all" style={{ background: "#2A2018" }}>全部</option>
-                <option value="approved" style={{ background: "#2A2018" }}>通过</option>
-                <option value="pending" style={{ background: "#2A2018" }}>审核中</option>
-                <option value="rejected" style={{ background: "#2A2018" }}>失败</option>
-              </select>
-                </>
-              ) : (
-                /* Other tabs: member filter + asset type select */
-                <>
-              <div className="relative flex-shrink-0">
-                <button
-                  onClick={() => setShowMemberMenu(!showMemberMenu)}
-                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors"
-                  style={{
-                    background: (memberFilter.length >= PROJECT_MEMBERS.length) ? "rgba(255,255,255,0.04)" : "rgba(232,115,34,0.12)",
-                    border: (memberFilter.length >= PROJECT_MEMBERS.length) ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(232,115,34,0.25)",
-                    color: (memberFilter.length >= PROJECT_MEMBERS.length) ? "rgba(255,255,255,0.4)" : "#E87322",
-                  }}
-                >
-                  <Users size={8} />
-                  {memberFilter.length === PROJECT_MEMBERS.length ? "全部" : `${memberFilter.length}人`}
-                  <ChevronDown size={6} style={{ marginLeft: "1px" }} />
-                </button>
-                {showMemberMenu && (
-                  <div className="absolute left-0 top-full mt-1 rounded-xl overflow-hidden z-30 shadow-2xl"
-                    style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", width: "150px" }}>
-                    {PROJECT_MEMBERS.map(member => {
-                      const selected = memberFilter.includes(member.id);
-                      return (
-                        <button
-                          key={member.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (selected) {
-                              setMemberFilter(prev => prev.filter(id => id !== member.id));
-                            } else {
-                              setMemberFilter(prev => [...prev, member.id]);
-                            }
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors"
-                          style={{
-                            background: selected ? `${member.color}15` : "transparent",
-                            color: selected ? member.color : "rgba(255,255,255,0.6)",
-                          }}
-                        >
-                          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: member.color, fontSize: "8px", color: "#fff" }}>{member.avatar}</div>
-                          <span className="flex-1">{member.name}</span>
-                          {selected && (
-                            <Check size={10} style={{ color: member.color }} />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <select
-                className="flex-shrink-0 rounded cursor-pointer outline-none"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  color: "rgba(255,255,255,0.6)",
-                  fontSize: "10px",
-                  padding: "2px 4px",
-                  maxWidth: "60px",
-                }}
-                value={assetTypeFilter}
-                onChange={(e) => setAssetTypeFilter(e.target.value as AssetType)}
-              >
-                <option value="image" style={{ background: "#2A2018" }}>图片</option>
-                <option value="video" style={{ background: "#2A2018" }}>视频</option>
-                <option value="audio" style={{ background: "#2A2018" }}>音频</option>
-              </select>
-              </>
-              )}
-            </div>
-            )}
-
-            {/* Asset grid — with drag support */}
-            <div className="flex-1 overflow-auto px-2 pb-2 pt-1 relative">
-              {assetSubTab === "upload" && (
-                <button
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg mb-2 transition-colors"
-                  style={{ border: "1px dashed rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)", fontSize: "10px" }}
-                  onClick={() => toast.success("请选择文件上传")}
-                >
-                  <Upload size={10} />上传资产
-                </button>
-              )}
-
-              {/* Subject tab: grouped by type with expand/collapse */}
-              {assetSubTab === "subject" ? (
-                sidebarDetailAsset && "type" in sidebarDetailAsset && !("size" in sidebarDetailAsset) ? (
-                  sidebarDetailAsset.type === "sd_ip" ? (
-                    <SidebarSdIpDetail
-                      subject={sidebarDetailAsset as SubjectItem}
-                      onBack={() => setSidebarDetailAsset(null)}
-                      onUpdate={(updates) => {
-                        setSubjects(prev => prev.map(s => s.id === sidebarDetailAsset.id ? { ...s, ...updates } : s));
-                        setSidebarDetailAsset(prev => prev && "type" in prev ? { ...prev, ...updates } as SubjectItem : prev);
-                      }}
-                    />
-                  ) : (
-                    <SubjectSidebarDetail
-                      subject={sidebarDetailAsset as SubjectItem}
-                      onBack={() => setSidebarDetailAsset(null)}
-                      onUpdate={(updates) => {
-                        setSubjects(prev => prev.map(s => s.id === (sidebarDetailAsset as SubjectItem).id ? { ...s, ...updates } : s));
-                        setSidebarDetailAsset(prev => prev && "type" in prev ? { ...prev, ...updates } as SubjectItem : prev);
-                      }}
-                    />
-                  )
-                ) : (
-                <div className="flex flex-col gap-2">
-                  {(Object.entries(TYPE_CONFIG) as [SubjectType, typeof TYPE_CONFIG[SubjectType]][]).map(([type, tConfig]) => {
-                    const typeSubjects = subjects.filter(s => {
-                      if (s.type !== type) return false;
-                      if (s.type === "sd_ip" && subjectReviewFilter !== "all" && s.reviewStatus !== subjectReviewFilter) return false;
-                      return true;
-                    });
-                    if (typeSubjects.length === 0) return null;
-                    const TypeIcon = tConfig.icon;
-                    const expanded = sidebarSubjectExpanded[type];
-                    return (
-                      <div key={type}>
-                        <button
-                          className="w-full flex items-center gap-1.5 px-1 py-1 rounded transition-colors hover:bg-white/5"
-                          onClick={() => setSidebarSubjectExpanded(prev => ({ ...prev, [type]: !prev[type] }))}
-                        >
-                          <ChevronDown size={9} style={{ color: "rgba(255,255,255,0.3)", transform: expanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s" }} />
-                          <TypeIcon size={9} style={{ color: tConfig.color }} />
-                          <span style={{ fontSize: "9px", color: tConfig.color, fontWeight: 600, letterSpacing: "0.03em" }}>{tConfig.label}</span>
-                          <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.2)" }}>{typeSubjects.length}</span>
-                        </button>
-                        {expanded && (
-                          <div className="grid grid-cols-2 gap-1.5 mt-1">
-                            {typeSubjects.map((subject) => {
-                              const showOverlay = subject.type === "sd_ip" && (subject.reviewStatus === "pending" || subject.reviewStatus === "rejected");
-                              const statusCfg = subject.reviewStatus ? STATUS_CONFIG[subject.reviewStatus] : null;
-                              const assetType = subject.type === "sd_ip" ? (subject.assetType ?? "image") : "image";
-                              const ASSET_ICON_MAP: Record<VirtualIpAssetType, { icon: typeof LucideImage; color: string }> = {
-                                image: { icon: LucideImage, color: "rgba(255,255,255,0.7)" },
-                                video: { icon: Video, color: "rgba(255,255,255,0.7)" },
-                                audio: { icon: Music, color: "rgba(255,255,255,0.7)" },
-                              };
-                              const assetInfo = ASSET_ICON_MAP[assetType];
-                              const AssetIcon = assetInfo.icon;
-                              return (
-                                <div
-                                  key={subject.id}
-                                  className="relative rounded-md overflow-hidden cursor-pointer group"
-                                  style={{ aspectRatio: "1", background: "#1A1510" }}
-                                  draggable
-                                  onDragStart={(e) => {
-                                    e.dataTransfer.setData("text/plain", JSON.stringify({ src: subject.image, name: subject.name }));
-                                    e.dataTransfer.effectAllowed = "copy";
-                                  }}
-                                  onClick={() => setSidebarDetailAsset(subject)}
-                                >
-                                  {/* Top-left: asset type icon + status badge */}
-                                  <div className="absolute top-1 left-1 z-10 flex items-center gap-0.5">
-                                    <div className="px-1 py-0.5 rounded flex items-center" style={{ background: "rgba(0,0,0,0.6)" }}>
-                                      <AssetIcon size={7} style={{ color: assetInfo.color }} />
-                                    </div>
-                                    {subject.type === "sd_ip" && statusCfg && (
-                                      <span className="px-1 py-0.5 rounded-full text-[8px]"
-                                        style={{ background: statusCfg.bg, color: statusCfg.text }}>
-                                        {statusCfg.label}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {showOverlay && statusCfg && (
-                                    <div className="absolute inset-0 z-[5] flex flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }}>
-                                      <div className="text-lg mb-0.5">{subject.reviewStatus === "pending" ? "⏳" : "❌"}</div>
-                                      <span className="text-[8px] font-medium" style={{ color: statusCfg.text }}>
-                                        {statusCfg.label}
-                                      </span>
-                                    </div>
-                                  )}
-                                  <img
-                                    src={subject.image}
-                                    alt={subject.name}
-                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                  />
-                                  <div
-                                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    style={{ background: "rgba(0,0,0,0.45)" }}
-                                  >
-                                    <div className="absolute top-1 right-1 flex items-center gap-0.5">
-                                      <div className="relative">
-                                        <button
-                                          className="w-4 h-4 rounded flex items-center justify-center"
-                                          style={{ background: "rgba(255,255,255,0.15)" }}
-                                          onClick={(e) => { e.stopPropagation(); setSidebarMoreId(sidebarMoreId === subject.id ? null : subject.id); }}
-                                        >
-                                          <MoreVertical size={7} style={{ color: "rgba(255,255,255,0.8)" }} />
-                                        </button>
-                                        {sidebarMoreId === subject.id && (
-                                          <div className="absolute right-0 top-full mt-0.5 rounded-lg overflow-hidden z-30 shadow-xl"
-                                            style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", minWidth: "70px" }}
-                                            onClick={(e) => e.stopPropagation()}>
-                                            <button className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-xs transition-colors hover:bg-white/5"
-                                              style={{ color: "rgba(255,255,255,0.6)", fontSize: "9px" }}
-                                              onClick={() => { toast.success("已下载"); setSidebarMoreId(null); }}>
-                                              <Download size={7} />下载
-                                            </button>
-                                            <button className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-xs transition-colors hover:bg-white/5"
-                                              style={{ color: "#ff6b6b", fontSize: "9px" }}
-                                              onClick={() => { setSubjects(prev => prev.filter(s => s.id !== subject.id)); setSidebarMoreId(null); toast.success("已删除"); }}>
-                                              <Trash2 size={7} />删除
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="absolute bottom-0 inset-x-0 px-1 py-0.5" style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.7))" }}>
-                                    <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.85)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{subject.name}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                )
-              ) : filteredAssets.length > 0 ? (
-                <div className="grid grid-cols-2 gap-1.5">
-                  {filteredAssets.map((asset) => {
-                    const dragPayload = JSON.stringify({ src: asset.src, name: asset.name });
-                    const isCollected = sidebarCollectIds.has(asset.id);
-                    const TYPE_ICON_MAP: Record<AssetType, { icon: typeof LucideImage; color: string }> = {
-                      image: { icon: LucideImage, color: "rgba(255,255,255,0.7)" },
-                      video: { icon: Video, color: "rgba(255,255,255,0.7)" },
-                      audio: { icon: Music, color: "rgba(255,255,255,0.7)" },
-                    };
-                    const typeInfo = TYPE_ICON_MAP[asset.type];
-                    const TypeIco = typeInfo.icon;
-                    const appliedIds = new Set(["g1", "g4", "s1", "u1"]);
-                    const isApplied = appliedIds.has(asset.id);
-                    return (
-                      <div
-                        key={asset.id}
-                        className="relative rounded-md overflow-hidden cursor-pointer group"
-                        style={{ aspectRatio: "1", background: "#1A1510" }}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("text/plain", dragPayload);
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onClick={() => setSidebarDetailAsset(asset)}
-                      >
-                        <img
-                          src={asset.src}
-                          alt={asset.name}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                        {/* Top-left: type icon + applied tag */}
-                        <div className="absolute top-1 left-1 flex items-center gap-0.5">
-                          <div className="px-1 py-0.5 rounded flex items-center" style={{ background: "rgba(0,0,0,0.6)" }}>
-                            <TypeIco size={7} style={{ color: typeInfo.color }} />
-                          </div>
-                          {isApplied && (
-                            <span className="px-1 py-0.5 rounded text-[7px]" style={{ background: "rgba(74,198,120,0.2)", color: "#4AC678" }}>已应用</span>
-                          )}
-                        </div>
-                        {/* Hover overlay with collect + more */}
-                        <div
-                          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ background: "rgba(0,0,0,0.45)" }}
-                        >
-                          <div className="absolute top-1 right-1 flex items-center gap-0.5">
-                            <button
-                              className="w-4 h-4 rounded flex items-center justify-center"
-                              style={{ background: isCollected ? "rgba(255,200,50,0.25)" : "rgba(255,255,255,0.15)" }}
-                              onClick={(e) => { e.stopPropagation(); setSidebarCollectIds(prev => { const next = new Set(prev); isCollected ? next.delete(asset.id) : next.add(asset.id); return next; }); }}
-                            >
-                              <Star size={7} style={{ color: isCollected ? "#ffc832" : "rgba(255,255,255,0.8)" }} fill={isCollected ? "#ffc832" : "none"} />
-                            </button>
-                            <div className="relative">
-                              <button
-                                className="w-4 h-4 rounded flex items-center justify-center"
-                                style={{ background: "rgba(255,255,255,0.15)" }}
-                                onClick={(e) => { e.stopPropagation(); setSidebarMoreId(sidebarMoreId === asset.id ? null : asset.id); }}
-                              >
-                                <MoreVertical size={7} style={{ color: "rgba(255,255,255,0.8)" }} />
-                              </button>
-                              {sidebarMoreId === asset.id && (
-                                <div className="absolute right-0 top-full mt-0.5 rounded-lg overflow-hidden z-30 shadow-xl"
-                                  style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", minWidth: "70px" }}
-                                  onClick={(e) => e.stopPropagation()}>
-                                  <button className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-xs transition-colors hover:bg-white/5"
-                                    style={{ color: "rgba(255,255,255,0.6)", fontSize: "9px" }}
-                                    onClick={() => { toast.success("已下载"); setSidebarMoreId(null); }}>
-                                    <Download size={7} />下载
-                                  </button>
-                                  <button className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-xs transition-colors hover:bg-white/5"
-                                    style={{ color: "#ff6b6b", fontSize: "9px" }}
-                                    onClick={() => { toast.success("已删除"); setSidebarMoreId(null); }}>
-                                    <Trash2 size={7} />删除
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div
-                  className="flex flex-col items-center justify-center rounded-lg"
-                  style={{ height: "80px", border: "1px dashed rgba(255,255,255,0.1)" }}
-                >
-                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>暂无内容</span>
-                </div>
-              )}
-            </div>
-          </div>
+          <ProjectAssetsSidebarPanel
+            projectId={id ?? "1"}
+            activeSubTab="generate"
+            hideSubTabs
+            hideTitle
+            hideSourceFilter
+            title="资产"
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={() => setSidebarOpen(false)}
+            guideSubjectDetailOpen={showSubjectGuide && subjectGuideStep >= 1 && detailSubject !== null}
+            guideSubjectEditing={showSubjectGuide && subjectGuideStep === 3 && detailMode === "edit"}
+            guideDragAssetReplace={showSubjectGuide && subjectGuideStep === 3 && detailMode === "edit"}
+          />
         )}
       </div>
 
       {/* ── Main Content ─────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: "#1A1510", marginLeft: sidebarOpen ? "240px" : "0px", transition: "margin-left 0.2s ease" }}>
+      <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: "#1A1510", marginLeft: sidebarOpen ? "280px" : "0px", transition: "margin-left 0.2s ease" }}>
         {/* Top Bar */}
         <div className="flex items-center gap-4 px-6 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -2102,7 +2113,10 @@ export function ProjectSubjectsPage() {
         </div>
 
         <div className="flex-1 overflow-auto px-6 pb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div
+            data-subject-guide-target={showSubjectGuide && subjectGuideStep === 0 ? "subject-list-card" : undefined}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+          >
             {/* ── Creation card for current type ─── */}
             {(() => {
               const config = TYPE_CONFIG[activeType];
@@ -2110,7 +2124,9 @@ export function ProjectSubjectsPage() {
               const isSd = activeType === "sd_ip";
               return (
                 <button
-                  onClick={() => openCreate(activeType)}
+                  onClick={() => {
+                    openCreate(activeType);
+                  }}
                   className="rounded-xl flex flex-col items-center justify-center gap-2 transition-all hover:scale-[1.02]"
                   style={{
                     background: `${config.color}08`,
@@ -2129,15 +2145,18 @@ export function ProjectSubjectsPage() {
               );
             })()}
 
-            {filteredSubjects.map((subject) => {
+            {filteredSubjects.map((subject, subjectIndex) => {
               const tc = TYPE_CONFIG[subject.type];
               const showOverlay = subject.type === "sd_ip" && subject.reviewStatus && (subject.reviewStatus === "pending" || subject.reviewStatus === "rejected");
               return (
-                <div key={subject.id} className="rounded-xl overflow-hidden relative group"
+                <div
+                  key={subject.id}
+                  className="rounded-xl overflow-hidden relative group"
                   style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                   onClick={() => {
                     if (subject.type === "sd_ip") { setSdIpView(subject); } else { openDetail(subject); }
-                  }}>
+                  }}
+                >
                   {subject.type === "sd_ip" && subject.reviewStatus && (
                     <div className="absolute top-2.5 left-2.5 z-10">
                       <span className="px-2 py-0.5 rounded-full text-[10px]"
@@ -2253,7 +2272,63 @@ export function ProjectSubjectsPage() {
             defaultType={detailMode === "create" ? createType : undefined}
             subject={detailMode === "create" ? undefined : detailSubject || undefined}
             onClose={() => { setDetailSubject(null); setDetailMode("view"); }}
+            onModeChange={(nextMode) => {
+              setDetailMode(nextMode);
+              if (showSubjectGuide && subjectGuideStep === 2 && nextMode === "edit") {
+                setSidebarOpen(true);
+                setSubjectGuideStep(3);
+              }
+            }}
             onSave={detailMode === "create" ? handleCreate : handleEdit}
+          />
+        )}
+
+        {showSubjectGuide && currentSubjectGuideStep && (
+          <SubjectModuleGuide
+            step={subjectGuideStep}
+            total={SUBJECT_GUIDE_STEPS.length}
+            current={currentSubjectGuideStep}
+            onPrev={() => {
+              if (subjectGuideStep === 0) {
+                finishSubjectGuide();
+                navigate(`/project/${id}/script?guide=1&guideStep=last`);
+                return;
+              }
+              if (subjectGuideStep === 1) {
+                showGuideSubjectList();
+                setSubjectGuideStep(0);
+                return;
+              }
+              if (subjectGuideStep === 2) {
+                showGuideSubjectDetail();
+                setSubjectGuideStep(1);
+                return;
+              }
+              if (subjectGuideStep === 3) {
+                showGuideSubjectDetail();
+                setSubjectGuideStep(2);
+                return;
+              }
+              setSubjectGuideStep((value) => Math.max(0, value - 1));
+            }}
+            onNext={() => {
+              if (subjectGuideStep === 0) {
+                showGuideSubjectDetail();
+                setSubjectGuideStep(1);
+                return;
+              }
+              if (subjectGuideStep === 1) {
+                setSubjectGuideStep(2);
+                return;
+              }
+              if (subjectGuideStep === 2) {
+                enterGuideSubjectEdit();
+                return;
+              }
+              finishSubjectGuide();
+              navigate(`/project/${id}/generate?guide=1`);
+            }}
+            onClose={finishSubjectGuide}
           />
         )}
 
@@ -2269,21 +2344,6 @@ export function ProjectSubjectsPage() {
         )}
       </div>
 
-      {/* Asset detail dialogs — rendered at page level so they overlay everything */}
-      {sidebarDetailAsset && "size" in sidebarDetailAsset && sidebarDetailAsset.source === "ai" && (
-        <GenerateAssetDetail
-          asset={sidebarDetailAsset as SidebarAsset}
-          open={true}
-          onClose={() => setSidebarDetailAsset(null)}
-        />
-      )}
-      {sidebarDetailAsset && "size" in sidebarDetailAsset && sidebarDetailAsset.source !== "ai" && (
-        <UploadAssetDetail
-          asset={sidebarDetailAsset as SidebarAsset}
-          open={true}
-          onClose={() => setSidebarDetailAsset(null)}
-        />
-      )}
     </div>
   );
 }

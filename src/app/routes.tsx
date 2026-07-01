@@ -10,10 +10,13 @@ import { ProjectAssetsPage } from "./components/ProjectAssetsPage";
 import { ProjectGeneratePage } from "./components/ProjectGeneratePage";
 import { ProjectCanvasPage } from "./components/ProjectCanvasPage";
 import { ProjectStoryboardPage } from "./components/ProjectStoryboardPage";
+import { ImageReviewPage } from "./components/ImageReviewPage";
 import { ProjectSubjectsPage } from "./components/ProjectSubjectsPage";
 import { ProjectScriptPage } from "./components/ProjectScriptPage";
 import { CanvasFilesPage } from "./components/CanvasFilesPage";
 import { GlobalAssetsPage } from "./components/GlobalAssetsPage";
+import { InspirationExplorePage, PersonalGeneratePage } from "./components/PersonalGeneratePage";
+import { ProjectLinkAccessPage } from "./components/ProjectLinkAccessPage";
 import { getProjectById } from "./data/projectsData";
 
 function ProjectIndexPage() {
@@ -31,9 +34,13 @@ export const router = createBrowserRouter([
     Component: MainLayout,
     children: [
       { index: true, Component: HomePage },
+      { path: "inspiration", Component: InspirationExplorePage },
       { path: "projects", Component: ProjectsPage },
+      { path: "generate", Component: PersonalGeneratePage },
       { path: "assets", Component: GlobalAssetsPage },
       { path: "canvas", Component: CanvasFilesPage },
+      { path: "project-link", Component: ProjectLinkAccessPage },
+      { path: "project-review", Component: ImageReviewPage },
       { path: "*", Component: HomePage },
     ],
   },

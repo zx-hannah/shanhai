@@ -331,6 +331,14 @@ interface FlatFolder {
   assetIds: string[];
 }
 
+/** Global folder for personal assets */
+interface GlobalFolder {
+  id: string;
+  name: string;
+  assetIds: string[];
+  createdAt: string;
+}
+
 const PROJECT_FOLDERS: Record<string, FolderGroup[]> = {
   "1": [
     { id: "g-subject", name: "主体", folders: [
@@ -644,6 +652,178 @@ function MoveAssetsDialog({
             }}
           >
             确认移动
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Create Folder Dialog ───────────────────────────────────────────────────────
+function CreateFolderDialog({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (name: string) => void;
+}) {
+  const [folderName, setFolderName] = useState("");
+
+  useEffect(() => {
+    if (open) setFolderName("");
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.76)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-[400px] rounded-2xl overflow-hidden"
+        style={{ background: "#17120D", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 28px 90px rgba(0,0,0,0.5)" }}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <span style={{ fontSize: "15px", color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>新建文件夹</span>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10">
+            <X size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <div className="mb-4">
+            <label style={{ fontSize: "12px", color: "rgba(255,255,255,0.46)", marginBottom: "8px" }}>文件夹名称</label>
+            <input
+              type="text"
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              placeholder="输入文件夹名称"
+              className="w-full px-4 py-2.5 rounded-xl outline-none"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "rgba(255,255,255,0.85)",
+                fontSize: "13px",
+              }}
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-5 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm"
+            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)" }}
+          >
+            取消
+          </button>
+          <button
+            onClick={() => {
+              if (folderName.trim()) {
+                onCreate(folderName.trim());
+                onClose();
+              }
+            }}
+            disabled={!folderName.trim()}
+            className="px-4 py-2 rounded-xl text-sm"
+            style={{
+              background: folderName.trim() ? "#E87322" : "rgba(232,115,34,0.35)",
+              color: "#fff",
+              opacity: folderName.trim() ? 1 : 0.65,
+            }}
+          >
+            创建
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Rename Dialog ───────────────────────────────────────────────────────────────
+function RenameDialog({
+  open,
+  target,
+  onClose,
+  onRename,
+}: {
+  open: boolean;
+  target: { type: "folder" | "asset"; id: string; name: string } | null;
+  onClose: () => void;
+  onRename: (id: string, newName: string) => void;
+}) {
+  const [newName, setNewName] = useState("");
+
+  useEffect(() => {
+    if (target) setNewName(target.name);
+  }, [target, open]);
+
+  if (!open || !target) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.76)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-[400px] rounded-2xl overflow-hidden"
+        style={{ background: "#17120D", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 28px 90px rgba(0,0,0,0.5)" }}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <span style={{ fontSize: "15px", color: "rgba(255,255,255,0.92)", fontWeight: 600 }}>重命名</span>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10">
+            <X size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <div className="mb-4">
+            <label style={{ fontSize: "12px", color: "rgba(255,255,255,0.46)", marginBottom: "8px" }}>
+              {target.type === "folder" ? "文件夹名称" : "资产名称"}
+            </label>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="输入新名称"
+              className="w-full px-4 py-2.5 rounded-xl outline-none"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "rgba(255,255,255,0.85)",
+                fontSize: "13px",
+              }}
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-5 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm"
+            style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)" }}
+          >
+            取消
+          </button>
+          <button
+            onClick={() => {
+              if (newName.trim() && newName.trim() !== target.name) {
+                onRename(target.id, newName.trim());
+                onClose();
+              }
+            }}
+            disabled={!newName.trim() || newName.trim() === target.name}
+            className="px-4 py-2 rounded-xl text-sm"
+            style={{
+              background: newName.trim() && newName.trim() !== target.name ? "#E87322" : "rgba(232,115,34,0.35)",
+              color: "#fff",
+              opacity: newName.trim() && newName.trim() !== target.name ? 1 : 0.65,
+            }}
+          >
+            确认
           </button>
         </div>
       </div>
@@ -1800,7 +1980,7 @@ function AssetsContent({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 type SidebarSel =
-  | { section: "my" }
+  | { section: "my"; globalFolderId?: string }
   | { section: "project"; projectId: string | "all"; groupId?: string; folderId?: string; flatFolderId?: string }
   | { section: "member"; memberId: string };
 
@@ -1813,6 +1993,18 @@ export function GlobalAssetsPage() {
   const [sharedMemberAssets, setSharedMemberAssets] = useState<Record<string, AssetItem[]>>(MEMBER_ASSETS);
   const [sharedProjectFolders, setSharedProjectFolders] = useState<Record<string, FolderGroup[]>>(PROJECT_FOLDERS);
   const [sharedProjectFlatFolders, setSharedProjectFlatFolders] = useState<Record<string, FlatFolder[]>>(PROJECT_FLAT_FOLDERS);
+
+  // Global folders for personal assets
+  const [globalFolders, setGlobalFolders] = useState<GlobalFolder[]>([
+    { id: "gf-1", name: "角色设定", assetIds: ["m1", "m5"], createdAt: "2026-01-10" },
+    { id: "gf-2", name: "场景素材", assetIds: ["m2", "m6"], createdAt: "2026-01-12" },
+    { id: "gf-3", name: "视频片段", assetIds: ["m10", "m11"], createdAt: "2026-01-08" },
+  ]);
+
+  // Dialog states
+  const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ type: "folder" | "asset"; id: string; name: string } | null>(null);
 
   // Section collapse
   const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({

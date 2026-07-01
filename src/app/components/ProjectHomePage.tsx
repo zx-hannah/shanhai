@@ -1,5 +1,5 @@
-import { useState, useEffect, Fragment, type ReactNode, type CSSProperties, type ComponentType } from "react";
-import { useParams, useNavigate } from "react-router";
+import { useState, useEffect, useLayoutEffect, Fragment, type ReactNode, type CSSProperties, type ComponentType } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router";
 import {
   ChevronRight, ChevronDown, Check, Plus,
   Users, Film, AlertTriangle, TrendingDown, Coins,
@@ -17,7 +17,7 @@ import {
   PieChart, Pie, Cell,
   LineChart, Line,
 } from "recharts";
-import { getProjectById } from "../data/projectsData";
+import { getProjectById, ONBOARDING_DEMO_PROJECT_ID } from "../data/projectsData";
 import { toast } from "sonner";
 import { EditProjectMembersDialog, type DialogMember } from "./EditProjectMembersDialog";
 import { AllocateMemberTokenDialog } from "./AllocateMemberTokenDialog";
@@ -26,6 +26,17 @@ import { AllocateMemberTokenDialog } from "./AllocateMemberTokenDialog";
 type ProjectPermission = "管理" | "编辑" | "阅读";
 type PeriodKey = "today" | "week" | "month" | "quarter" | "custom";
 type QuotaType = "unlimited" | "periodic" | "fixed";
+type GuideTarget =
+  | "overview-members"
+  | "member-dialog"
+  | "overview-quota"
+  | "overview-assets"
+  | "overview-progress"
+  | "members-tab"
+  | "member-quota-action"
+  | "member-quota-dialog"
+  | "cost-tab"
+  | "progress-tab";
 
 interface MemberWithPerm {
   name: string;
@@ -66,6 +77,7 @@ const MEMBER_COLORS = ["#E87322", "#4AC678", "#4A9EE0", "#9B59B6", "#F5A623", "#
 const PERM_COLORS: Record<ProjectPermission, string> = {
   管理: "#E87322", 编辑: "#7B3FC4", 阅读: "#2A6FC4",
 };
+const TEAM_ALLOCATABLE_QUOTA = 1150;
 const PERIOD_LABELS: { key: PeriodKey; label: string }[] = [
   { key: "today", label: "到今天" },
   { key: "week", label: "近7天" },
@@ -73,6 +85,285 @@ const PERIOD_LABELS: { key: PeriodKey; label: string }[] = [
   { key: "quarter", label: "近三个月" },
   { key: "custom", label: "起止时间" },
 ];
+
+const ONBOARDING_STEPS: { target: GuideTarget; title: string; body: ReactNode; action?: string }[] = [
+  {
+    target: "overview-members",
+    title: "项目成员",
+    body: (
+      <>
+        查看项目成员数量和权限分布。仅
+        <span style={{ color: "#E87322"}}>管理权限
+        可以点击右上角「添加成员」按钮进行成员管理。</span>
+      </>
+    ),
+    action: "点击添加成员",
+  },
+  {
+    target: "member-dialog",
+    title: "添加成员",
+    body: (
+      <>
+        搜索并添加团队成员，并为成员设置管理/编辑权限
+      </>
+    ),
+  },
+  {
+    target: "overview-quota",
+    title: "项目配额",
+    body: (
+      <>
+        查看项目总额度、已消耗额度和可分配额度。
+        <span style={{ color: "#E87322", }}>
+          仅团队管理员可以点击右上角「编辑」调整项目配额，</span> <span style={{ color: "#9622e8"}}>项目管理权限只能查看</span>
+       </>
+    ),
+  },
+  {
+    target: "members-tab",
+    title: "成员管理",
+    body: "按成员查看消耗/配额、图片/视频生成数据，方便项目管理者做进行成员的成本追踪。",
+  },
+  {
+    target: "member-quota-action",
+    title: "分配成员额度",
+    body: "点击「分配」可以给团队成员设置项目额度。",
+    action: "点击分配",
+  },
+  {
+    target: "member-quota-dialog",
+    title: "设置成员配额",
+    body: (
+      <div className="space-y-1">
+        <div>无限制：成员可在项目剩余额度内无限使用生产栗。</div>
+        <div>固定额度：为该成员设置本项目内可使用生产栗上限</div>
+      </div>
+    ),
+  },
+  {
+    target: "cost-tab",
+    title: "项目成本",
+    body: "查看项目整体成本，包括图片生成、视频生成、生产栗消耗和收藏/下载率等指标。",
+  },
+  {
+    target: "progress-tab",
+    title: "项目进度",
+    body: "按集查看总进度、图片进度、视频进度，并可快速跳转到剧本、生成和分镜模块继续处理。",
+    action: "进入剧本模块",
+  },
+];
+
+function ProjectOnboardingTour({
+  step,
+  total,
+  current,
+  onPrev,
+  onNext,
+  onClose,
+  onAction,
+}: {
+  step: number;
+  total: number;
+  current: { target: GuideTarget; title: string; body: ReactNode; action?: string };
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+  onAction: () => void;
+}) {
+  const isLast = step === total - 1;
+  const [cardPosition, setCardPosition] = useState<CSSProperties>({ right: 24, bottom: 24 });
+  const [targetFrame, setTargetFrame] = useState<CSSProperties | null>(null);
+  const [secondaryFrame, setSecondaryFrame] = useState<CSSProperties | null>(null);
+
+  useLayoutEffect(() => {
+    let retryFrame = 0;
+    let retryCount = 0;
+
+    const updatePosition = () => {
+      const target = document.querySelector(`[data-guide-target="${current.target}"]`) as HTMLElement | null;
+      if (!target) {
+        if (retryCount < 12) {
+          retryCount += 1;
+          retryFrame = window.requestAnimationFrame(updatePosition);
+          return;
+        }
+        return;
+      }
+      retryCount = 0;
+
+      const rect = target.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (retryCount < 12) {
+          retryCount += 1;
+          retryFrame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+      const arrowTarget = current.target === "overview-members"
+        ? ((target.querySelector("[data-guide-arrow-target='add-member']") as HTMLElement | null)?.getBoundingClientRect() ?? rect)
+        : rect;
+      const gap = 18;
+      const cardWidth = 380;
+      const cardHeight = 280;
+      const margin = 18;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const framePad = 8;
+      const frameLeft = Math.max(margin, rect.left - framePad);
+      const frameTop = Math.max(margin, rect.top - framePad);
+      const frameRight = Math.min(viewportWidth - margin, rect.right + framePad);
+      const frameBottom = Math.min(viewportHeight - margin, rect.bottom + framePad);
+      setTargetFrame({
+        left: frameLeft,
+        top: frameTop,
+        width: Math.max(0, frameRight - frameLeft),
+        height: Math.max(0, frameBottom - frameTop),
+      });
+      if (current.target === "overview-members") {
+        const buttonRect = (target.querySelector("[data-guide-arrow-target='add-member']") as HTMLElement | null)?.getBoundingClientRect();
+        if (buttonRect) {
+          const buttonPad = 7;
+          setSecondaryFrame({
+            left: Math.max(margin, buttonRect.left - buttonPad),
+            top: Math.max(margin, buttonRect.top - buttonPad),
+            width: buttonRect.width + buttonPad * 2,
+            height: buttonRect.height + buttonPad * 2,
+          });
+        } else {
+          setSecondaryFrame(null);
+        }
+      } else {
+        setSecondaryFrame(null);
+      }
+
+      let left = arrowTarget.right + gap;
+      let top = arrowTarget.top + Math.max(0, (arrowTarget.height - cardHeight) / 2);
+      let placement: "left" | "right" | "top" | "bottom" = "left";
+
+      if (left + cardWidth + margin > viewportWidth) {
+        left = arrowTarget.left - cardWidth - gap;
+        placement = "right";
+      }
+      if (left < margin) {
+        left = Math.min(Math.max(arrowTarget.left, margin), viewportWidth - cardWidth - margin);
+        top = arrowTarget.bottom + gap;
+        placement = "top";
+      }
+      if (top + cardHeight + margin > viewportHeight) {
+        top = arrowTarget.top - cardHeight - gap;
+        placement = "bottom";
+      }
+      if (top < margin) {
+        top = Math.min(Math.max(arrowTarget.bottom + gap, margin), viewportHeight - cardHeight - margin);
+        placement = "top";
+      }
+
+      setCardPosition({ left, top });
+    };
+
+    retryFrame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(retryFrame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [current.target]);
+
+  return (
+    <div className="fixed inset-0 z-[70] pointer-events-none">
+      {targetFrame ? (
+        <>
+          <div className="absolute left-0 right-0 top-0" style={{ height: targetFrame.top as number, background: "rgba(4,3,2,0.56)" }} />
+          <div className="absolute left-0 bottom-0 right-0" style={{ top: ((targetFrame.top as number) + (targetFrame.height as number)), background: "rgba(4,3,2,0.56)" }} />
+          <div className="absolute left-0" style={{ top: targetFrame.top as number, width: targetFrame.left as number, height: targetFrame.height as number, background: "rgba(4,3,2,0.56)" }} />
+          <div className="absolute right-0" style={{ top: targetFrame.top as number, left: ((targetFrame.left as number) + (targetFrame.width as number)), height: targetFrame.height as number, background: "rgba(4,3,2,0.56)" }} />
+          <div
+            className="absolute rounded-[20px]"
+            style={{
+              ...targetFrame,
+              zIndex: 75,
+              border: "3px solid #F5A623",
+              boxShadow: "0 0 0 6px rgba(245,166,35,0.18), 0 18px 44px rgba(245,166,35,0.24)",
+            }}
+          />
+        </>
+      ) : (
+        <div className="absolute inset-0" style={{ background: "rgba(4,3,2,0.5)" }} />
+      )}
+      {secondaryFrame && (
+        <>
+          <style>{`
+            @keyframes overview-guide-button-pulse {
+              0%, 100% { transform: scale(1); box-shadow: 0 0 0 4px rgba(245,166,35,0.14), 0 0 0 0 rgba(245,166,35,0.36); }
+              50% { transform: scale(1.06); box-shadow: 0 0 0 7px rgba(245,166,35,0.24), 0 0 24px 4px rgba(245,166,35,0.42); }
+            }
+          `}</style>
+          <div
+            className="absolute rounded-xl"
+            style={{
+              ...secondaryFrame,
+              zIndex: 77,
+              border: "2px solid #F5A623",
+              animation: "overview-guide-button-pulse 1.15s ease-in-out infinite",
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      )}
+      <div
+        className="absolute z-[80] w-[360px] rounded-2xl p-4 pointer-events-auto"
+        style={{
+          ...cardPosition,
+          background: "#1A1510",
+          border: "2px solid #F5A623",
+          boxShadow: "0 28px 70px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.08), 0 0 34px rgba(245,166,35,0.22)",
+        }}
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-base font-semibold text-white">{current.title}</h3>
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{ color: "#F5A623", background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.22)" }}
+            >
+              {step + 1}/{total}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-white/10"
+            style={{ color: "rgba(255,255,255,0.45)" }}
+            title="关闭新手引导"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <p className="mb-4 text-sm leading-6" style={{ color: "rgba(255,255,255,0.68)" }}>
+          {current.body}
+        </p>
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={onPrev}
+            disabled={step === 0}
+            className="h-8 rounded-lg px-3 text-xs transition-opacity disabled:opacity-35"
+            style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.68)" }}
+          >
+            上一步
+          </button>
+          <button
+            onClick={isLast ? onAction : onNext}
+            className="h-8 rounded-lg px-3 text-xs font-medium transition-opacity hover:opacity-90"
+            style={{ background: "#E87322", color: "#fff" }}
+          >
+            {isLast ? current.action ?? "完成" : current.action ?? "下一步"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const BASIC_INFO_OPTIONS = {
   aspectRatio: [
@@ -1208,17 +1499,171 @@ function RemoveMemberConfirm({
   );
 }
 
+function RequestManagementPermissionModal({
+  projectName,
+  onClose,
+  onSubmit,
+}: {
+  projectName: string;
+  onClose: () => void;
+  onSubmit: (remark: string) => void;
+}) {
+  const [remark, setRemark] = useState("");
+  const canSubmit = remark.trim().length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
+      <div className="rounded-2xl w-96 overflow-hidden shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div>
+            <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>申请管理权限</div>
+            <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)", marginTop: "2px" }}>{projectName}</div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4">
+          <label className="block mb-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>申请备注</label>
+          <textarea
+            autoFocus
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            className="w-full h-28 px-3 py-2 rounded-lg outline-none resize-none"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.85)", fontSize: "13px", lineHeight: 1.6, caretColor: "#E87322" }}
+            placeholder="说明需要管理权限的原因"
+          />
+
+          <div className="flex gap-2 mt-4">
+            <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm hover:opacity-80 transition-opacity"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
+              取消
+            </button>
+            <button
+              onClick={() => canSubmit && onSubmit(remark.trim())}
+              disabled={!canSubmit}
+              className="flex-1 py-2 rounded-lg text-sm transition-all disabled:opacity-35"
+              style={{ background: "rgba(232,115,34,0.85)", border: "1px solid rgba(232,115,34,0.4)", color: "#fff", cursor: canSubmit ? "pointer" : "not-allowed", fontWeight: 500 }}
+            >
+              提交申请
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RequestProjectQuotaModal({
+  projectName,
+  maxAssignableQuota,
+  currentQuota,
+  onClose,
+  onSubmit,
+}: {
+  projectName: string;
+  maxAssignableQuota: number;
+  currentQuota: number;
+  onClose: () => void;
+  onSubmit: (payload: { amount: number; remark: string }) => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [remark, setRemark] = useState("");
+  const amountValue = Number(amount.replace(/,/g, "")) || 0;
+  const overLimit = amountValue > maxAssignableQuota;
+  const canSubmit = remark.trim().length > 0 && amountValue > 0 && !overLimit;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="rounded-2xl w-96 overflow-hidden shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)" }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div>
+            <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>申请调整项目配额</div>
+            <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>{projectName} · 当前配额 {currentQuota.toLocaleString()} 颗</div>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4">
+          <div className="mb-4">
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                type="number"
+                min="1"
+                max={maxAssignableQuota}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg outline-none"
+                style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${overLimit ? "rgba(255,100,100,0.4)" : "rgba(232,115,34,0.35)"}`, color: "rgba(255,255,255,0.85)", fontSize: "14px", caretColor: "#E87322" }}
+                placeholder="输入调整后的项目总配额"
+              />
+              <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>颗</span>
+            </div>
+            <div className="mt-2" style={{ fontSize: "10px", color: "rgba(255,255,255,0.42)", lineHeight: 1.6 }}>
+              审批通过后将把项目总配额调整为你填写的数值，不是在当前配额上额外增加；调整后总配额上限为 <strong style={{ color: "rgba(255,255,255,0.68)", fontWeight: 600 }}>{maxAssignableQuota.toLocaleString()} 颗</strong>。
+            </div>
+            {overLimit && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <AlertTriangle size={11} style={{ color: "#ff6b6b", flexShrink: 0 }} />
+                <span style={{ fontSize: "10px", color: "#ff9b9b", lineHeight: 1.5 }}>
+                  调整后的项目总配额不能超过上限 <strong>{maxAssignableQuota.toLocaleString()}</strong> 颗
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block mb-2" style={{ fontSize: "11px", color: "rgba(255,255,255,0.45)" }}>
+              申请备注<span style={{ color: "#ff6b6b" }}>*</span>
+            </label>
+            <textarea
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              className="w-full h-20 px-3 py-2 rounded-lg outline-none resize-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.85)", fontSize: "13px", lineHeight: 1.6, caretColor: "#E87322" }}
+              placeholder="说明项目配额用途"
+            />
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm hover:opacity-80 transition-opacity"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
+              取消
+            </button>
+            <button
+              onClick={() => canSubmit && onSubmit({ amount: amountValue, remark: remark.trim() })}
+              disabled={!canSubmit}
+              className="flex-1 py-2 rounded-lg text-sm transition-all"
+              style={{ background: canSubmit ? "rgba(232,115,34,0.85)" : "rgba(255,100,100,0.1)", border: `1px solid ${canSubmit ? "rgba(232,115,34,0.4)" : "rgba(255,100,100,0.2)"}`, color: canSubmit ? "#fff" : "#ff6b6b", cursor: canSubmit ? "pointer" : "not-allowed", fontWeight: 500 }}
+            >
+              {canSubmit ? "提交申请" : "不可提交"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Member Quota Editor Modal ────────────────────────────────────────────────
 function MemberQuotaEditor({
   member,
   currentQuota,
   currentConsumed,
+  maxAssignableQuota,
+  guideTarget,
   onSave,
   onCancel,
 }: {
   member: { name: string; avatar: string; avatarColor: string; role: string };
   currentQuota: MemberQuota;
   currentConsumed: number;
+  maxAssignableQuota: number;
+  guideTarget?: GuideTarget;
   onSave: (q: MemberQuota) => void;
   onCancel: () => void;
 }) {
@@ -1226,19 +1671,25 @@ function MemberQuotaEditor({
   const [val, setVal] = useState(String(currentQuota.type === "fixed" ? currentQuota.total : 0));
   const numVal = Number(val.replace(/,/g, "")) || 0;
   const tooLow = mode === "fixed" && numVal < currentConsumed;
-  const pct = mode === "fixed" && numVal > 0 ? Math.min(100, (currentConsumed / numVal) * 100) : 100;
+  const overLimit = mode === "fixed" && numVal > maxAssignableQuota;
+  const cannotSave = tooLow || overLimit;
 
   const handleSave = () => {
     if (mode === "unlimited") {
       onSave({ type: "unlimited", total: 0, remaining: 0 });
-    } else if (!tooLow) {
+    } else if (!cannotSave) {
       onSave({ type: "fixed", total: numVal, remaining: Math.max(0, numVal - currentConsumed) });
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onCancel}>
-      <div className="rounded-2xl w-96 overflow-hidden shadow-2xl" style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)" }} onClick={(e) => e.stopPropagation()}>
+      <div
+        data-guide-target={guideTarget}
+        className="rounded-2xl w-96 overflow-hidden shadow-2xl"
+        style={{ background: "#1E1A14", border: "1px solid rgba(255,255,255,0.1)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div>
@@ -1275,17 +1726,18 @@ function MemberQuotaEditor({
 
           {mode === "fixed" && (
             <>
-              <div className="flex items-center gap-2 mb-4">
+              <div className="mb-4">
+              <div className="flex items-center gap-2">
                 <input
                   autoFocus
                   type="number"
                   value={val}
                   onChange={(e) => setVal(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !tooLow) handleSave(); if (e.key === "Escape") onCancel(); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !cannotSave) handleSave(); if (e.key === "Escape") onCancel(); }}
                   className="flex-1 px-3 py-2 rounded-lg outline-none"
                   style={{
                     background: "rgba(255,255,255,0.06)",
-                    border: `1px solid ${tooLow ? "rgba(255,100,100,0.4)" : "rgba(155,89,182,0.35)"}`,
+                    border: `1px solid ${cannotSave ? "rgba(255,100,100,0.4)" : "rgba(155,89,182,0.35)"}`,
                     color: "rgba(255,255,255,0.85)",
                     fontSize: "14px",
                     caretColor: "#9B59B6",
@@ -1294,28 +1746,20 @@ function MemberQuotaEditor({
                 />
                 <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>颗</span>
               </div>
-
-              {/* Visual bar */}
-              <div className="rounded-lg p-3 mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>额度使用</span>
-                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
-                    已消耗 {currentConsumed.toLocaleString()} 颗
-                  </span>
-                </div>
-                <div className="w-full rounded-full overflow-hidden" style={{ height: "5px", background: "rgba(255,255,255,0.07)" }}>
-                  <div className="h-full rounded-full transition-all" style={{
-                    width: `${pct}%`,
-                    background: pct > 90 ? "#ff6b6b" : "#9B59B6",
-                  }} />
-                </div>
+              <div className="mt-2" style={{ fontSize: "10px", color: "rgba(255,255,255,0.42)", lineHeight: 1.6 }}>
+                填写的是该成员调整后的固定额度上限，不是在当前额度上额外新增分配。
+              </div>
               </div>
 
-              {tooLow && (
-                <div className="rounded-lg px-3 py-2 mb-3" style={{ background: "rgba(255,100,100,0.06)", border: "1px solid rgba(255,100,100,0.15)" }}>
-                  <span style={{ fontSize: "10px", color: "#ff6b6b" }}>额度不能低于已消耗量</span>
+              {/* Quota constraints */}
+              <div className="rounded-lg p-3 mb-4" style={{ background: cannotSave ? "rgba(255,100,100,0.05)" : "rgba(255,255,255,0.03)", border: `1px solid ${cannotSave ? "rgba(255,100,100,0.18)" : "rgba(255,255,255,0.05)"}` }}>
+               
+                <div className="pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p style={{ fontSize: "11px", color: cannotSave ? "#ffb4b4" : "rgba(255,255,255,0.62)", lineHeight: 1.6, fontWeight: 500 }}>
+                    成员固定额度不能低于已消耗 <strong style={{ color: tooLow ? "#ff6b6b" : "#E87322", fontWeight: 700 }}>{currentConsumed.toLocaleString()} 颗</strong>，不能高于项目剩余可分配额度 <strong style={{ color: overLimit ? "#ff6b6b" : "#9B59B6", fontWeight: 700 }}>{maxAssignableQuota.toLocaleString()} 颗</strong>
+                  </p>
                 </div>
-              )}
+              </div>
             </>
           )}
 
@@ -1328,9 +1772,6 @@ function MemberQuotaEditor({
                 </div>
                 <span style={{ fontSize: "18px", color: "#4AC678" }}>∞</span>
               </div>
-              <div className="w-full rounded-full overflow-hidden mt-3" style={{ height: "5px", background: "rgba(74,198,120,0.15)" }}>
-                <div className="h-full rounded-full" style={{ width: "100%", background: "#4AC678" }} />
-              </div>
             </div>
           )}
 
@@ -1339,7 +1780,7 @@ function MemberQuotaEditor({
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
               取消
             </button>
-            <button onClick={handleSave} disabled={tooLow}
+            <button onClick={handleSave} disabled={cannotSave}
               className="flex-1 py-2 rounded-lg text-sm transition-all hover:opacity-90 disabled:opacity-30"
               style={{
                 background: "rgba(232,115,34,0.15)",
@@ -1358,20 +1799,28 @@ function MemberQuotaEditor({
 
 // ─── Inline Total Quota Editor (inside card) ───────────────────────────────────
 function InlineTotalQuotaEditor({
-  currentConsumed,
+  quotaFloor,
+  fixedQuotaTotal,
+  unlimitedTokenUsed,
+  teamAllocatableQuota,
   currentTotal,
   onSave,
   onCancel,
 }: {
-  currentConsumed: number;
+  quotaFloor: number;
+  fixedQuotaTotal: number;
+  unlimitedTokenUsed: number;
+  teamAllocatableQuota: number;
   currentTotal: number;
   onSave: (v: number) => void;
   onCancel: () => void;
 }) {
   const [val, setVal] = useState(String(currentTotal));
   const numVal = Number(val.replace(/,/g, "")) || 0;
-  const tooLow = numVal < currentConsumed;
-  const pctConsumed = numVal > 0 ? Math.min(100, (currentConsumed / Math.max(numVal, currentConsumed)) * 100) : 100;
+  const tooLow = numVal < quotaFloor;
+  const quotaCeiling = currentTotal + teamAllocatableQuota;
+  const overLimit = numVal > quotaCeiling;
+  const cannotSave = tooLow || overLimit;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
@@ -1388,20 +1837,21 @@ function InlineTotalQuotaEditor({
         </div>
 
         <div className="px-5 py-4">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="mb-4">
+          <div className="flex items-center gap-2">
             <input
               autoFocus
               type="number"
               value={val}
               onChange={(e) => setVal(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !tooLow) { onSave(numVal); toast.success("项目总配额已更新"); }
+                if (e.key === "Enter" && !cannotSave) { onSave(numVal); toast.success("项目总配额已更新"); }
                 if (e.key === "Escape") onCancel();
               }}
               className="flex-1 px-3 py-2 rounded-lg outline-none"
               style={{
                 background: "rgba(255,255,255,0.06)",
-                border: `1px solid ${tooLow ? "rgba(255,100,100,0.4)" : "rgba(232,115,34,0.35)"}`,
+                border: `1px solid ${cannotSave ? "rgba(255,100,100,0.4)" : "rgba(232,115,34,0.35)"}`,
                 color: "rgba(255,255,255,0.85)",
                 fontSize: "14px",
                 caretColor: "#E87322",
@@ -1410,46 +1860,38 @@ function InlineTotalQuotaEditor({
             />
             <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>颗</span>
           </div>
+          <div className="mt-2" style={{ fontSize: "10px", color: "rgba(255,255,255,0.42)", lineHeight: 1.6 }}>
+            填写的是调整后的项目总配额，不是在当前配额上额外新增分配。
+          </div>
+          </div>
 
-          {/* Visual bar */}
-          <div className="rounded-lg p-3 mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
-            <div className="flex items-center justify-between mb-1.5">
-              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.35)" }}>配额约束</span>
-              <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>
-                已消耗 {currentConsumed.toLocaleString()} 颗（最低限额）
-              </span>
-            </div>
-            <div className="relative w-full rounded-full overflow-hidden" style={{ height: "8px", background: "rgba(255,255,255,0.06)" }}>
-              {numVal > 0 && (
-                <div className="absolute left-0 top-0 h-full rounded-full"
-                  style={{
-                    width: `${Math.min(100, (numVal / Math.max(numVal, currentConsumed)) * 100)}%`,
-                    background: tooLow ? "rgba(255,100,100,0.12)" : "rgba(232,115,34,0.12)",
-                    transition: "width 0.25s",
-                  }} />
-              )}
-              <div className="absolute left-0 top-0 h-full rounded-full"
-                style={{
-                  width: `${pctConsumed}%`,
-                  background: tooLow ? "linear-gradient(90deg,#ff6b6b,#ff9b9b)" : "linear-gradient(90deg,#E87322,#F5A623)",
-                  transition: "width 0.25s",
-                }} />
-            </div>
-            <div className="flex items-center justify-between mt-1.5">
-              <span style={{ fontSize: "9px", color: tooLow ? "#ff6b6b" : "rgba(255,255,255,0.25)" }}>
-                已消耗 {currentConsumed.toLocaleString()}
-              </span>
-              {numVal > 0 && (
-                <span style={{ fontSize: "9px", color: tooLow ? "#ff6b6b" : "rgba(255,255,255,0.25)" }}>
-                  → 新总额 {numVal.toLocaleString()}
-                </span>
-              )}
+          <div className="mb-4">
+            <div className="rounded-lg px-3 py-2.5" style={{ background: "rgba(232,115,34,0.06)", border: `1px solid ${cannotSave ? "rgba(255,100,100,0.22)" : "rgba(232,115,34,0.16)"}` }}>
+              <p style={{ fontSize: "12px", color: cannotSave ? "#ffb4b4" : "rgba(255,255,255,0.74)", lineHeight: 1.7, fontWeight: 500 }}>
+                项目总配额不能低于 <strong style={{ color: tooLow ? "#ff6b6b" : "#E87322", fontWeight: 700 }}>{quotaFloor.toLocaleString()} 颗</strong>（固定模式额度总和 + 无限模式已用总和），且不能高于 <strong style={{ color: overLimit ? "#ff6b6b" : "#4A9EE0", fontWeight: 700 }}>{teamAllocatableQuota.toLocaleString()} 颗</strong>
+              </p>
+              <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.45)" }}>项目总配额下限</span>
+                <span style={{ fontSize: "10px", color: tooLow ? "#ff6b6b" : "rgba(255,255,255,0.68)", fontWeight: 600 }}>{quotaFloor.toLocaleString()} 颗</span>
+              </div>
+              <div className="flex items-center justify-between mt-1.5">
+                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.45)" }}>本次最多可新增</span>
+                <span style={{ fontSize: "10px", color: overLimit ? "#ff6b6b" : "rgba(255,255,255,0.68)", fontWeight: 600 }}>{teamAllocatableQuota.toLocaleString()} 颗</span>
+              </div>
             </div>
             {tooLow && (
-              <div className="flex items-center gap-1.5 mt-2 px-2.5 py-2 rounded-lg" style={{ background: "rgba(255,100,100,0.1)", border: "1px solid rgba(255,100,100,0.2)" }}>
+              <div className="flex items-center gap-1.5 mt-1.5">
                 <AlertTriangle size={11} style={{ color: "#ff6b6b", flexShrink: 0 }} />
                 <span style={{ fontSize: "10px", color: "#ff9b9b", lineHeight: 1.5 }}>
-                  配额不能小于已消耗的 <strong>{currentConsumed.toLocaleString()}</strong> 颗，请输入更大的数值
+                  项目总配额不能低于成员已占用的 <strong>{quotaFloor.toLocaleString()}</strong> 颗
+                </span>
+              </div>
+            )}
+            {overLimit && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <AlertTriangle size={11} style={{ color: "#ff6b6b", flexShrink: 0 }} />
+                <span style={{ fontSize: "10px", color: "#ff9b9b", lineHeight: 1.5 }}>
+                  新增额度不能超过团队可分配额度 <strong>{teamAllocatableQuota.toLocaleString()}</strong> 颗
                 </span>
               </div>
             )}
@@ -1462,17 +1904,17 @@ function InlineTotalQuotaEditor({
               取消
             </button>
             <button
-              onClick={() => { if (!tooLow) { onSave(numVal); toast.success("项目总配额已更新"); } }}
-              disabled={tooLow}
+              onClick={() => { if (!cannotSave) { onSave(numVal); toast.success("项目总配额已更新"); } }}
+              disabled={cannotSave}
               className="flex-1 py-2 rounded-lg text-sm transition-all"
               style={{
-                background: tooLow ? "rgba(255,100,100,0.1)" : "rgba(232,115,34,0.85)",
-                border: `1px solid ${tooLow ? "rgba(255,100,100,0.2)" : "rgba(232,115,34,0.4)"}`,
-                color: tooLow ? "#ff6b6b" : "#fff",
-                cursor: tooLow ? "not-allowed" : "pointer",
+                background: cannotSave ? "rgba(255,100,100,0.1)" : "rgba(232,115,34,0.85)",
+                border: `1px solid ${cannotSave ? "rgba(255,100,100,0.2)" : "rgba(232,115,34,0.4)"}`,
+                color: cannotSave ? "#ff6b6b" : "#fff",
+                cursor: cannotSave ? "not-allowed" : "pointer",
                 fontWeight: 500,
               }}>
-              {tooLow ? "不可保存" : "保存配额"}
+              {cannotSave ? "不可保存" : "保存配额"}
             </button>
           </div>
         </div>
@@ -1623,9 +2065,13 @@ function DownloadIcon(props: { size?: number }) {
 export function ProjectHomePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const project = getProjectById(id ?? "");
+  const isOnboardingProject = id === ONBOARDING_DEMO_PROJECT_ID;
 
   const [projectName, setProjectName] = useState(project?.name ?? "");
+  const [showOnboardingTour, setShowOnboardingTour] = useState(() => isOnboardingProject || searchParams.get("guide") === "1");
+  const [onboardingStep, setOnboardingStep] = useState(0);
   const [editingName, setEditingName] = useState(false);
   const [status, setStatus] = useState(project?.status ?? "进行中");
   const [showStatusDrop, setShowStatusDrop] = useState(false);
@@ -1634,6 +2080,8 @@ export function ProjectHomePage() {
   const [dateTo, setDateTo] = useState("");
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showAllocateDialog, setShowAllocateDialog] = useState(false);
+  const [showManagementRequest, setShowManagementRequest] = useState(false);
+  const [showQuotaRequest, setShowQuotaRequest] = useState(false);
 
   // Basic info inline state
   const [basicInfo, setBasicInfo] = useState({
@@ -1685,6 +2133,7 @@ export function ProjectHomePage() {
   const projectPerm = project.permission;
   const isManager = projectPerm === "管理";
   const isEditor = projectPerm === "编辑";
+  const isTeamAdmin = isOnboardingProject;
 
   const membersWithPerm: MemberWithPerm[] = project.members.map((m, i) => {
     const detail = MEMBER_DETAIL_STATS[i] ?? MEMBER_DETAIL_STATS[0];
@@ -1743,6 +2192,15 @@ export function ProjectHomePage() {
   const tokenPercent = displayedQuotaTotal > 0 ? Math.round((displayedTokenUsed / displayedQuotaTotal) * 100) : 0;
   const projectBalance = localTokenTotal - project.tokenUsed;
   const memberTotalBalance = Math.round(localTokenTotal * 0.12);
+  const fixedMemberQuotaTotal = activeMembersIndexed.reduce((sum, { i }) => {
+    const qd = memberQuotas[i] ?? INITIAL_MEMBER_QUOTAS[0];
+    return qd.type === "fixed" ? sum + qd.total : sum;
+  }, 0);
+  const unlimitedMemberTokenUsed = activeMembersIndexed.reduce((sum, { m, i }) => {
+    const qd = memberQuotas[i] ?? INITIAL_MEMBER_QUOTAS[0];
+    return qd.type === "unlimited" ? sum + m.tokenUsed : sum;
+  }, 0);
+  const projectQuotaFloor = fixedMemberQuotaTotal + unlimitedMemberTokenUsed;
   const periodConsumed = PERIOD_CONSUMED[period] ?? 0;
   const contentProgress = project.progress;
   const statusStyle = STATUS_STYLE[status] ?? STATUS_STYLE["暂停"];
@@ -1752,6 +2210,52 @@ export function ProjectHomePage() {
     return tab.key === "cost" || tab.key === "progress";
   });
 
+  const currentGuideStep = ONBOARDING_STEPS[onboardingStep];
+  const guideHighlightStyle = (target: GuideTarget): CSSProperties => (
+    showOnboardingTour && currentGuideStep.target === target
+      ? {
+          position: "relative",
+          zIndex: 60,
+        }
+      : {}
+  );
+
+  const closeOnboardingTour = () => {
+    setShowOnboardingTour(false);
+    setOnboardingStep(0);
+    setEditQuotaIndex(null);
+    if (searchParams.get("guide") === "1") {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("guide");
+      nextParams.delete("guideStep");
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
+
+  const openMemberDialogFromGuide = () => {
+    setShowMemberModal(true);
+    if (showOnboardingTour && currentGuideStep.target === "overview-members") {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setOnboardingStep((value) => Math.min(ONBOARDING_STEPS.length - 1, value + 1));
+        });
+      });
+    }
+  };
+
+  const openMemberQuotaFromGuide = () => {
+    const targetIndex = activeMembersIndexed[0]?.i ?? 0;
+    setActiveTab("members");
+    setEditQuotaIndex(targetIndex);
+    if (showOnboardingTour && currentGuideStep.target === "member-quota-action") {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setOnboardingStep((value) => Math.min(ONBOARDING_STEPS.length - 1, value + 1));
+        });
+      });
+    }
+  };
+
   useEffect(() => {
     const nextDefaultTab: ProjectTab = isManager ? "members" : "cost";
     const hasActiveTab = visibleTabs.some((tab) => tab.key === activeTab);
@@ -1759,6 +2263,25 @@ export function ProjectHomePage() {
       setActiveTab(nextDefaultTab);
     }
   }, [activeTab, isManager, visibleTabs]);
+
+  useEffect(() => {
+    if (searchParams.get("guide") === "1") {
+      setShowOnboardingTour(true);
+      setOnboardingStep(searchParams.get("guideStep") === "last" ? ONBOARDING_STEPS.length - 1 : 0);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!showOnboardingTour || !currentGuideStep) return;
+    if (currentGuideStep.target === "members-tab" || currentGuideStep.target === "member-quota-action" || currentGuideStep.target === "member-quota-dialog") setActiveTab("members");
+    if (currentGuideStep.target === "cost-tab") setActiveTab("cost");
+    if (currentGuideStep.target === "progress-tab") setActiveTab("progress");
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-guide-target="${currentGuideStep.target}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  }, [currentGuideStep, showOnboardingTour]);
 
   // Convert to DialogMember format
   const dialogMembers: DialogMember[] = activeMembers.map((m, i) => ({
@@ -1864,6 +2387,12 @@ export function ProjectHomePage() {
   const editQuotaEntry = editQuotaIndex !== null
     ? activeMembersIndexed.find(x => x.i === editQuotaIndex)
     : null;
+  const editQuotaCurrent = editQuotaEntry
+    ? memberQuotas[editQuotaEntry.i] ?? INITIAL_MEMBER_QUOTAS[0]
+    : null;
+  const editQuotaLimit = editQuotaEntry
+    ? localTokenTotal - projectQuotaFloor + (editQuotaCurrent?.type === "fixed" ? editQuotaCurrent.total : 0)
+    : 0;
   const handleMemberQuotaSave = (i: number, q: MemberQuota) => {
     setMemberQuotas(prev => prev.map((m, idx) => idx === i ? q : m));
     setEditQuotaIndex(null);
@@ -1913,10 +2442,8 @@ export function ProjectHomePage() {
     >
       <div className="max-w-[1760px] mx-auto px-4 py-7 lg:px-6">
 
-     
-
         {/* ── Header ── */}
-        <div className="mb-6">
+        <div className="mb-6 rounded-2xl p-3 -mx-3">
           <div className="flex items-center gap-3 mb-3">
             {editingName ? (
               <input
@@ -2025,41 +2552,90 @@ export function ProjectHomePage() {
       {/* ── Dashboard ── */}
 
         <div className="mb-6">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 mb-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 mb-4 rounded-2xl">
+              {showOnboardingTour && currentGuideStep.target === "overview-members" && (
+                <style>{`
+                  @keyframes add-member-guide-glow {
+                    0%, 100% { box-shadow: 0 0 0 0 rgba(245,166,35,0.28), 0 8px 18px rgba(74,158,224,0.12); }
+                    50% { box-shadow: 0 0 0 5px rgba(245,166,35,0.18), 0 12px 28px rgba(245,166,35,0.24); }
+                  }
+                `}</style>
+              )}
               <button
-              onClick={() => isManager && setShowMemberModal(true)}
+              data-guide-target="overview-members"
+              onClick={() => isManager && openMemberDialogFromGuide()}
               className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-              style={{ background: "linear-gradient(145deg, rgba(74,158,224,0.12) 0%, rgba(74,158,224,0.04) 100%)", border: "1px solid rgba(74,158,224,0.14)", minHeight: "128px" }}
+              style={{ background: "linear-gradient(145deg, rgba(74,158,224,0.12) 0%, rgba(74,158,224,0.04) 100%)", border: "1px solid rgba(74,158,224,0.14)", minHeight: "128px", ...guideHighlightStyle("overview-members") }}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,158,224,0.16)" }}>
-                  <Users size={14} style={{ color: "#4A9EE0" }} />
+                  {isEditor ? <Shield size={14} style={{ color: "#4A9EE0" }} /> : <Users size={14} style={{ color: "#4A9EE0" }} />}
                 </div>
-                {isManager && <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>点击管理成员</span>}
-              </div>
-              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目成员</div>
-              <div className="mt-2 flex items-end gap-2">
-                <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{activeMembers.length}</span>
-                <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(Object.entries(permCounts) as [ProjectPermission, number][]).map(([perm, cnt]) => cnt > 0 && (
-                  <span key={perm} className="px-2 py-0.5 rounded-full" style={{ background: `${PERM_COLORS[perm]}20`, color: PERM_COLORS[perm], fontSize: "10px" }}>
-                    {perm} {cnt}
+                {isManager && (
+                  <span
+                    data-guide-arrow-target="add-member"
+                    className="rounded-lg px-2.5 py-1"
+                    style={{
+                      fontSize: "11px",
+                      color: "#4A9EE0",
+                      background: "rgba(74,158,224,0.12)",
+                      border: "1px solid rgba(74,158,224,0.28)",
+                      animation: showOnboardingTour && currentGuideStep.target === "overview-members" ? "add-member-guide-glow 1.15s ease-in-out infinite" : undefined,
+                    }}
+                  >
+                    添加成员
                   </span>
-                ))}
+                )}
+                {isEditor && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); setShowManagementRequest(true); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") setShowManagementRequest(true); }}
+                    style={{ fontSize: "11px", color: "#4A9EE0", fontWeight: 500 }}
+                  >
+                    申请管理权限
+                  </span>
+                )}
               </div>
+              {isEditor ? (
+                <>
+                  <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>我的权限</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>编辑</span>
+                  </div>
+                  <div className="mt-3" style={{ fontSize: "11px", color: "rgba(255,255,255,0.42)" }}>
+                    可编辑剧本、主体、生成和分镜内容
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目成员</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{activeMembers.length}</span>
+                    <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.35)" }}>人</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {(Object.entries(permCounts) as [ProjectPermission, number][]).map(([perm, cnt]) => cnt > 0 && (
+                      <span key={perm} className="px-2 py-0.5 rounded-full" style={{ background: `${PERM_COLORS[perm]}20`, color: PERM_COLORS[perm], fontSize: "10px" }}>
+                        {perm} {cnt}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
             </button>
             <div
+              data-guide-target="overview-quota"
               className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-              style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.18) 0%, rgba(232,115,34,0.08) 100%)", border: "1px solid rgba(232,115,34,0.18)", minHeight: "128px" }}
+              style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.18) 0%, rgba(232,115,34,0.08) 100%)", border: "1px solid rgba(232,115,34,0.18)", minHeight: "128px", ...guideHighlightStyle("overview-quota") }}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(232,115,34,0.18)" }}>
                   <Coins size={14} style={{ color: "#E87322" }} />
                 </div>
                 <div className="flex items-center gap-2">
-                  {isManager && (
+                  {isManager && isTeamAdmin && (
                     <button
                       onClick={() => setEditingTotalQuota(v => !v)}
                       className="px-2.5 py-1 rounded-lg transition-colors hover:opacity-90"
@@ -2068,9 +2644,18 @@ export function ProjectHomePage() {
                       {editingTotalQuota ? "收起" : "编辑"}
                     </button>
                   )}
+                  {((isManager && !isTeamAdmin) || isEditor) && (
+                    <button
+                      onClick={() => setShowQuotaRequest(true)}
+                      className="px-2.5 py-1 rounded-lg transition-colors hover:opacity-90"
+                      style={{ background: "rgba(232,115,34,0.14)", color: "#E87322", border: "1px solid rgba(232,115,34,0.2)", fontSize: "11px", fontWeight: 500 }}
+                    >
+                      申请项目配额
+                    </button>
+                  )}
                 </div>
               </div>
-              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>项目配额</div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.5)" }}>{isEditor ? "我的配额" : "项目配额"}</div>
               <div className="mt-2 flex items-end gap-2">
                 <span style={{ fontSize: "30px", lineHeight: 1, fontWeight: 700, color: "#fff" }}>{displayedQuotaTotal.toLocaleString()}</span>
                 <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)" }}>颗</span>
@@ -2089,8 +2674,9 @@ export function ProjectHomePage() {
           
           
             <div
+              data-guide-target="overview-assets"
               className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-              style={{ background: "linear-gradient(145deg, rgba(74,198,120,0.12) 0%, rgba(74,198,120,0.04) 100%)", border: "1px solid rgba(74,198,120,0.14)", minHeight: "128px" }}
+              style={{ background: "linear-gradient(145deg, rgba(74,198,120,0.12) 0%, rgba(74,198,120,0.04) 100%)", border: "1px solid rgba(74,198,120,0.14)", minHeight: "128px", ...guideHighlightStyle("overview-assets") }}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(74,198,120,0.16)" }}>
@@ -2108,9 +2694,10 @@ export function ProjectHomePage() {
               </div>
             </div>
               <button
+              data-guide-target="overview-progress"
               onClick={() => setActiveTab("progress")}
               className="text-left rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-              style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.12) 0%, rgba(232,115,34,0.04) 100%)", border: "1px solid rgba(232,115,34,0.14)", minHeight: "128px" }}
+              style={{ background: "linear-gradient(145deg, rgba(232,115,34,0.12) 0%, rgba(232,115,34,0.04) 100%)", border: "1px solid rgba(232,115,34,0.14)", minHeight: "128px", ...guideHighlightStyle("overview-progress") }}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(232,115,34,0.16)" }}>
@@ -2137,7 +2724,7 @@ export function ProjectHomePage() {
 
           </div>
 
-          {isManager && editingTotalQuota && (
+          {isManager && isTeamAdmin && editingTotalQuota && (
             <div
               className="rounded-2xl p-4 mb-4"
               style={{ background: "#1A1510", border: "1px solid rgba(232,115,34,0.16)" }}
@@ -2151,7 +2738,10 @@ export function ProjectHomePage() {
                 </div>
               </div>
               <InlineTotalQuotaEditor
-                currentConsumed={project.tokenUsed}
+                quotaFloor={projectQuotaFloor}
+                fixedQuotaTotal={fixedMemberQuotaTotal}
+                unlimitedTokenUsed={unlimitedMemberTokenUsed}
+                teamAllocatableQuota={TEAM_ALLOCATABLE_QUOTA}
                 currentTotal={localTokenTotal}
                 onSave={(v) => { setLocalTokenTotal(v); setEditingTotalQuota(false); }}
                 onCancel={() => setEditingTotalQuota(false)}
@@ -2163,7 +2753,15 @@ export function ProjectHomePage() {
         {/* ══════════════════════════════════════════════════════════════════════
             ── Tab Container ──
         ══════════════════════════════════════════════════════════════════════ */}
-        <div className="rounded-xl overflow-hidden mb-5" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div
+          className="rounded-xl overflow-hidden mb-5"
+          data-guide-target={activeTab === "members" ? "members-tab" : activeTab === "progress" ? "progress-tab" : activeTab === "cost" ? "cost-tab" : undefined}
+          style={{
+            background: "#1A1510",
+            border: "1px solid rgba(255,255,255,0.06)",
+            ...(activeTab === "members" ? guideHighlightStyle("members-tab") : activeTab === "progress" ? guideHighlightStyle("progress-tab") : activeTab === "cost" ? guideHighlightStyle("cost-tab") : {}),
+          }}
+        >
           {/* Tab Header */}
           <div className="flex items-center gap-1 px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
             {visibleTabs.map(({ key, label, icon: Icon }) => (
@@ -2481,10 +3079,10 @@ export function ProjectHomePage() {
                   )}
 
                   <div className="overflow-x-auto pb-2">
-                    <div style={{ minWidth: "1030px" }}>
+                    <div style={{ minWidth: "1080px" }}>
                       {/* Table Header */}
                       <div className="grid px-4 py-2.5 rounded-lg"
-                        style={{ gridTemplateColumns: "120px 140px 78px 82px 78px 82px 80px 70px 80px 80px 90px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                        style={{ gridTemplateColumns: "120px 140px 78px 82px 78px 82px 80px 70px 80px 80px 140px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}>
                         <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)" }}>成员</span>
                         <MetricHeader label="消耗/配额" tooltip="点击可修改配额模式（无限制/固定额度）" />
                         <MetricHeader label="图片生成" tooltip="生成的图片数量" />
@@ -2551,12 +3149,13 @@ export function ProjectHomePage() {
                       const quotaPct = qd.type === "fixed" && qd.total > 0 ? Math.min(100, (totalTok / qd.total) * 100) : 0;
                       const isExpanded = expandedDetailMember === m.name;
                       const memberTxns = MEMBER_TRANSACTIONS.filter(t => t.memberName === m.name);
+                      const isGuideQuotaButton = i === activeMembersIndexed[0]?.i;
 
                       return (
                         <Fragment key={i}>
                           <div
                             className="grid px-5 py-3 hover:bg-white/[0.02] transition-colors group/row"
-                            style={{ gridTemplateColumns: "120px 140px 78px 82px 78px 82px 80px 70px 80px 80px 90px", alignItems: "center" }}
+                            style={{ gridTemplateColumns: "120px 140px 78px 82px 78px 82px 80px 70px 80px 80px 140px", alignItems: "center" }}
                           >
                             {/* Member Info */}
                             <div className="flex items-center gap-2 min-w-0">
@@ -2621,6 +3220,30 @@ export function ProjectHomePage() {
 
                             {/* Actions */}
                             <div className="flex items-center gap-1 justify-end">
+                              <button
+                                data-guide-target={isGuideQuotaButton ? "member-quota-action" : undefined}
+                                onClick={() => {
+                                  setEditQuotaIndex(i);
+                                  if (showOnboardingTour && currentGuideStep.target === "member-quota-action") {
+                                    window.requestAnimationFrame(() => {
+                                      window.requestAnimationFrame(() => {
+                                        setOnboardingStep((value) => Math.min(ONBOARDING_STEPS.length - 1, value + 1));
+                                      });
+                                    });
+                                  }
+                                }}
+                                className="px-2 py-0.5 rounded text-xs transition-all hover:opacity-90"
+                                style={{
+                                  background: "rgba(155,89,182,0.12)",
+                                  border: "1px solid rgba(155,89,182,0.22)",
+                                  color: "#9B59B6",
+                                  fontSize: "10px",
+                                  fontWeight: 500,
+                                  ...(isGuideQuotaButton ? guideHighlightStyle("member-quota-action") : {}),
+                                }}
+                              >
+                                分配
+                              </button>
                               <button
                                 onClick={() => toggleDetailMember(m.name)}
                                 className="px-1.5 py-0.5 rounded text-xs transition-all"
@@ -2887,6 +3510,61 @@ export function ProjectHomePage() {
 
       </div>
 
+      {showOnboardingTour && currentGuideStep && (
+        <ProjectOnboardingTour
+          step={onboardingStep}
+          total={ONBOARDING_STEPS.length}
+          current={currentGuideStep}
+          onPrev={() => {
+            if (currentGuideStep.target === "member-dialog") {
+              setShowMemberModal(false);
+              window.setTimeout(() => {
+                setOnboardingStep((value) => Math.max(0, value - 1));
+              }, 80);
+              return;
+            }
+            if (currentGuideStep.target === "member-quota-dialog") {
+              setEditQuotaIndex(null);
+              window.setTimeout(() => {
+                setOnboardingStep((value) => Math.max(0, value - 1));
+              }, 80);
+              return;
+            }
+            setOnboardingStep((value) => Math.max(0, value - 1));
+          }}
+          onNext={() => {
+            if (currentGuideStep.target === "overview-members") {
+              openMemberDialogFromGuide();
+              return;
+            }
+            if (currentGuideStep.target === "member-quota-action") {
+              openMemberQuotaFromGuide();
+              return;
+            }
+            if (currentGuideStep.target === "member-quota-dialog") {
+              setEditQuotaIndex(null);
+              window.setTimeout(() => {
+                setOnboardingStep((value) => Math.min(ONBOARDING_STEPS.length - 1, value + 1));
+              }, 80);
+              return;
+            }
+            if (currentGuideStep.target === "member-dialog") {
+              setShowMemberModal(false);
+              window.setTimeout(() => {
+                setOnboardingStep((value) => Math.min(ONBOARDING_STEPS.length - 1, value + 1));
+              }, 80);
+              return;
+            }
+            setOnboardingStep((value) => Math.min(ONBOARDING_STEPS.length - 1, value + 1));
+          }}
+          onClose={closeOnboardingTour}
+          onAction={() => {
+            closeOnboardingTour();
+            navigate(`/project/${id}/script?guide=1`);
+          }}
+        />
+      )}
+
       {/* ── Member Management Modal ── */}
       {isManager && showMemberModal && (
         <EditProjectMembersDialog
@@ -2915,6 +3593,30 @@ export function ProjectHomePage() {
         />
       )}
 
+      {isEditor && showManagementRequest && (
+        <RequestManagementPermissionModal
+          projectName={projectName}
+          onClose={() => setShowManagementRequest(false)}
+          onSubmit={() => {
+            setShowManagementRequest(false);
+            toast.success("管理权限申请已提交");
+          }}
+        />
+      )}
+
+      {((isManager && !isTeamAdmin) || isEditor) && showQuotaRequest && (
+        <RequestProjectQuotaModal
+          projectName={projectName}
+          maxAssignableQuota={localTokenTotal + Math.max(0, projectBalance)}
+          currentQuota={displayedQuotaTotal}
+          onClose={() => setShowQuotaRequest(false)}
+          onSubmit={(payload) => {
+            setShowQuotaRequest(false);
+            toast.success(`项目配额申请已提交：${payload.amount.toLocaleString()} 颗`);
+          }}
+        />
+      )}
+
       {/* ── Member Quota Editor Modal (totals row) ── */}
       {quotaEditorEntry && (
         <MemberQuotaEditorModal
@@ -2939,6 +3641,8 @@ export function ProjectHomePage() {
           member={{ name: editQuotaEntry.m.name, avatar: editQuotaEntry.m.avatar, avatarColor: MEMBER_COLORS[editQuotaEntry.i % MEMBER_COLORS.length], role: editQuotaEntry.m.role }}
           currentQuota={memberQuotas[editQuotaEntry.i]}
           currentConsumed={memberPeriodConsumed[editQuotaEntry.i] ?? 0}
+          maxAssignableQuota={editQuotaLimit}
+          guideTarget={showOnboardingTour && currentGuideStep.target === "member-quota-dialog" ? "member-quota-dialog" : undefined}
           onSave={(q) => handleMemberQuotaSave(editQuotaEntry.i, q)}
           onCancel={() => setEditQuotaIndex(null)}
         />

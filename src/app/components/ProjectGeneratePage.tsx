@@ -1,24 +1,38 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useSearchParams } from "react-router";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
-  Folder, FolderOpen, MessageSquare, ChevronRight, Plus, Image as LucideImage, Video, Music,
+  Folder, FolderOpen, MessageSquare, ChevronRight, Plus, Image as LucideImage, Image, Video, Music,
   Star, Upload, Package, Send, Sparkles, MoreHorizontal, Download, RefreshCw,
   Search, Pencil, Trash2, X, Check, ChevronDown, Film, AlignLeft, Copy, Play,
-  ChevronLeft, Users, Filter, Clock,
+  ChevronLeft, Users, Filter, Clock, Grid2X2, Globe, Crown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { ProjectAssetsSidebarPanel } from "./ProjectAssetsSidebarPanel";
 import { StoryboardSidebarPanel } from "./StoryboardSidebarPanel";
 import { getProjectById } from "../data/projectsData";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type SidebarTab = "files" | "assets" | "storyboard";
+type SidebarTab = "files" | "assets" | "subject" | "storyboard";
 type AssetSubTab = "generate" | "upload" | "subject" | "collect";
 type AssetTypeFilter = "all" | "image" | "video" | "audio";
 type GenerateTypeFilter = "all" | "image" | "video";
 type TimeFilter = "all" | "today" | "week" | "month" | "custom";
+type GenerateGuideTarget =
+  | "session-tree"
+  | "asset-link"
+  | "asset-to-prompt"
+  | "subject-link"
+  | "subject-to-prompt"
+  | "subject-detail-edit"
+  | "generated-to-subject"
+  | "storyboard-link"
+  | "storyboard-send"
+  | "generated-to-storyboard"
+  | "generation-results"
+  | "apply-result"
+  | "apply-dialog";
 
 interface Session {
   id: string;
@@ -89,6 +103,413 @@ interface DeleteSessionState {
   sessionName: string;
 }
 
+const GENERATE_GUIDE_STEPS: { target: GenerateGuideTarget; title: string; body: ReactNode }[] = [
+  {
+    target: "session-tree",
+    title: "对话列表",
+    body: "左侧按剧集维度分类，可以新建对话进行分类创作。",
+  },
+  {
+    target: "asset-link",
+    title: "资产快捷入口",
+    body: "调用素材的快捷入口，集中查看全部生成、收藏、未分类和项目文件夹。可以把素材直接拖入对话输入框作为参考内容。",
+  },
+  {
+    target: "subject-to-prompt",
+    title: "查看主体并引用",
+    body: "左侧主体按人物、场景、道具分类展示。按照动画提示，把主体卡片拖到右侧输入框，就能把角色、场景或道具设定带入当前对话。",
+  },
+  {
+    target: "subject-detail-edit",
+    title: "查看主体详情",
+    body: "点击左侧主体卡片可以查看主体详情，包括主体图片、名称、类型和基础信息。进入详情后再点击编辑，可继续维护主体设定。",
+  },
+  {
+    target: "generated-to-subject",
+    title: "生成结果应用到主体",
+    body: "满意的生成结果也可以直接拖到左侧主体卡片上，用作主体参考图。",
+  },
+  {
+    target: "storyboard-send",
+    title: "分镜快捷入口",
+    body: "查看分镜表的快捷入口，点击分镜内容旁的发送按钮，一键将分镜素材填入右侧对话框；生成完成后，也可以把结果图从中间拖到左侧空白分镜图上。",
+  },
+  {
+    target: "apply-result",
+    title: "应用",
+    body: "点击生成结果上的「应用」，可以把满意的图片或视频应用到主体、分镜等生产位置。",
+  },
+  {
+    target: "apply-dialog",
+    title: "应用图片",
+    body: (
+      <div className="space-y-1">
+        <div>应用到主体：把结果应用为人物、场景、道具等可复用设定。</div>
+        <div>应用到分镜：把结果写入具体镜头的分镜图或分镜视频。</div>
+      </div>
+    ),
+  },
+];
+
+function GenerateModuleGuide({
+  step,
+  total,
+  current,
+  applyDialogPhase,
+  onPrev,
+  onNext,
+  onClose,
+}: {
+  step: number;
+  total: number;
+  current: { target: GenerateGuideTarget; title: string; body: ReactNode };
+  applyDialogPhase?: "subject" | "storyboard";
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const [cardPosition, setCardPosition] = useState<CSSProperties>({ right: 24, bottom: 24 });
+  const [targetFrame, setTargetFrame] = useState<CSSProperties | null>(null);
+  const [extraFrame, setExtraFrame] = useState<CSSProperties | null>(null);
+  const [secondaryExtraFrame, setSecondaryExtraFrame] = useState<CSSProperties | null>(null);
+  const [pulseFrame, setPulseFrame] = useState<CSSProperties | null>(null);
+  const [dragCue, setDragCue] = useState<{ from: CSSProperties; to: CSSProperties; image: string; label: string } | null>(null);
+  const isLast = step === total - 1;
+  const nextLabel = current.target === "apply-result"
+    ? "点击应用"
+    : current.target === "apply-dialog"
+      ? applyDialogPhase === "subject" ? "查看分镜应用" : "应用并进入分镜"
+      : current.target === "subject-detail-edit"
+        ? "查看详情"
+      : isLast ? "完成引导" : "下一步";
+  const targetSelectorMap: Partial<Record<GenerateGuideTarget, string>> = {
+    "asset-link": '[data-generate-guide-target~="prompt-drop"]',
+    "asset-to-prompt": '[data-generate-guide-target~="prompt-drop"]',
+    "subject-to-prompt": '[data-generate-guide-target~="prompt-drop"]',
+    "subject-detail-edit": '[data-subject-guide-item="true"]',
+    "generated-to-subject": '[data-generate-guide-target="subject-link"]',
+    "generated-to-storyboard": '[data-generate-guide-target="storyboard-link"]',
+    "storyboard-send": '[data-generate-guide-target="storyboard-link"]',
+  };
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    let tries = 0;
+    const updatePosition = () => {
+      const target = document.querySelector(targetSelectorMap[current.target] ?? `[data-generate-guide-target="${current.target}"]`) as HTMLElement | null;
+      if (!target) {
+        if (tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+
+      const margin = 18;
+      const gap = 18;
+      const pad = 8;
+      const cardWidth = 360;
+      const cardHeight = 240;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const frameLeft = Math.max(margin, rect.left - pad);
+      const frameTop = Math.max(margin, rect.top - pad);
+      const frameRight = Math.min(viewportWidth - margin, rect.right + pad);
+      const frameBottom = Math.min(viewportHeight - margin, rect.bottom + pad);
+
+      setTargetFrame({
+        left: frameLeft,
+        top: frameTop,
+        width: Math.max(0, frameRight - frameLeft),
+        height: Math.max(0, frameBottom - frameTop),
+      });
+
+      const makeFrame = (selector: string, padding = 8) => {
+        const el = document.querySelector(selector) as HTMLElement | null;
+        if (!el) return null;
+        const box = el.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) return null;
+        const leftValue = Math.max(margin, box.left - padding);
+        const topValue = Math.max(margin, box.top - padding);
+        const rightValue = Math.min(viewportWidth - margin, box.right + padding);
+        const bottomValue = Math.min(viewportHeight - margin, box.bottom + padding);
+        return {
+          left: leftValue,
+          top: topValue,
+          width: Math.max(0, rightValue - leftValue),
+          height: Math.max(0, bottomValue - topValue),
+        } as CSSProperties;
+      };
+
+      if (current.target === "asset-link") {
+        setSecondaryExtraFrame(null);
+        const assetPanelFrame = makeFrame('[data-generate-guide-target="asset-link"]', 4);
+        if (!assetPanelFrame && tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+          return;
+        }
+        setExtraFrame(assetPanelFrame);
+      } else if (current.target === "subject-to-prompt") {
+        setSecondaryExtraFrame(null);
+        const subjectPanelFrame = makeFrame('[data-generate-guide-target="subject-panel"]', 4);
+        if (!subjectPanelFrame && tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+          return;
+        }
+        setExtraFrame(subjectPanelFrame);
+      } else if (current.target === "storyboard-send") {
+        const storyboardPanelFrame = makeFrame('[data-generate-guide-target="storyboard-link"]', 4);
+        if (!storyboardPanelFrame && tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+          return;
+        }
+        setExtraFrame(makeFrame('[data-generate-result-item="true"]', 8));
+        setSecondaryExtraFrame(makeFrame('[data-storyboard-script-send="true"]', 6));
+      } else if (current.target === "generated-to-subject" || current.target === "generated-to-storyboard") {
+        setExtraFrame(makeFrame('[data-generate-result-item="true"]', 8));
+        setSecondaryExtraFrame(null);
+      } else {
+        setExtraFrame(null);
+        setSecondaryExtraFrame(null);
+      }
+      if (current.target === "storyboard-send") {
+        setPulseFrame(makeFrame('[data-storyboard-script-send="true"]', 6));
+      } else {
+        setPulseFrame(null);
+      }
+
+      const cueConfig: Partial<Record<GenerateGuideTarget, { fromSelector: string; toSelector: string; label: string }>> = {
+        "asset-link": { fromSelector: '[data-asset-quick-guide-item="true"], [data-asset-prop-guide-item="true"], [data-generate-guide-target="asset-drag-demo"], [data-asset-guide-item="true"]', toSelector: '[data-generate-guide-target~="prompt-drop"]', label: "拖入输入框" },
+        "asset-to-prompt": { fromSelector: '[data-asset-guide-item="true"]', toSelector: '[data-generate-guide-target~="prompt-drop"]', label: "拖入输入框" },
+        "subject-to-prompt": { fromSelector: '[data-subject-guide-item="true"]', toSelector: '[data-generate-guide-target~="prompt-drop"]', label: "拖入输入框" },
+        "generated-to-subject": { fromSelector: '[data-generate-result-item="true"]', toSelector: '[data-subject-edit-drop="true"], [data-subject-guide-item="true"]', label: "拖到主体" },
+        "storyboard-send": { fromSelector: '[data-generate-result-item="true"]', toSelector: '[data-empty-storyboard-image-drop="true"]', label: "拖到空白分镜图" },
+        "generated-to-storyboard": { fromSelector: '[data-generate-result-item="true"]', toSelector: '[data-empty-storyboard-image-drop="true"], [data-storyboard-guide-drop="true"]', label: "拖到空分镜图" },
+      };
+      const cue = cueConfig[current.target];
+      if (cue) {
+        const fromEl = document.querySelector(cue.fromSelector) as HTMLElement | null;
+        const toEl = document.querySelector(cue.toSelector) as HTMLElement | null;
+        const img = fromEl?.querySelector("img") as HTMLImageElement | null;
+        if (fromEl && toEl) {
+          const fromRect = fromEl.getBoundingClientRect();
+          const toRect = toEl.getBoundingClientRect();
+          setDragCue({
+            from: {
+              left: fromRect.left + fromRect.width / 2 - 24,
+              top: fromRect.top + fromRect.height / 2 - 24,
+            },
+            to: {
+              left: toRect.left + toRect.width / 2 - 24,
+              top: toRect.top + (current.target === "storyboard-send" ? toRect.height * 0.68 : Math.min(toRect.height / 2, 92)) - 24,
+            },
+            image: img?.src ?? "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=120&q=70",
+            label: cue.label,
+          });
+        } else {
+          if ((current.target === "asset-link" || current.target === "subject-to-prompt" || current.target === "storyboard-send") && tries < 18) {
+            tries += 1;
+            frame = window.requestAnimationFrame(updatePosition);
+            return;
+          }
+          setDragCue(null);
+        }
+      } else {
+        setDragCue(null);
+      }
+
+      let left = rect.right + gap;
+      let top = rect.top + Math.max(0, (rect.height - cardHeight) / 2);
+      if (current.target === "asset-link" || current.target === "storyboard-send") {
+        left = Math.min(Math.max(rect.right - cardWidth, sidebarCollapsed ? margin : 310), viewportWidth - cardWidth - margin);
+        top = current.target === "storyboard-send"
+          ? margin + 76
+          : Math.max(margin, rect.top - cardHeight - gap);
+      } else if (current.target === "subject-to-prompt") {
+        left = Math.min(Math.max(rect.right - cardWidth, sidebarCollapsed ? margin : 310), viewportWidth - cardWidth - margin);
+        top = Math.max(margin, rect.top - cardHeight - gap);
+      } else if (current.target === "generated-to-subject") {
+        left = Math.min(Math.max((viewportWidth - cardWidth) / 2, margin), viewportWidth - cardWidth - margin);
+        top = viewportHeight - cardHeight - margin;
+      } else {
+        if (left + cardWidth + margin > viewportWidth) left = rect.left - cardWidth - gap;
+        if (left < margin) {
+          left = Math.min(Math.max(rect.left, margin), viewportWidth - cardWidth - margin);
+          top = rect.bottom + gap;
+        }
+        if (top + cardHeight + margin > viewportHeight) top = rect.top - cardHeight - gap;
+        if (top < margin) top = Math.min(Math.max(rect.bottom + gap, margin), viewportHeight - cardHeight - margin);
+      }
+
+      setCardPosition({ left, top });
+    };
+
+    frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [current.target]);
+
+  const renderMaskHole = (frame: CSSProperties, radius: number) => (
+    <rect
+      x={frame.left as number}
+      y={frame.top as number}
+      width={frame.width as number}
+      height={frame.height as number}
+      rx={radius}
+      ry={radius}
+      fill="black"
+    />
+  );
+  const renderHighlightFrame = (frame: CSSProperties, radiusClass: string, zIndex: number, shadowOpacity = 0.24) => (
+    <div
+      className={`absolute ${radiusClass}`}
+      style={{
+        ...frame,
+        zIndex,
+        border: "3px solid #F5A623",
+        boxShadow: `0 0 0 6px rgba(245,166,35,0.18), 0 18px 44px rgba(245,166,35,${shadowOpacity})`,
+      }}
+    />
+  );
+  const maskId = `generate-guide-mask-${current.target}`;
+
+  return (
+    <div className="fixed inset-0 z-[70] pointer-events-none">
+      {targetFrame ? (
+        <>
+          <svg className="absolute inset-0 h-full w-full" style={{ zIndex: 70 }} aria-hidden="true">
+            <defs>
+              <mask id={maskId}>
+                <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                {renderMaskHole(targetFrame, 20)}
+                {extraFrame && renderMaskHole(extraFrame, 18)}
+                {secondaryExtraFrame && renderMaskHole(secondaryExtraFrame, 14)}
+              </mask>
+            </defs>
+            <rect x="0" y="0" width="100%" height="100%" fill="rgba(4,3,2,0.56)" mask={`url(#${maskId})`} />
+          </svg>
+          {renderHighlightFrame(targetFrame, "rounded-[20px]", 75, 0.24)}
+        </>
+      ) : (
+        <div className="absolute inset-0" style={{ background: "rgba(4,3,2,0.56)" }} />
+      )}
+      {extraFrame && renderHighlightFrame(extraFrame, "rounded-[18px]", 76, 0.2)}
+      {secondaryExtraFrame && renderHighlightFrame(secondaryExtraFrame, "rounded-[14px]", 77, 0.2)}
+      {pulseFrame && (
+        <>
+          <style>{`
+            @keyframes guide-send-pulse {
+              0%, 100% { transform: scale(1); box-shadow: 0 0 0 4px rgba(245,166,35,0.16), 0 0 0 0 rgba(245,166,35,0.4); }
+              50% { transform: scale(1.08); box-shadow: 0 0 0 7px rgba(245,166,35,0.26), 0 0 24px 4px rgba(245,166,35,0.45); }
+            }
+          `}</style>
+          <div
+            className="absolute rounded-xl"
+            style={{ ...pulseFrame, zIndex: 77, border: "2px solid #F5A623", animation: "guide-send-pulse 1.1s ease-in-out infinite" }}
+          />
+        </>
+      )}
+      {dragCue && (
+        (() => {
+          const toX = (dragCue.to.left as number) + 24;
+          const toY = (dragCue.to.top as number) + 24;
+          return (
+        <>
+          <style>{`
+            @keyframes generate-guide-drop-pulse {
+              0%, 100% { transform: translate(-50%, -50%) scale(0.78); opacity: 0.35; }
+              50% { transform: translate(-50%, -50%) scale(1.18); opacity: 0.9; }
+            }
+            @keyframes generate-guide-drag {
+              0%, 12% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+              18% { opacity: 1; }
+              72% { transform: translate3d(calc(var(--to-x) - var(--from-x)), calc(var(--to-y) - var(--from-y)), 0) scale(0.9); opacity: 1; }
+              86%, 100% { transform: translate3d(calc(var(--to-x) - var(--from-x)), calc(var(--to-y) - var(--from-y)), 0) scale(0.9); opacity: 0; }
+            }
+          `}</style>
+          <div
+            className="absolute z-[78] h-16 w-16 rounded-full"
+            style={{
+              left: toX,
+              top: toY,
+              border: "2px solid rgba(245,166,35,0.78)",
+              background: "rgba(245,166,35,0.1)",
+              boxShadow: "0 0 28px rgba(245,166,35,0.34)",
+              animation: "generate-guide-drop-pulse 1.2s ease-in-out infinite",
+            }}
+          />
+          <div
+            className="absolute z-[78] flex items-center gap-2 rounded-2xl px-2 py-2"
+            style={{
+              ...dragCue.from,
+              "--from-x": `${dragCue.from.left}px`,
+              "--from-y": `${dragCue.from.top}px`,
+              "--to-x": `${dragCue.to.left}px`,
+              "--to-y": `${dragCue.to.top}px`,
+              animation: "generate-guide-drag 2.2s ease-in-out infinite",
+              background: "rgba(26,21,16,0.92)",
+              border: "1px solid rgba(245,166,35,0.5)",
+              boxShadow: "0 16px 36px rgba(0,0,0,0.42), 0 0 24px rgba(245,166,35,0.28)",
+            } as CSSProperties}
+          >
+            <div className="h-12 w-12 overflow-hidden rounded-xl" style={{ background: "#0D0A06" }}>
+              <img src={dragCue.image} alt="" className="h-full w-full object-cover" />
+            </div>
+            <span className="whitespace-nowrap pr-1 text-xs font-medium" style={{ color: "#F5A623" }}>{dragCue.label}</span>
+          </div>
+        </>
+          );
+        })()
+      )}
+      <div className="absolute z-[80] w-[360px] rounded-2xl p-4 pointer-events-auto" style={{ ...cardPosition, background: "#1A1510", border: "2px solid #F5A623", boxShadow: "0 28px 70px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.08), 0 0 34px rgba(245,166,35,0.22)" }}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-base font-semibold text-white">{current.title}</h3>
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{ color: "#F5A623", background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.22)" }}
+            >
+              {step + 1}/{total}
+            </span>
+          </div>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-white/10" style={{ color: "rgba(255,255,255,0.45)" }} title="关闭新手引导">
+            <X size={14} />
+          </button>
+        </div>
+        <p className="mb-4 text-sm leading-6" style={{ color: "rgba(255,255,255,0.68)" }}>
+          {current.target === "apply-dialog" && applyDialogPhase === "storyboard"
+            ? "选择剧集和具体镜头后点击「应用」，生成结果会写入该镜头，成为后续视频生成基础。"
+            : current.body}
+        </p>
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={onPrev} className="h-8 rounded-lg px-3 text-xs transition-opacity" style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.68)" }}>
+            上一步
+          </button>
+          <button onClick={onNext} className="h-8 rounded-lg px-3 text-xs font-medium transition-opacity hover:opacity-90" style={{ background: "#E87322", color: "#fff" }}>
+            {nextLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Storyboard Detail Modal ─────────────────────────────────────────────────
 function StoryboardDetailModal({ panel, onClose }: {
   panel: typeof INITIAL_STORYBOARD_PANELS[0];
@@ -147,7 +568,7 @@ function StoryboardDetailModal({ panel, onClose }: {
   );
 }
 
-function ApplyCascadeMenu({
+function ApplyImageModal({
   asset,
   fileTree,
   targetType,
@@ -158,6 +579,7 @@ function ApplyCascadeMenu({
   setSelectedEpisode,
   selectedShot,
   setSelectedShot,
+  onCancel,
   onConfirm,
 }: {
   asset: ApplyAssetState;
@@ -170,6 +592,7 @@ function ApplyCascadeMenu({
   setSelectedEpisode: (value: string) => void;
   selectedShot: string;
   setSelectedShot: (value: string) => void;
+  onCancel: () => void;
   onConfirm: () => void;
 }) {
   const subjectFolder = fileTree.find((folder) => folder.id === "art");
@@ -177,132 +600,210 @@ function ApplyCascadeMenu({
   const currentEpisode = episodeFolders.find((folder) => folder.id === selectedEpisode) ?? episodeFolders[0];
   const subjectItems = (subjectFolder?.sessions ?? []).map((session) => ({
     id: `${session.id}-item-1`,
-    name: `${session.name}A`,
+    name: session.id === "chars" ? "白发女侠" : session.id === "scenes" ? "云雾山林" : "青铜古剑",
+    meta: session.name,
     preview: asset.src,
   }));
-  const shotItems = (currentEpisode?.sessions ?? []).map((session) => ({
-    id: `${session.id}-item-1`,
+  const storyboardItems = [
+    { id: "sb1", name: "分镜 01", desc: "女主角出场，云雾缭绕", preview: asset.src },
+    { id: "sb2", name: "分镜 02", desc: "近景，持剑回眸", preview: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70" },
+    { id: "still", name: "分镜 03", desc: "全景，古城楼背景", preview: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70" },
+  ];
+  const shotItems = (currentEpisode?.sessions ?? []).map((session, index) => ({
+    id: session.id,
     name: session.name,
-    preview: asset.src,
+    preview: index === 0 ? asset.src : "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70",
   }));
-  const menuPanelStyle = {
-    background: "rgba(26, 21, 16, 0.98)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 16px 36px rgba(0,0,0,0.34)",
-  } as const;
-  const selectedMenuItemStyle = {
-    background: "rgba(232,115,34,0.16)",
-    color: "#FFFFFF",
-  } as const;
-  const menuItemStyle = {
-    background: "transparent",
-    color: "rgba(255,255,255,0.88)",
-  } as const;
 
   return (
-    <div className="absolute left-0 bottom-11 z-30 flex items-start gap-1 overflow-x-auto pb-1">
-          <div className="w-36 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
-            {[
-              { key: "subject", label: "主体" },
-              { key: "storyboard", label: "分镜" },
-            ].map((item) => (
-              <button
-                key={item.key}
-                onClick={() => setTargetType(item.key as ApplyTargetType)}
-                className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
-                style={targetType === item.key ? selectedMenuItemStyle : menuItemStyle}
-              >
-                <span>{item.label}</span>
-                <ChevronRight size={14} style={{ opacity: 0.75 }} />
-              </button>
-            ))}
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center px-5"
+      style={{ background: "rgba(0,0,0,0.68)" }}
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div
+        className="flex max-h-[82vh] w-full max-w-[880px] flex-col overflow-hidden rounded-2xl"
+        data-generate-guide-target="apply-dialog"
+        style={{ background: "#17110D", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 30px 90px rgba(0,0,0,0.68)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <div>
+            <h3 className="text-base font-semibold text-white">{asset.type === "image" ? "应用图片" : "应用视频"}</h3>
+            <p className="mt-1 text-xs" style={{ color: "rgba(255,255,255,0.42)" }}>选择要写入的位置，确认后会同步到对应模块。</p>
+          </div>
+          <button onClick={onCancel} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-white/10">
+            <X size={15} style={{ color: "rgba(255,255,255,0.45)" }} />
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1">
+          <div className="w-[184px] flex-shrink-0 p-4" style={{ borderRight: "1px solid rgba(255,255,255,0.08)", background: "#120D09" }}>
+            <div className="mb-4 overflow-hidden rounded-xl" style={{ aspectRatio: "1", background: "#0D0A06", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <img src={asset.src} alt="" className="h-full w-full object-cover" />
+            </div>
+            <div className="space-y-2">
+              {[
+                { key: "subject" as const, label: "主体", desc: "沉淀为角色/场景/道具设定" },
+                { key: "storyboard" as const, label: "分镜", desc: "写入具体镜头画面" },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => {
+                    setTargetType(item.key);
+                    if (item.key === "storyboard") {
+                      setSelectedEpisode("ep1");
+                      setSelectedShot("sb1");
+                    }
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left"
+                  style={{
+                    background: targetType === item.key ? "rgba(232,115,34,0.16)" : "rgba(255,255,255,0.04)",
+                    color: targetType === item.key ? "#FFFFFF" : "rgba(255,255,255,0.58)",
+                    border: `1px solid ${targetType === item.key ? "rgba(232,115,34,0.36)" : "rgba(255,255,255,0.06)"}`,
+                  }}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{item.label}</span>
+                    <span className="mt-0.5 block truncate text-[10px]" style={{ color: targetType === item.key ? "rgba(255,255,255,0.58)" : "rgba(255,255,255,0.34)" }}>{item.desc}</span>
+                  </span>
+                  <ChevronRight size={14} style={{ opacity: 0.72 }} />
+                </button>
+              ))}
+            </div>
           </div>
 
-          {targetType === "subject" && (
-            <>
-            <div className="w-36 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
-              {(subjectFolder?.sessions ?? []).map((session) => (
-                <button
-                  key={session.id}
-                  onClick={() => setSubjectCategory(session.id)}
-                  className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
-                  style={subjectCategory === session.id ? selectedMenuItemStyle : menuItemStyle}
-                >
-                  <span>{session.name}</span>
-                  <ChevronRight size={14} style={{ opacity: 0.65 }} />
-                </button>
-              ))}
-            </div>
-            <div className="w-44 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
-              {subjectItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={onConfirm}
-                  className="w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-left"
-                  style={menuItemStyle}
-                >
-                  <div className="w-11 h-11 rounded-lg flex-shrink-0" style={{ background: `url(${item.preview}) center / cover no-repeat` }} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm truncate">{item.name}</div>
-                    <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>{subjectFolder?.sessions.find((session) => session.id === subjectCategory)?.name}</div>
+          <div className="min-w-0 flex-1 p-5">
+            {targetType === "subject" ? (
+              <div className="flex h-full flex-col">
+                <div className="mb-4 rounded-2xl px-4 py-3" style={{ background: "rgba(74,198,120,0.08)", border: "1px solid rgba(74,198,120,0.18)" }}>
+                  <div className="text-sm font-medium" style={{ color: "#4AC678" }}>应用到主体</div>
+                  <p className="mt-1 text-xs leading-5" style={{ color: "rgba(255,255,255,0.58)" }}>
+                    主体是项目里的核心设定资产，包括人物、场景、道具等。应用到主体后，这张图会成为该主体的参考图或生成结果，后续生成时可以反复引用，保持角色和场景一致。
+                  </p>
+                </div>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex rounded-xl p-1" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    {(subjectFolder?.sessions ?? []).map((session) => (
+                      <button
+                        key={session.id}
+                        onClick={() => setSubjectCategory(session.id)}
+                        className="h-8 rounded-lg px-4 text-xs"
+                        style={{
+                          background: subjectCategory === session.id ? "#E87322" : "transparent",
+                          color: subjectCategory === session.id ? "#fff" : "rgba(255,255,255,0.52)",
+                        }}
+                      >
+                        {session.name}
+                      </button>
+                    ))}
                   </div>
-                </button>
-              ))}
-            </div>
-            </>
-          )}
-
-          {targetType === "storyboard" && (
-            <>
-              <div className="w-36 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
-                {episodeFolders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    onClick={() => {
-                      setSelectedEpisode(folder.id);
-                      setSelectedShot(folder.sessions[0]?.id ?? "");
-                    }}
-                    className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
-                    style={selectedEpisode === folder.id ? selectedMenuItemStyle : menuItemStyle}
-                  >
-                    <span>{folder.name}</span>
-                    <ChevronRight size={14} style={{ opacity: 0.75 }} />
-                  </button>
-                ))}
+                  <div className="flex h-9 w-[220px] items-center gap-2 rounded-xl px-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <Search size={13} style={{ color: "rgba(255,255,255,0.32)" }} />
+                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.32)" }}>搜索主体</span>
+                  </div>
+                </div>
+                <div className="grid flex-1 auto-rows-min grid-cols-3 gap-3 overflow-auto pr-1">
+                  {subjectItems.map((item) => {
+                    const selected = item.meta === (subjectFolder?.sessions.find((session) => session.id === subjectCategory)?.name ?? "");
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setSubjectCategory(item.id.split("-")[0])}
+                        className="overflow-hidden rounded-xl text-left transition-opacity hover:opacity-90"
+                        style={{ background: "#211812", border: `1px solid ${selected ? "rgba(232,115,34,0.55)" : "rgba(255,255,255,0.08)"}` }}
+                      >
+                        <div style={{ aspectRatio: "16/10", background: `url(${item.preview}) center / cover no-repeat` }} />
+                        <div className="p-3">
+                          <div className="truncate text-sm text-white">{item.name}</div>
+                          <div className="mt-1 text-[11px]" style={{ color: "#E87322" }}>{item.meta}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-
-              <div className="w-40 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
-                {(currentEpisode?.sessions ?? []).map((session) => (
-                  <button
-                    key={session.id}
-                    onClick={() => setSelectedShot(session.id)}
-                    className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm"
-                    style={selectedShot === session.id ? selectedMenuItemStyle : menuItemStyle}
-                  >
-                    <span>{session.name}</span>
-                    <ChevronRight size={14} style={{ opacity: selectedShot === session.id ? 0.95 : 0.55 }} />
-                  </button>
-                ))}
+            ) : (
+              <div className="flex h-full flex-col">
+                <div className="mb-4 rounded-2xl px-4 py-3" style={{ background: "rgba(167,139,250,0.08)", border: "1px solid rgba(167,139,250,0.18)" }}>
+                  <div className="text-sm font-medium" style={{ color: "#a78bfa" }}>应用到分镜</div>
+                  <p className="mt-1 text-xs leading-5" style={{ color: "rgba(255,255,255,0.58)" }}>
+                    分镜是按剧集和镜头拆分的画面生产单元。应用到分镜后，这张图会写入选中的镜头，可作为分镜图、画面参考或后续视频生成的基础。
+                  </p>
+                </div>
+                <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr] gap-4">
+                <div className="overflow-hidden rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#120D09" }}>
+                  <div className="px-3 py-2 text-xs" style={{ color: "rgba(255,255,255,0.35)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>选择剧集</div>
+                  <div className="p-2">
+                    {episodeFolders.map((folder) => (
+                      <button
+                        key={folder.id}
+                        onClick={() => {
+                          setSelectedEpisode(folder.id);
+                          setSelectedShot(folder.sessions[0]?.id ?? "");
+                        }}
+                        className="mb-1 flex h-9 w-full items-center justify-between rounded-lg px-3 text-left text-xs"
+                        style={{
+                          background: selectedEpisode === folder.id ? "rgba(232,115,34,0.14)" : "transparent",
+                          color: selectedEpisode === folder.id ? "#E87322" : "rgba(255,255,255,0.55)",
+                        }}
+                      >
+                        <span>{folder.name}</span>
+                        <span style={{ color: "rgba(255,255,255,0.25)" }}>{folder.sessions.length}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#120D09" }}>
+                  <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>选择分镜</span>
+                    <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.25)" }}>{currentEpisode?.name}</span>
+                  </div>
+                  <div className="grid max-h-[390px] grid-cols-2 gap-3 overflow-auto p-3">
+                    {storyboardItems.map((item, index) => {
+                      const relatedShot = shotItems[index] ?? shotItems[0];
+                      const selected = selectedShot === relatedShot?.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setSelectedShot(relatedShot?.id ?? "sb1")}
+                          className="overflow-hidden rounded-xl text-left transition-opacity hover:opacity-90"
+                          style={{
+                            background: "#211812",
+                            border: `1px solid ${selected ? "rgba(232,115,34,0.62)" : "rgba(255,255,255,0.08)"}`,
+                          }}
+                        >
+                          <div className="relative" style={{ aspectRatio: "16/9", background: `url(${item.preview}) center / cover no-repeat` }}>
+                            {selected && (
+                              <div className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "#E87322" }}>
+                                <Check size={12} className="text-white" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="p-3">
+                            <div className="truncate text-sm text-white">{item.name}</div>
+                            <div className="mt-1 text-[11px]" style={{ color: "rgba(255,255,255,0.45)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>{item.desc}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                </div>
               </div>
+            )}
+          </div>
+        </div>
 
-              <div className="w-44 rounded-2xl p-1.5 flex-shrink-0" style={menuPanelStyle}>
-                {shotItems.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={onConfirm}
-                    className="w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-left"
-                    style={menuItemStyle}
-                  >
-                    <div className="w-11 h-11 rounded-lg flex-shrink-0" style={{ background: `url(${item.preview}) center / cover no-repeat` }} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm truncate">{item.name}</div>
-                      <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>{currentEpisode?.name}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+        <div className="flex items-center justify-end gap-2 px-5 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <button onClick={onCancel} className="h-9 rounded-xl px-4 text-xs" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.62)" }}>
+            取消
+          </button>
+          <button onClick={onConfirm} className="h-9 rounded-xl px-5 text-xs font-medium text-white" style={{ background: "#E87322", boxShadow: "0 12px 28px rgba(232,115,34,0.24)" }}>
+            应用
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -429,9 +930,220 @@ function DeleteSessionModal({
   );
 }
 
+// ─── Virtual IP Modal ─────────────────────────────────────────────────────────
+const VIRTUAL_IP_ITEMS_INITIAL = [
+  { id: "vip1", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=200&q=70", name: "古风将军", status: "失败" as const },
+  { id: "vip2", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?w=200&q=70", name: "白发女侠", status: "可用" as const },
+  { id: "vip3", src: "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?w=200&q=70", name: "城市英雄", status: "可用" as const },
+  { id: "vip4", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?w=200&q=70", name: "赛博战士", status: "待审核" as const },
+];
+
+const VIRTUAL_IP_STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
+  "可用": { color: "#4AC678", bg: "rgba(74,198,120,0.2)" },
+  "失败": { color: "#ff6b6b", bg: "rgba(255,107,107,0.2)" },
+  "待审核": { color: "rgba(255,255,255,0.5)", bg: "rgba(255,255,255,0.1)" },
+};
+
+function VirtualIPModal({
+  open, onClose,
+  virtualIPItems,
+  onSelectAsset,
+  virtualIPType, setVirtualIPType,
+  assetName, setAssetName, uploadedFile, setUploadedFile,
+  onConfirmUpload,
+}: {
+  open: boolean; onClose: () => void;
+  virtualIPItems: Array<{ id: string; src: string; name: string; status: string }>;
+  onSelectAsset: (item: { id: string; src: string; name: string }) => void;
+  virtualIPType: string; setVirtualIPType: (v: string) => void;
+  assetName: string; setAssetName: (v: string) => void;
+  uploadedFile: string | null; setUploadedFile: (v: string | null) => void;
+  onConfirmUpload: () => void;
+}) {
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  if (!open) return null;
+
+  const filteredItems = statusFilter === "全部" ? virtualIPItems : virtualIPItems.filter(item => item.status === statusFilter);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.72)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="flex rounded-2xl overflow-hidden"
+        style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.08)", width: "960px", height: "560px", maxHeight: "80vh", boxShadow: "0 24px 80px rgba(0,0,0,0.8)" }}>
+        {/* Left: Upload panel */}
+        <div className="flex flex-col flex-shrink-0" style={{ width: "320px", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <h2 className="text-sm font-semibold text-white">上传虚拟IP</h2>
+          </div>
+
+          <div className="flex-1 overflow-auto px-4 py-3 flex flex-col gap-4">
+            {/* Type selector */}
+            <div>
+              <label className="text-xs font-medium text-white mb-1.5 block">虚拟IP类型 <span style={{ color: "#ff6b6b" }}>*</span></label>
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs"
+                style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {virtualIPType}
+                <ChevronDown size={10} style={{ color: "rgba(255,255,255,0.4)" }} />
+              </button>
+            </div>
+
+            {/* Upload area */}
+            <div
+              className="flex flex-col items-center justify-center rounded-lg py-6 cursor-pointer transition-colors hover:bg-white/5"
+              style={{ border: "1px dashed rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.02)" }}
+              onClick={() => fileInputRef.current?.click()}>
+              {uploadedFile ? (
+                <img src={uploadedFile} alt="上传预览" className="max-h-28 max-w-full object-contain rounded" />
+              ) : (
+                <>
+                  <Plus size={16} style={{ color: "rgba(255,255,255,0.4)" }} />
+                  <span className="text-xs mt-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>点击上传</span>
+                </>
+              )}
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setUploadedFile(URL.createObjectURL(file));
+                }} />
+            </div>
+
+            {/* Format info */}
+            <div className="rounded-lg px-3 py-2" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                格式 jpg / jpeg / png / webp | 大小 &lt;= 30MB
+              </p>
+            </div>
+
+            {/* Asset name */}
+            <div>
+              <label className="text-xs font-medium text-white mb-1.5 block">资产名称 <span style={{ color: "#ff6b6b" }}>*</span></label>
+              <div className="relative">
+                <input
+                  className="w-full px-3 py-2 rounded-lg text-xs outline-none"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.8)" }}
+                  placeholder="请输入名称"
+                  value={assetName}
+                  onChange={(e) => setAssetName(e.target.value)}
+                  maxLength={64}
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+                  {assetName.length}/64
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2 px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <button
+              onClick={onConfirmUpload}
+              className="h-8 rounded-lg px-4 text-xs font-medium text-white"
+              style={{ background: "linear-gradient(135deg, #C47A3A, #E87322)", boxShadow: "0 4px 16px rgba(232,115,34,0.24)" }}>
+              确认上传
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Asset library panel */}
+        <div className="flex flex-col flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <h2 className="text-sm font-semibold text-white">虚拟IP库</h2>
+            <div className="flex items-center gap-3">
+              {/* Status filter dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowStatusMenu(!showStatusMenu)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  {statusFilter}
+                  <ChevronDown size={10} />
+                </button>
+                {showStatusMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowStatusMenu(false)} />
+                    <div className="absolute top-full mt-1 right-0 z-20 rounded-lg overflow-hidden" style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", minWidth: "100px" }}>
+                      {["全部", "待审核", "可用", "失败"].map(status => (
+                        <button key={status}
+                          onClick={() => { setStatusFilter(status); setShowStatusMenu(false); }}
+                          className="w-full px-3 py-2 text-xs text-left transition-colors hover:bg-white/5"
+                          style={{ color: statusFilter === status ? "#E87322" : "rgba(255,255,255,0.6)" }}>
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10">
+                <X size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
+              </button>
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="px-5 pt-3 flex-shrink-0">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <Search size={12} style={{ color: "rgba(255,255,255,0.3)" }} />
+              <input className="flex-1 bg-transparent text-xs outline-none" placeholder="搜索资产名称" style={{ color: "rgba(255,255,255,0.6)" }} />
+            </div>
+          </div>
+
+          {/* Grid */}
+          <div className="flex-1 overflow-auto px-5 py-3">
+            <div className="grid grid-cols-3 gap-3">
+              {/* IP items */}
+              {filteredItems.map(item => (
+                <div
+                  key={item.id}
+                  className="relative rounded-xl overflow-hidden group cursor-pointer"
+                  style={{ aspectRatio: "1/1", background: "#1A1510" }}
+                  onClick={() => onSelectAsset(item)}
+                >
+                  <img src={item.src} alt={item.name} className="w-full h-full object-cover" />
+                  {/* Status badge */}
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded text-[10px] font-medium"
+                    style={{ background: "rgba(0,0,0,0.6)", color: "rgba(255,255,255,0.7)", backdropFilter: "blur(4px)" }}>
+                    图片
+                  </div>
+                  {/* Bottom bar */}
+                  <div className="absolute bottom-0 left-0 right-0 px-3 py-2"
+                    style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7), transparent)" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{ background: VIRTUAL_IP_STATUS_CONFIG[item.status].bg, color: VIRTUAL_IP_STATUS_CONFIG[item.status].color }}>
+                        {item.status}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button className="px-2 py-0.5 rounded text-[10px] transition-colors hover:bg-white/10"
+                          style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.7)" }}>
+                          预览
+                        </button>
+                        <button className="w-5 h-5 rounded-full flex items-center justify-center transition-colors hover:bg-white/10"
+                          style={{ background: "rgba(0,0,0,0.5)" }}>
+                          <MoreHorizontal size={10} style={{ color: "rgba(255,255,255,0.5)" }} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function ProjectGeneratePage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const epParam = searchParams.get("ep");
   const project = getProjectById(id ?? "1");
@@ -442,7 +1154,10 @@ export function ProjectGeneratePage() {
     if (epParam) {
       return { [epParam]: true };
     }
-    return { art: true };
+    return INITIAL_FILE_TREE.reduce<Record<string, boolean>>((result, folder) => {
+      if (folder.id !== "art") result[folder.id] = true;
+      return result;
+    }, {});
   });
   const [activeSession, setActiveSession] = useState(() => {
     if (epParam) {
@@ -494,6 +1209,19 @@ export function ProjectGeneratePage() {
   const [showGenerateTypeMenu, setShowGenerateTypeMenu] = useState(false);
   const [showMemberMenu, setShowMemberMenu] = useState(false);
 
+  // Plus button menu
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+
+  // Virtual IP modal (single modal with library + upload pages)
+  const [showVirtualIPModal, setShowVirtualIPModal] = useState(false);
+  const [virtualIPItems, setVirtualIPItems] = useState(VIRTUAL_IP_ITEMS_INITIAL);
+  const [virtualIPType, setVirtualIPType] = useState("图片");
+  const [virtualIPAssetName, setVirtualIPAssetName] = useState("");
+  const [virtualIPUploadedFile, setVirtualIPUploadedFile] = useState<string | null>(null);
+
+  // Prompt reference assets
+  const [promptAssets, setPromptAssets] = useState<Array<{ id: string; src: string; name: string }>>([]);
+
   // Root sessions (not inside any folder)
   const [rootSessions, setRootSessions] = useState<Session[]>([]);
   const [creatingRootSession, setCreatingRootSession] = useState(false);
@@ -501,9 +1229,136 @@ export function ProjectGeneratePage() {
   const [deleteSessionState, setDeleteSessionState] = useState<DeleteSessionState | null>(null);
   const [deleteMode, setDeleteMode] = useState<"delete" | "move">("delete");
   const [moveTargetSessionId, setMoveTargetSessionId] = useState("");
+  const [showGenerateGuide, setShowGenerateGuide] = useState(() => searchParams.get("guide") === "1");
+  const [generateGuideStep, setGenerateGuideStep] = useState(0);
+  const [applyGuideExplainedSubject, setApplyGuideExplainedSubject] = useState(false);
+  const currentGenerateGuideStep = GENERATE_GUIDE_STEPS[generateGuideStep];
+  const openApplyDialog = (asset: ApplyAssetState) => {
+    setApplyAsset(asset);
+    setApplyGuideExplainedSubject(false);
+    setApplyTargetType("subject");
+    setSelectedEpisode("ep1");
+    setSelectedShot("sb1");
+    if (showGenerateGuide && currentGenerateGuideStep?.target === "apply-result") {
+      setGenerateGuideStep(GENERATE_GUIDE_STEPS.findIndex((item) => item.target === "apply-dialog"));
+    }
+  };
+
+  const confirmApplyAsset = () => {
+    if (!applyAsset) return;
+    if (showGenerateGuide && currentGenerateGuideStep?.target === "apply-dialog" && !applyGuideExplainedSubject) {
+      setApplyGuideExplainedSubject(true);
+      setApplyTargetType("storyboard");
+      return;
+    }
+    const folder = applyTargetType === "subject"
+      ? fileTree.find((item) => item.id === "art")
+      : fileTree.find((item) => item.id === selectedEpisode);
+    const targetName = applyTargetType === "subject"
+      ? folder?.sessions.find((item) => item.id === subjectCategory)?.name
+      : folder?.sessions.find((item) => item.id === selectedShot)?.name;
+    toast.success(`已应用到${applyTargetType === "subject" ? "主体" : "分镜"} / ${targetName ?? "未命名"}`);
+    const appliedSrc = applyAsset.src;
+    setApplyAsset(null);
+    if (showGenerateGuide && currentGenerateGuideStep?.target === "apply-dialog") {
+      closeGenerateGuide();
+      navigate(`/project/${id}/storyboard?guide=1&applied=1&appliedSrc=${encodeURIComponent(appliedSrc)}`);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, []);
+
+  const closeGenerateGuide = () => {
+    setShowGenerateGuide(false);
+    setGenerateGuideStep(0);
+    setApplyAsset(null);
+    setApplyGuideExplainedSubject(false);
+    const nextUrl = `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  };
+
+  useEffect(() => {
+    if (searchParams.get("guide") === "1") {
+      setShowGenerateGuide(true);
+      setGenerateGuideStep(searchParams.get("guideStep") === "last" ? GENERATE_GUIDE_STEPS.length - 1 : 0);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!showGenerateGuide || !currentGenerateGuideStep) return;
+    if (currentGenerateGuideStep.target === "session-tree") {
+      setSidebarCollapsed(false);
+      setSidebarTab("files");
+      setApplyAsset(null);
+    }
+    if (currentGenerateGuideStep.target === "asset-link") {
+      setSidebarCollapsed(false);
+      setSidebarTab("assets");
+      setAssetSubTab("generate");
+      setApplyAsset(null);
+    }
+    if (currentGenerateGuideStep.target === "asset-to-prompt") {
+      setSidebarCollapsed(false);
+      setSidebarTab("assets");
+      setAssetSubTab("generate");
+      setApplyAsset(null);
+    }
+    if (currentGenerateGuideStep.target === "subject-link" || currentGenerateGuideStep.target === "subject-to-prompt" || currentGenerateGuideStep.target === "subject-detail-edit" || currentGenerateGuideStep.target === "generated-to-subject") {
+      setSidebarCollapsed(false);
+      setSidebarTab("subject");
+      setAssetSubTab("subject");
+      setApplyAsset(null);
+    }
+    if (currentGenerateGuideStep.target === "storyboard-link" || currentGenerateGuideStep.target === "storyboard-send" || currentGenerateGuideStep.target === "generated-to-storyboard") {
+      setSidebarCollapsed(false);
+      setSidebarTab("storyboard");
+      setApplyAsset(null);
+    }
+    if (currentGenerateGuideStep.target === "generation-results") {
+      setSidebarTab("files");
+      setApplyAsset(null);
+    }
+    if (currentGenerateGuideStep.target === "apply-result") {
+      setSidebarTab("files");
+      const firstImageMessage = CHAT_MESSAGES.find((msg) => msg.type === "ai" && "images" in msg && msg.images?.[0]);
+      if (firstImageMessage && firstImageMessage.type === "ai" && "images" in firstImageMessage && firstImageMessage.images?.[0]) {
+        setApplyAsset(null);
+        setApplyTargetType("storyboard");
+        setSubjectCategory("chars");
+        setSelectedEpisode("ep1");
+        setSelectedShot("sb1");
+      }
+    }
+    if (currentGenerateGuideStep.target === "apply-dialog") {
+      setSidebarTab("files");
+      const firstImageMessage = CHAT_MESSAGES.find((msg) => msg.type === "ai" && "images" in msg && msg.images?.[0]);
+      if (!applyAsset && firstImageMessage && firstImageMessage.type === "ai" && "images" in firstImageMessage && firstImageMessage.images?.[0]) {
+        setApplyAsset({ type: "image", src: firstImageMessage.images[0], anchorId: `${firstImageMessage.id}-0` });
+      }
+      setApplyTargetType(applyGuideExplainedSubject ? "storyboard" : "subject");
+      setSelectedEpisode("ep1");
+      setSelectedShot("sb1");
+    }
+    window.setTimeout(() => {
+      if (currentGenerateGuideStep.target === "generated-to-subject" || currentGenerateGuideStep.target === "generated-to-storyboard" || currentGenerateGuideStep.target === "storyboard-send") {
+        document
+          .querySelector('[data-generate-result-item="true"]')
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      document
+        .querySelector({
+          "asset-to-prompt": '[data-generate-guide-target~="prompt-drop"]',
+          "subject-to-prompt": '[data-generate-guide-target~="prompt-drop"]',
+          "subject-detail-edit": '[data-subject-guide-item="true"]',
+          "generated-to-subject": '[data-generate-guide-target="subject-link"]',
+          "generated-to-storyboard": '[data-generate-guide-target="storyboard-link"]',
+          "storyboard-send": '[data-generate-guide-target="storyboard-link"]',
+        }[currentGenerateGuideStep.target] ?? `[data-generate-guide-target="${currentGenerateGuideStep.target}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  }, [currentGenerateGuideStep, showGenerateGuide]);
 
   const toggleFolder = (id: string) =>
     setExpandedFolders((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -668,8 +1523,9 @@ export function ProjectGeneratePage() {
 
     // Video message
     if ("generateType" in msg && msg.generateType === "video") {
+      const showVideoGuideActions = showGenerateGuide && currentGenerateGuideStep?.target === "apply-result" && msg.id === "m6";
       return (
-        <div key={msg.id} className="mb-6">
+        <div key={msg.id} className="mb-6" data-generate-guide-target={msg.id === "m6" ? "generation-results" : undefined}>
           <div className="flex items-center gap-2 mb-2">
             <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(155,89,182,0.2)", border: "1px solid rgba(155,89,182,0.3)" }}>
               <Video size={11} style={{ color: "#9B59B6" }} />
@@ -685,7 +1541,7 @@ export function ProjectGeneratePage() {
                 <Play size={20} className="text-white" style={{ marginLeft: "3px" }} />
               </div>
             </div>
-            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2"
+            <div className={`absolute inset-0 ${showVideoGuideActions ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity flex flex-col justify-between p-2`}
               style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%)" }}>
               <div className="flex justify-end gap-1">
                 <button className="w-6 h-6 rounded-lg flex items-center justify-center hover:opacity-80" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
@@ -694,42 +1550,16 @@ export function ProjectGeneratePage() {
               </div>
               <div className="flex items-end justify-between">
                 <button
+                  data-generate-guide-target={msg.id === "m6" ? "apply-result" : undefined}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hover:opacity-80"
                   style={{ background: "rgba(0,0,0,0.52)", backdropFilter: "blur(10px)", color: "white", border: "1px solid rgba(255,255,255,0.08)" }}
                   onClick={() => {
-                    setApplyAsset({ type: "video", src: msg.videoThumbnail, anchorId: msg.id });
-                    setApplyTargetType("storyboard");
-                    setSelectedEpisode("ep1");
-                    setSelectedShot("sb1");
+                    openApplyDialog({ type: "video", src: msg.videoThumbnail, anchorId: msg.id });
                   }}
                 >
                   <Upload size={11} />
                   <span className="text-[10px]">应用</span>
                 </button>
-                {applyAsset?.anchorId === msg.id && (
-                  <ApplyCascadeMenu
-                    asset={applyAsset}
-                    fileTree={fileTree}
-                    targetType={applyTargetType}
-                    setTargetType={setApplyTargetType}
-                    subjectCategory={subjectCategory}
-                    setSubjectCategory={setSubjectCategory}
-                    selectedEpisode={selectedEpisode}
-                    setSelectedEpisode={setSelectedEpisode}
-                    selectedShot={selectedShot}
-                    setSelectedShot={setSelectedShot}
-                    onConfirm={() => {
-                      const folder = applyTargetType === "subject"
-                        ? fileTree.find((item) => item.id === "art")
-                        : fileTree.find((item) => item.id === selectedEpisode);
-                      const targetName = applyTargetType === "subject"
-                        ? folder?.sessions.find((item) => item.id === subjectCategory)?.name
-                        : folder?.sessions.find((item) => item.id === selectedShot)?.name;
-                      toast.success(`已应用到${applyTargetType === "subject" ? "主体" : "分镜"} / ${targetName ?? "未命名"}`);
-                      setApplyAsset(null);
-                    }}
-                  />
-                )}
                 <button className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:opacity-80" style={{ background: "#9B59B6", color: "white" }}>
                   <RefreshCw size={9} />变体
                 </button>
@@ -744,7 +1574,7 @@ export function ProjectGeneratePage() {
     const images = msg.images || [];
     const cols = images.length <= 2 ? images.length : 2;
     return (
-      <div key={msg.id} className="mb-6">
+      <div key={msg.id} className="mb-6" data-generate-guide-target={msg.id === "m2" ? "generation-results" : undefined}>
         <div className="flex items-center gap-2 mb-2">
           <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(232,115,34,0.2)", border: "1px solid rgba(232,115,34,0.3)" }}>
             <Sparkles size={11} style={{ color: "#E87322" }} />
@@ -755,9 +1585,24 @@ export function ProjectGeneratePage() {
         </div>
         <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
           {images.map((src, i) => (
-            <div key={i} className="relative rounded-xl overflow-hidden group cursor-pointer" style={{ aspectRatio: "1", background: "#1A1510" }}>
+            <div
+              key={i}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", JSON.stringify({
+                  type: "external-asset",
+                  src,
+                  name: `生成结果_${msg.id}_${i + 1}.jpg`,
+                  assetType: "image" as const,
+                }));
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+              className="relative rounded-xl overflow-hidden group cursor-pointer"
+              data-generate-result-item={msg.id === "m2" && i === 0 ? "true" : undefined}
+              style={{ aspectRatio: "1", background: "#1A1510" }}
+            >
               <img src={src} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2"
+              <div className={`absolute inset-0 ${showGenerateGuide && currentGenerateGuideStep?.target === "apply-result" && msg.id === "m2" && i === 0 ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity flex flex-col justify-between p-2`}
                 style={{ background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%)" }}>
                 <div className="flex justify-end gap-1">
                   <button
@@ -784,41 +1629,16 @@ export function ProjectGeneratePage() {
                 </div>
                 <div className="flex items-end justify-between relative">
                   <button
+                    data-generate-guide-target={msg.id === "m2" && i === 0 ? "apply-result" : undefined}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hover:opacity-80"
                     style={{ background: "rgba(0,0,0,0.52)", backdropFilter: "blur(10px)", color: "white", border: "1px solid rgba(255,255,255,0.08)" }}
                     onClick={() => {
-                      setApplyAsset({ type: "image", src, anchorId: `${msg.id}-${i}` });
-                      setApplyTargetType("subject");
-                      setSubjectCategory("chars");
+                      openApplyDialog({ type: "image", src, anchorId: `${msg.id}-${i}` });
                     }}
                   >
                     <Upload size={11} />
                     <span className="text-[10px]">应用</span>
                   </button>
-                  {applyAsset?.anchorId === `${msg.id}-${i}` && (
-                    <ApplyCascadeMenu
-                      asset={applyAsset}
-                      fileTree={fileTree}
-                      targetType={applyTargetType}
-                      setTargetType={setApplyTargetType}
-                      subjectCategory={subjectCategory}
-                      setSubjectCategory={setSubjectCategory}
-                      selectedEpisode={selectedEpisode}
-                      setSelectedEpisode={setSelectedEpisode}
-                      selectedShot={selectedShot}
-                      setSelectedShot={setSelectedShot}
-                      onConfirm={() => {
-                        const folder = applyTargetType === "subject"
-                          ? fileTree.find((item) => item.id === "art")
-                          : fileTree.find((item) => item.id === selectedEpisode);
-                        const targetName = applyTargetType === "subject"
-                          ? folder?.sessions.find((item) => item.id === subjectCategory)?.name
-                          : folder?.sessions.find((item) => item.id === selectedShot)?.name;
-                        toast.success(`已应用到${applyTargetType === "subject" ? "主体" : "分镜"} / ${targetName ?? "未命名"}`);
-                        setApplyAsset(null);
-                      }}
-                    />
-                  )}
                   <button
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:opacity-80"
                     style={{ background: "#E87322", color: "white" }}
@@ -838,43 +1658,36 @@ export function ProjectGeneratePage() {
   // ── Sidebar: Files Tab ───────────────────────────────────────────────────────
   const renderFilesTab = () => (
     <div className="flex flex-col h-full" onClick={() => { setSessionMenuId(null); }}>
-      <div className="px-3 pt-3 pb-2 flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-        <div
-          className="flex items-center gap-2 px-3 h-9 rounded-xl"
-          style={{
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.06)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
-          }}
-        >
-          <Search size={13} style={{ color: "rgba(255,255,255,0.35)" }} />
+      <div className="px-2 py-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1 rounded px-1.5 py-1" style={{ background: "rgba(255,255,255,0.06)" }}>
+          <Search size={8} style={{ color: "rgba(255,255,255,0.25)" }} />
           <input
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            placeholder="搜索剧集、分组、会话"
-            className="flex-1 bg-transparent text-xs outline-none"
-            style={{ color: "rgba(255,255,255,0.78)" }}
+            placeholder="搜索对话..."
+            className="flex-1 min-w-0 bg-transparent outline-none"
+            style={{ fontSize: "10px", color: "rgba(255,255,255,0.6)", caretColor: "#E87322", padding: 0 }}
           />
           {searchText && (
             <button onClick={() => setSearchText("")} className="w-4 h-4 flex items-center justify-center rounded hover:bg-white/10">
-              <X size={10} style={{ color: "rgba(255,255,255,0.3)" }} />
+              <X size={8} style={{ color: "rgba(255,255,255,0.25)" }} />
             </button>
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-2.5 py-3 space-y-4">
+      <div className="flex-1 overflow-auto px-2 pb-2 pt-1">
         {rootSessions.length > 0 && (
-          <div className="px-1">
-            <div className="flex items-center justify-between px-1.5 mb-2">
-              <span className="text-[11px] tracking-[0.18em] uppercase" style={{ color: "rgba(255,255,255,0.28)" }}>
+          <div className="mb-3">
+            <div className="flex items-center justify-between px-1 mb-1.5">
+              <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.36)" }}>
                 最近对话
               </span>
               <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.2)" }}>
                 {rootSessions.length}
               </span>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {rootSessions
                 .filter((session) => !searchText || session.name.toLowerCase().includes(searchText.toLowerCase()))
                 .map((session) => {
@@ -901,9 +1714,8 @@ export function ProjectGeneratePage() {
           </div>
         )}
 
-        {fileTree.map((folder) => {
+        {fileTree.filter((folder) => folder.id !== "art").map((folder) => {
           const isExpanded = expandedFolders[folder.id];
-          const isSubjectFolder = folder.id === "art";
           const visibleSessions = folder.sessions.filter((session) => {
             if (!searchText) return true;
             const keyword = searchText.toLowerCase();
@@ -917,97 +1729,64 @@ export function ProjectGeneratePage() {
           return (
             <div
               key={folder.id}
-              className="rounded-2xl overflow-hidden"
-              style={{
-                background: "linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.02) 100%)",
-                border: "1px solid rgba(255,255,255,0.05)",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
-              }}
+              className="mb-2 overflow-visible rounded-xl"
+              style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.055)" }}
             >
               <button
                 onClick={() => toggleFolder(folder.id)}
-                className="w-full flex items-center gap-2 px-3 py-3 text-xs transition-colors"
-                style={{ color: "rgba(255,255,255,0.78)" }}
+                className="group relative flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-white/5"
+                style={{
+                  background: isExpanded ? "rgba(255,255,255,0.04)" : "transparent",
+                  color: "rgba(255,255,255,0.82)",
+                }}
               >
-                <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(232,115,34,0.1)", border: "1px solid rgba(232,115,34,0.14)" }}>
-                  {isExpanded ? <FolderOpen size={13} style={{ color: "#E87322" }} /> : <Folder size={13} style={{ color: "#D68A4E" }} />}
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="text-[13px] font-medium truncate">{folder.name}</div>
-                  <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.28)" }}>
-                    {visibleSessions.length} 个内容
+                <ChevronDown size={13} style={{ color: "rgba(255,255,255,0.42)", transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", flexShrink: 0 }} />
+                <Folder size={15} strokeWidth={1.7} style={{ color: isExpanded ? "#E87322" : "rgba(255,255,255,0.44)", flexShrink: 0 }} />
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">{folder.name}</span>
+                <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ color: "rgba(255,255,255,0.32)", background: "rgba(255,255,255,0.04)" }}>
+                  {folder.sessions.length}
+                </span>
+                <button
+                  className="flex h-6 w-6 items-center justify-center rounded-md opacity-70 transition-colors hover:bg-white/10 group-hover:opacity-100"
+                  style={{ background: sessionMenuId === `${folder.id}:folder` ? "rgba(232,115,34,0.16)" : "transparent", color: sessionMenuId === `${folder.id}:folder` ? "#E87322" : "rgba(255,255,255,0.36)" }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSessionMenuId(sessionMenuId === `${folder.id}:folder` ? null : `${folder.id}:folder`);
+                  }}
+                >
+                  <MoreHorizontal size={13} />
+                </button>
+                {sessionMenuId === `${folder.id}:folder` && (
+                  <div
+                    className="absolute right-2 top-[38px] z-30 overflow-hidden rounded-xl"
+                    style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", minWidth: "130px" }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <button onClick={() => setCreatingSessionInFolder(folder.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-white/5" style={{ color: "rgba(255,255,255,0.72)" }}>
+                      <Plus size={10} />新建对话
+                    </button>
+                    <button onClick={() => startRenameSession(folder.id, folder.sessions[0]?.id ?? "")} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-white/5" style={{ color: "rgba(255,255,255,0.62)" }}>
+                      <Pencil size={10} />重命名
+                    </button>
+                    <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+                    <button onClick={() => toast.success(`已删除${folder.name}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-red-900/20" style={{ color: "#ff6b6b" }}>
+                      <Trash2 size={10} />删除
+                    </button>
                   </div>
-                </div>
-                <div className="px-2 py-0.5 rounded-full text-[10px]" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)" }}>
-                  {visibleSessions.length}
-                </div>
-                <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.28)", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", flexShrink: 0 }} />
+                )}
               </button>
 
               {isExpanded && (
                 <div className="px-2 pb-2">
-                  {visibleSessions.map((session) => {
-                    const isActive = session.id === activeSession;
-                    const isRenamingSession = renamingSessionId === session.id;
-                    const showSessionMenu = sessionMenuId === session.id;
-                    return (
-                      <div key={session.id} className="flex items-center group relative">
-                        <button
-                          className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition-colors min-w-0"
-                          style={{
-                            background: isActive ? "rgba(232,115,34,0.12)" : "transparent",
-                            color: isActive ? "#F3AB72" : "rgba(255,255,255,0.62)",
-                          }}
-                          onClick={() => setActiveSession(session.id)}
-                        >
-                          <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: isActive ? "rgba(232,115,34,0.16)" : "rgba(255,255,255,0.05)" }}>
-                            <MessageSquare size={11} style={{ opacity: isActive ? 1 : 0.7 }} />
-                          </div>
-                          {isRenamingSession ? (
-                            <input autoFocus className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded min-w-0"
-                              style={{ border: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
-                              value={renameValue}
-                              onChange={(e) => setRenameValue(e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              onBlur={() => confirmRenameSession(folder.id, session.id)}
-                              onKeyDown={(e) => { if (e.key === "Enter") confirmRenameSession(folder.id, session.id); if (e.key === "Escape") setRenamingSessionId(null); }}
-                            />
-                          ) : (
-                            <span className="text-xs truncate flex-1" style={{ fontSize: "12px" }}>{session.name}</span>
-                          )}
-                        </button>
-                        {!isSubjectFolder && (
-                          <button
-                            className="opacity-0 group-hover:opacity-100 flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5"
-                            onClick={(e) => { e.stopPropagation(); setSessionMenuId(showSessionMenu ? null : session.id); }}
-                          >
-                            <MoreHorizontal size={10} style={{ color: "rgba(255,255,255,0.35)" }} />
-                          </button>
-                        )}
-                        {!isSubjectFolder && showSessionMenu && (
-                          <div className="absolute right-0 top-full z-20 rounded-xl overflow-hidden" style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", minWidth: "130px" }} onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => startRenameSession(folder.id, session.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-white/5" style={{ color: "rgba(255,255,255,0.7)" }}>
-                              <Pencil size={10} />重命名
-                            </button>
-                            <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
-                            <button onClick={() => requestDeleteSession(folder.id, session.id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-red-900/20" style={{ color: "#ff6b6b" }}>
-                              <Trash2 size={10} />删除
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {isSubjectFolder ? null : creatingSessionInFolder === folder.id ? (
-                    <div className="flex items-center gap-2 px-3 py-2.5">
-                      <MessageSquare size={11} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                  {creatingSessionInFolder === folder.id ? (
+                    <div className="mb-1 flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: "rgba(255,255,255,0.035)" }}>
+                      <Plus size={11} style={{ color: "#E87322", flexShrink: 0 }} />
                       <input autoFocus
-                        className="flex-1 bg-transparent text-xs outline-none px-1 py-0.5 rounded"
-                        style={{ border: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
+                        className="min-w-0 flex-1 bg-transparent px-1 py-0.5 text-xs outline-none"
+                        style={{ color: "rgba(255,255,255,0.82)", borderBottom: "1px solid rgba(232,115,34,0.45)", caretColor: "#E87322" }}
                         value={newSessionName}
                         onChange={(e) => setNewSessionName(e.target.value)}
-                        placeholder="输入内容名称..."
+                        placeholder="输入对话名称"
                         onKeyDown={(e) => { if (e.key === "Enter") createSession(folder.id); if (e.key === "Escape") { setCreatingSessionInFolder(null); setNewSessionName(""); } }}
                         onBlur={() => { if (newSessionName.trim()) createSession(folder.id); else { setCreatingSessionInFolder(null); setNewSessionName(""); } }}
                       />
@@ -1015,87 +1794,142 @@ export function ProjectGeneratePage() {
                   ) : (
                     <button
                       onClick={() => setCreatingSessionInFolder(folder.id)}
-                      className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs transition-colors w-full"
-                      style={{ color: "rgba(255,255,255,0.32)", background: "rgba(255,255,255,0.025)" }}
+                      className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/5"
+                      style={{ color: "rgba(255,255,255,0.36)" }}
                     >
-                      <Plus size={10} />新建对话
+                      <Plus size={11} style={{ color: "#E87322", flexShrink: 0 }} />
+                      <span className="text-[10px] font-medium">新增对话</span>
                     </button>
                   )}
+                  {visibleSessions.map((session) => {
+                    const isActive = session.id === activeSession;
+                    const isRenamingSession = renamingSessionId === session.id;
+                    const showSessionMenu = sessionMenuId === session.id;
+                    return (
+                      <div
+                        key={session.id}
+                        className="group relative mb-1 flex items-center gap-2 rounded-lg px-2 py-1.5"
+                        style={{ background: isActive ? "rgba(232,115,34,0.11)" : "transparent", border: `1px solid ${isActive ? "rgba(232,115,34,0.18)" : "transparent"}` }}
+                      >
+                        <Film size={11} strokeWidth={1.6} style={{ color: isActive ? "#E87322" : "rgba(255,255,255,0.42)", flexShrink: 0 }} />
+                        <button
+                          className="min-w-0 flex-1 text-left transition-opacity hover:opacity-85"
+                          style={{
+                            color: isActive ? "#F3AB72" : "rgba(255,255,255,0.74)",
+                          }}
+                          onClick={() => setActiveSession(session.id)}
+                        >
+                          {isRenamingSession ? (
+                            <input autoFocus className="w-full bg-transparent px-1 py-0.5 text-xs outline-none"
+                              style={{ borderBottom: "1px solid rgba(232,115,34,0.5)", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onBlur={() => confirmRenameSession(folder.id, session.id)}
+                              onKeyDown={(e) => { if (e.key === "Enter") confirmRenameSession(folder.id, session.id); if (e.key === "Escape") setRenamingSessionId(null); }}
+                            />
+                          ) : (
+                            <span className="block truncate text-xs">{session.name}</span>
+                          )}
+                        </button>
+                        <button
+                          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity hover:bg-white/5 group-hover:opacity-100"
+                          onClick={(e) => { e.stopPropagation(); setSessionMenuId(showSessionMenu ? null : session.id); }}
+                        >
+                          <MoreHorizontal size={11} style={{ color: "rgba(255,255,255,0.34)" }} />
+                        </button>
+                        {showSessionMenu && (
+                          <div className="absolute right-0 top-full z-20 overflow-hidden rounded-xl" style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", minWidth: "130px" }} onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => startRenameSession(folder.id, session.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-white/5" style={{ color: "rgba(255,255,255,0.7)" }}>
+                              <Pencil size={10} />重命名
+                            </button>
+                            <div style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+                            <button onClick={() => requestDeleteSession(folder.id, session.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-red-900/20" style={{ color: "#ff6b6b" }}>
+                              <Trash2 size={10} />删除
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           );
         })}
       </div>
-
-      <div className="px-3 py-3 border-t flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <button
-          onClick={() => {
-            setCreatingRootSession(true);
-            setNewRootSessionName("");
-          }}
-          className="w-full h-10 rounded-xl text-sm font-medium transition-opacity hover:opacity-90"
-          style={{
-            background: "linear-gradient(180deg, #F29A54 0%, #E87322 100%)",
-            color: "#fff",
-            boxShadow: "0 10px 24px rgba(232,115,34,0.25)",
-          }}
-        >
-          新建剧集
-        </button>
-        {creatingRootSession && (
-          <div className="mt-2 px-3 py-2 rounded-xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <input
-              autoFocus
-              className="w-full bg-transparent text-xs outline-none"
-              style={{ color: "rgba(255,255,255,0.78)", caretColor: "#E87322" }}
-              value={newRootSessionName}
-              onChange={(e) => setNewRootSessionName(e.target.value)}
-              placeholder="输入剧集名称..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newRootSessionName.trim()) {
-                  const s: Session = { id: `root${Date.now()}`, name: newRootSessionName.trim() };
-                  setRootSessions((prev) => [...prev, s]);
-                  setActiveSession(s.id);
-                  setNewRootSessionName("");
-                  setCreatingRootSession(false);
-                }
-                if (e.key === "Escape") {
-                  setCreatingRootSession(false);
-                  setNewRootSessionName("");
-                }
-              }}
-              onBlur={() => {
-                if (newRootSessionName.trim()) {
-                  const s: Session = { id: `root${Date.now()}`, name: newRootSessionName.trim() };
-                  setRootSessions((prev) => [...prev, s]);
-                  setActiveSession(s.id);
-                }
-                setNewRootSessionName("");
-                setCreatingRootSession(false);
-              }}
-            />
-          </div>
-        )}
-      </div>
     </div>
   );
 
   // ── Sidebar: Assets Tab ──────────────────────────────────────────────────────
   const renderAssetsTab = () => {
-    return <ProjectAssetsSidebarPanel projectId={id ?? "1"} />;
+    return (
+      <div className="relative h-full" data-generate-guide-target="asset-link">
+        <div
+          className="pointer-events-none absolute left-11 top-[260px] z-10 h-16 w-16 overflow-hidden rounded-xl"
+          data-generate-guide-target="asset-drag-demo"
+          style={{ opacity: showGenerateGuide && currentGenerateGuideStep?.target === "asset-link" ? 0.98 : 0, border: "2px solid rgba(245,166,35,0.76)", boxShadow: "0 14px 30px rgba(0,0,0,0.36)" }}
+        >
+          <img src="https://images.unsplash.com/photo-1743951896798-2936f661f939?w=160&q=70" alt="" className="h-full w-full object-cover" />
+        </div>
+        <ProjectAssetsSidebarPanel projectId={id ?? "1"} activeSubTab="generate" hideSubTabs hideTitle hideSourceFilter title="资产" />
+      </div>
+    );
+  };
+
+  const renderSubjectTab = () => {
+    return (
+      <div className="h-full" data-generate-guide-target="subject-link">
+        <ProjectAssetsSidebarPanel
+          projectId={id ?? "1"}
+          activeSubTab="subject"
+          hideSubTabs
+          hideTitle
+          hideSourceFilter
+          title="主体"
+          guideSubjectDetailOpen={showGenerateGuide && currentGenerateGuideStep?.target === "generated-to-subject"}
+          guideSubjectEditing={showGenerateGuide && currentGenerateGuideStep?.target === "generated-to-subject"}
+          onSubjectCardClick={() => {
+            if (showGenerateGuide && currentGenerateGuideStep?.target === "subject-detail-edit") {
+              setGenerateGuideStep((value) => Math.min(GENERATE_GUIDE_STEPS.length - 1, value + 1));
+            }
+          }}
+        />
+      </div>
+    );
   };
 
   // ── Sidebar: Storyboard Tab ──────────────────────────────────────────────────
   const renderStoryboardTab = () => {
-    return <StoryboardSidebarPanel />;
+    return (
+      <div className="h-full" data-generate-guide-target="storyboard-link">
+        <StoryboardSidebarPanel onSendToChat={(content) => {
+          setPromptText((current) => current.trim() ? `${current}\n\n${content}` : content);
+        }} />
+      </div>
+    );
   };
 
   const SIDEBAR_TABS: { key: SidebarTab; label: string }[] = [
-    { key: "files", label: "文件" },
+    { key: "files", label: "对话" },
     { key: "assets", label: "资产" },
+    { key: "subject", label: "主体" },
     { key: "storyboard", label: "分镜" },
   ];
+  const sidebarWidth = 280;
+  const guideSidebarTab: SidebarTab | null =
+    showGenerateGuide && currentGenerateGuideStep
+      ? currentGenerateGuideStep.target === "asset-link" || currentGenerateGuideStep.target === "asset-to-prompt"
+        ? "assets"
+        : currentGenerateGuideStep.target === "subject-link" || currentGenerateGuideStep.target === "subject-to-prompt" || currentGenerateGuideStep.target === "subject-detail-edit" || currentGenerateGuideStep.target === "generated-to-subject"
+          ? "subject"
+          : currentGenerateGuideStep.target === "storyboard-link" || currentGenerateGuideStep.target === "storyboard-send" || currentGenerateGuideStep.target === "generated-to-storyboard"
+            ? "storyboard"
+            : currentGenerateGuideStep.target === "session-tree" || currentGenerateGuideStep.target === "generation-results" || currentGenerateGuideStep.target === "apply-result" || currentGenerateGuideStep.target === "apply-dialog"
+              ? "files"
+              : null
+      : null;
+  const visibleSidebarTab = guideSidebarTab ?? sidebarTab;
 
   return (
     <>
@@ -1108,13 +1942,14 @@ export function ProjectGeneratePage() {
             left: 0,
             top: 0,
             bottom: 0,
-            width: sidebarCollapsed ? "0px" : "240px",
+            width: sidebarCollapsed ? "0px" : `${sidebarWidth}px`,
             background: "#110E0A",
             borderRight: sidebarCollapsed ? "none" : "1px solid rgba(255,255,255,0.05)",
             transition: "width 0.2s ease",
             overflow: "visible",
             zIndex: 20,
           }}
+          data-generate-guide-target={visibleSidebarTab === "files" ? "session-tree" : visibleSidebarTab === "subject" ? "subject-panel" : undefined}
         >
           {/* Collapse toggle */}
           <button
@@ -1131,22 +1966,23 @@ export function ProjectGeneratePage() {
               <div className="flex flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
                 {SIDEBAR_TABS.map((tab) => (
                   <button key={tab.key} onClick={() => setSidebarTab(tab.key)} className="flex-1 py-3 text-xs transition-colors relative"
-                    style={{ color: sidebarTab === tab.key ? "#E87322" : "rgba(255,255,255,0.4)", borderBottom: sidebarTab === tab.key ? "2px solid #E87322" : "2px solid transparent" }}>
+                    style={{ color: visibleSidebarTab === tab.key ? "#E87322" : "rgba(255,255,255,0.4)", borderBottom: visibleSidebarTab === tab.key ? "2px solid #E87322" : "2px solid transparent" }}>
                     {tab.label}
                   </button>
                 ))}
               </div>
               <div className="flex-1 overflow-hidden">
-                {sidebarTab === "files" && renderFilesTab()}
-                {sidebarTab === "assets" && renderAssetsTab()}
-                {sidebarTab === "storyboard" && renderStoryboardTab()}
+                {visibleSidebarTab === "files" && renderFilesTab()}
+                {visibleSidebarTab === "assets" && renderAssetsTab()}
+                {visibleSidebarTab === "subject" && renderSubjectTab()}
+                {visibleSidebarTab === "storyboard" && renderStoryboardTab()}
               </div>
             </>
           )}
         </div>
 
         {/* ── Main Chat Area ─────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: "#120D08", marginLeft: sidebarCollapsed ? "0px" : "240px", transition: "margin-left 0.2s ease" }}>
+        <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: "#120D08", marginLeft: sidebarCollapsed ? "0px" : `${sidebarWidth}px`, transition: "margin-left 0.2s ease" }}>
           {/* Header with Visible Filter Tags */}
           <div className="px-6 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
             <div className="flex items-center justify-between gap-4">
@@ -1377,58 +2213,210 @@ export function ProjectGeneratePage() {
           </div>
 
           {/* Prompt Input */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-6 pb-6">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-6 pb-4">
             <div
-              className="pointer-events-auto w-full max-w-6xl rounded-[36px] p-6"
+              className="pointer-events-auto w-full max-w-5xl rounded-3xl overflow-hidden"
+              data-generate-guide-target="prompt-drop"
               style={{
-                background: "linear-gradient(180deg, rgba(255,255,255,0.16) 0%, rgba(18,13,8,0.92) 12%, rgba(10,8,13,0.96) 100%)",
-                border: "1px solid rgba(255,255,255,0.22)",
-                boxShadow: "0 30px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.18)",
-                backdropFilter: "blur(18px)",
+                background: "linear-gradient(180deg, rgba(232,115,34,0.12) 0%, rgba(14,10,7,0.96) 15%, rgba(10,8,13,0.97) 100%)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                backdropFilter: "blur(12px)",
               }}
             >
-              <div className="flex items-start gap-4">
-                <button className="w-18 h-18 rounded-2xl flex items-center justify-center flex-shrink-0 mt-1" style={{ width: "76px", height: "76px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.22)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1)" }}>
-                  <Plus size={34} style={{ color: "rgba(255,255,255,0.75)" }} />
+              {/* Upload buttons */}
+              <div className="flex items-start gap-2 px-5 pt-4 pb-2">
+                <button
+                  className="flex flex-col items-center gap-1.5 px-4 py-3 rounded-xl transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+                >
+                  <Plus size={16} style={{ color: "rgba(255,255,255,0.6)" }} />
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.55)" }}>参考内容</span>
                 </button>
-                <div className="flex-1 min-h-[170px] flex flex-col">
-                  <div className="flex-1">
-                    <textarea
-                      value={promptText}
-                      onChange={(e) => setPromptText(e.target.value)}
-                      placeholder={`在 "${activeSessionName}" 中继续创作...`}
-                      className="w-full bg-transparent text-sm resize-none outline-none"
-                      style={{ color: "rgba(255,255,255,0.82)", caretColor: "#E87322", lineHeight: 1.7, minHeight: "120px", maxHeight: "220px" }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between pt-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>图片生成</span>
-                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>Image-2</span>
-                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>智能比例</span>
-                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>1K</span>
-                      <span className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.78)" }}>4张</span>
-                      <button className="text-xs px-3 py-1.5 rounded-xl" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.55)" }}>
-                        选择风格
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>{promptText.length} / 1000</span>
-                      <button
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-white text-sm transition-opacity hover:opacity-85"
-                        style={{ background: promptText.trim() ? "#E87322" : "rgba(232,115,34,0.3)", boxShadow: promptText.trim() ? "0 12px 30px rgba(232,115,34,0.28)" : "none" }}
-                        disabled={!promptText.trim()}
+                <button
+                  className="flex flex-col items-center gap-1.5 px-4 py-3 rounded-xl transition-opacity hover:opacity-80"
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+                  onClick={() => setShowVirtualIPModal(true)}
+                >
+                  <Plus size={16} style={{ color: "rgba(255,255,255,0.6)" }} />
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.55)" }}>虚拟IP</span>
+                </button>
+
+                {/* Prompt assets chips */}
+                {promptAssets.length > 0 && (
+                  <div className="flex items-start gap-2 ml-2">
+                    {promptAssets.map(pa => (
+                      <div
+                        key={pa.id}
+                        className="relative flex flex-col items-center flex-shrink-0 cursor-pointer group"
+                        style={{ width: "64px" }}
                       >
-                        <Send size={14} />生成
-                      </button>
-                    </div>
+                        <div className="relative w-14 h-14 rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
+                          <img src={pa.src} alt={pa.name} className="w-full h-full object-cover" />
+                          {/* X remove button */}
+                          <button
+                            className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPromptAssets(prev => prev.filter(p => p.id !== pa.id));
+                            }}
+                          >
+                            <X size={8} style={{ color: "rgba(255,255,255,0.8)" }} />
+                          </button>
+                        </div>
+                        <span className="text-[10px] mt-1 text-center truncate w-full" style={{ color: "rgba(255,255,255,0.5)" }}>{pa.name}</span>
+                      </div>
+                    ))}
                   </div>
+                )}
+              </div>
+
+              {/* Textarea with placeholder */}
+              <div className="px-5 pb-2">
+                {promptText ? (
+                  <textarea
+                    value={promptText}
+                    onChange={(e) => setPromptText(e.target.value)}
+                    className="w-full bg-transparent text-sm resize-none outline-none"
+                    style={{ color: "rgba(255,255,255,0.82)", caretColor: "#E87322", lineHeight: 1.7, minHeight: "60px", maxHeight: "160px", fontSize: "14px" }}
+                  />
+                ) : (
+                  <div
+                    className="text-sm leading-relaxed cursor-text"
+                    style={{ color: "rgba(255,255,255,0.3)", lineHeight: 1.7, fontSize: "14px" }}
+                    onClick={() => {
+                      const el = document.getElementById("prompt-textarea");
+                      el?.focus();
+                    }}
+                  >
+                    请将人像参考上传至「虚拟IP」入口(从左侧主体库拖拽上传)，待审核通过后即可使用，「参考内容」仅限上传非人物类的参考图/视频/音频等多种模态的参考素材。
+                  </div>
+                )}
+                {promptText && (
+                  <textarea
+                    id="prompt-textarea"
+                    value={promptText}
+                    onChange={(e) => setPromptText(e.target.value)}
+                    className="w-full bg-transparent text-sm resize-none outline-none hidden"
+                    style={{ color: "rgba(255,255,255,0.82)", caretColor: "#E87322", lineHeight: 1.7, minHeight: "60px", maxHeight: "160px", fontSize: "14px" }}
+                  />
+                )}
+              </div>
+
+              {/* Character count */}
+              <div className="px-5 pb-3 flex justify-end">
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{promptText.length} / 3000</span>
+              </div>
+
+              {/* Bottom toolbar */}
+              <div className="flex items-center justify-between px-4 pb-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Generation type */}
+                  <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-white/10" style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", border: "1px solid rgba(232,115,34,0.2)" }}>
+                    视频生成
+                    <ChevronDown size={10} />
+                  </button>
+                  {/* Model */}
+                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-white/10" style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <LucideImage size={11} style={{ color: "#E87322" }} />
+                    Seedance 2.0 Fast
+                    <ChevronDown size={10} />
+                  </button>
+                  {/* Reference mode */}
+                  <button className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-white/10" style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    全能参考
+                    <ChevronDown size={10} />
+                  </button>
+                  {/* Ratio/Resolution/Count/Duration */}
+                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors hover:bg-white/10" style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.8)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <Image size={11} />
+                    智能比例
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>|</span>
+                    720p
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>|</span>
+                    1个
+                    <span style={{ color: "rgba(255,255,255,0.4)" }}>|</span>
+                    5s
+                  </button>
+                  {/* Globe OFF */}
+                  <button className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors hover:bg-white/10" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <Globe size={12} style={{ color: "rgba(255,255,255,0.4)" }} />
+                    <span style={{ position: "absolute", bottom: "-2px", right: "-3px", fontSize: "6px", fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>OFF</span>
+                  </button>
+                  {/* Reference ON */}
+                  <button className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors hover:bg-white/10 relative" style={{ background: "rgba(232,115,34,0.15)", border: "1px solid rgba(232,115,34,0.25)" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#E87322" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                    </svg>
+                    <span style={{ position: "absolute", bottom: "-2px", right: "-2px", fontSize: "6px", fontWeight: 600, color: "#E87322" }}>ON</span>
+                  </button>
+                </div>
+
+                {/* Token count + Send button */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
+                    <div className="w-3 h-3 rounded" style={{ background: "linear-gradient(135deg, #E87322, #F5A623)" }} />
+                    <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.6)" }}>22</span>
+                  </div>
+                  <button
+                    className="w-10 h-10 rounded-full flex items-center justify-center transition-opacity hover:opacity-85"
+                    style={{ background: promptText.trim() ? "linear-gradient(135deg, #C47A3A, #E87322)" : "rgba(232,115,34,0.25)", boxShadow: promptText.trim() ? "0 4px 16px rgba(232,115,34,0.28)" : "none" }}
+                    disabled={!promptText.trim()}
+                    onClick={() => {
+                      if (promptText.trim()) {
+                        toast.success("已发送生成请求");
+                        setPromptText("");
+                      }
+                    }}
+                  >
+                    <Send size={14} className="text-white" />
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+      {showVirtualIPModal && (
+        <VirtualIPModal
+          open={showVirtualIPModal}
+          onClose={() => setShowVirtualIPModal(false)}
+          virtualIPItems={virtualIPItems}
+          onSelectAsset={(item) => {
+            if (!promptAssets.find(p => p.id === item.id)) {
+              setPromptAssets(prev => [...prev, item]);
+              toast.success(`已添加「${item.name}」到输入框`);
+              setShowVirtualIPModal(false);
+            } else {
+              toast.info("该资产已在输入框中");
+            }
+          }}
+          virtualIPType={virtualIPType}
+          setVirtualIPType={setVirtualIPType}
+          assetName={virtualIPAssetName}
+          setAssetName={setVirtualIPAssetName}
+          uploadedFile={virtualIPUploadedFile}
+          setUploadedFile={setVirtualIPUploadedFile}
+          onConfirmUpload={() => {
+            if (!virtualIPAssetName.trim()) {
+              toast.error("请输入资产名称");
+              return;
+            }
+            const newId = `vip_${Date.now()}`;
+            const newAsset = {
+              id: newId,
+              src: virtualIPUploadedFile || "https://images.unsplash.com/photo-1743951896798-2936f661f939?w=200&q=70",
+              name: virtualIPAssetName,
+              status: "待审核" as const,
+            };
+            setVirtualIPItems(prev => [...prev, newAsset]);
+            setVirtualIPUploadedFile(null);
+            setVirtualIPAssetName("");
+            toast.success("虚拟IP已提交审核");
+          }}
+        />
+      )}
       {deleteSessionState && (
         <DeleteSessionModal
           sessionName={deleteSessionState.sessionName}
@@ -1451,6 +2439,62 @@ export function ProjectGeneratePage() {
       )}
       {storyboardDetailPanel && (
         <StoryboardDetailModal panel={storyboardDetailPanel} onClose={() => setStoryboardDetailPanel(null)} />
+      )}
+      {applyAsset && (
+        <ApplyImageModal
+          asset={applyAsset}
+          fileTree={fileTree}
+          targetType={applyTargetType}
+          setTargetType={setApplyTargetType}
+          subjectCategory={subjectCategory}
+          setSubjectCategory={setSubjectCategory}
+          selectedEpisode={selectedEpisode}
+          setSelectedEpisode={setSelectedEpisode}
+          selectedShot={selectedShot}
+          setSelectedShot={setSelectedShot}
+          onCancel={() => setApplyAsset(null)}
+          onConfirm={confirmApplyAsset}
+        />
+      )}
+      {showGenerateGuide && currentGenerateGuideStep && (
+        <GenerateModuleGuide
+          step={generateGuideStep}
+          total={GENERATE_GUIDE_STEPS.length}
+          current={currentGenerateGuideStep}
+          applyDialogPhase={currentGenerateGuideStep.target === "apply-dialog" ? (applyGuideExplainedSubject ? "storyboard" : "subject") : undefined}
+          onPrev={() => {
+            if (generateGuideStep === 0) {
+              closeGenerateGuide();
+              navigate(`/project/${id}/subjects?guide=1&guideStep=last`);
+              return;
+            }
+            setGenerateGuideStep((value) => Math.max(0, value - 1));
+          }}
+          onNext={() => {
+            if (currentGenerateGuideStep.target === "apply-result") {
+              const firstImageMessage = CHAT_MESSAGES.find((msg) => msg.type === "ai" && "images" in msg && msg.images?.[0]);
+              if (firstImageMessage && firstImageMessage.type === "ai" && "images" in firstImageMessage && firstImageMessage.images?.[0]) {
+                openApplyDialog({ type: "image", src: firstImageMessage.images[0], anchorId: `${firstImageMessage.id}-0` });
+              }
+              return;
+            }
+            if (currentGenerateGuideStep.target === "apply-dialog") {
+              if (!applyGuideExplainedSubject) {
+                setApplyGuideExplainedSubject(true);
+                setApplyTargetType("storyboard");
+                return;
+              }
+              confirmApplyAsset();
+              return;
+            }
+            if (currentGenerateGuideStep.target === "subject-detail-edit") {
+              setGenerateGuideStep((value) => Math.min(GENERATE_GUIDE_STEPS.length - 1, value + 1));
+              return;
+            }
+            setGenerateGuideStep((value) => Math.min(GENERATE_GUIDE_STEPS.length - 1, value + 1));
+          }}
+          onClose={closeGenerateGuide}
+        />
       )}
     </>
   );

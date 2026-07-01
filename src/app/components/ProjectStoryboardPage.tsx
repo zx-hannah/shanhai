@@ -1,86 +1,33 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useId, type CSSProperties, type ReactNode } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
-  AlignLeft,
-  ArrowRight,
-  Check,
-  CheckSquare,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Copy,
-  Download,
-  Edit3,
-  Eye,
-  Filter,
-  Film,
-  GripVertical,
-  Image as LucideImage,
-  Info,
-  Link,
-  MessageSquare,
-  MoreHorizontal,
-  MoveHorizontal,
-  Pencil,
-  Plus,
-  Share2,
-  Trash2,
-  Upload,
-  UserPlus,
-  Video,
-  X,
+  ChevronRight, Plus, Film, MoreHorizontal, AlignLeft, LayoutGrid,
+  Filter, Settings2, Upload, Download, X, Check, Pencil, Trash2,
+  Users, Clock, ChevronDown, Share2, Link, Eye, Edit3,
+  ChevronLeft, Sparkles, Package, Star, Search, Image as LucideImage, Video, Music,
+  Copy, Send, MessageSquare, Target, RotateCcw, RotateCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
 import { ProjectAssetsSidebarPanel } from "./ProjectAssetsSidebarPanel";
 
-type StoryViewKey = "master" | "image" | "video";
-type StorySidebarTab = "files" | "assets";
-type ProgressState = "待上传" | "待审核" | "待修改" | "已完成";
-type AssetKind = "image" | "video";
-type CommentStatus = "待处理" | "已处理";
-
-interface StoryComment {
-  id: string;
-  author: string;
-  status: CommentStatus;
-  time: string;
-  content: string;
-  timestamp?: string;
-}
-
-interface StoryAsset {
-  id: string;
-  src: string;
-  label: string;
-  countLabel: string;
-  uploadInfo: string;
-}
+// ─── Data types ───────────────────────────────────────────────────────────────
+type ProgressStatus = "待审核" | "审核中" | "已完成" | "未开始";
+type ViewMode = "card" | "table";
 
 interface StoryPanel {
   id: string;
   rowNo: number;
-  sceneNo: number;
+  eventType: "场" | "景" | "特效";
+  sceneLabel: string;
   shotNo: string;
   script: string;
-  referenceImages: string[];
-  storyboardImages: StoryAsset[];
-  videoAssets: StoryAsset[];
-  dub: string;
-  owners: string[];
-  duration: number;
-  totalDone: boolean;
-  imageProgress: ProgressState;
-  videoProgress: ProgressState;
+  refImg?: string;
+  storyboardImg?: string;
+  storyboardVideo?: string;
+  crew: string[];
+  duration: string;
+  progress: ProgressStatus;
   notes: string;
-  imageComments: StoryComment[];
-  videoComments: StoryComment[];
 }
 
 interface StoryScene {
@@ -95,2489 +42,1721 @@ interface StoryEpisode {
   scenes: StoryScene[];
 }
 
-interface StoryCustomView {
-  id: string;
-  name: string;
-  type: "custom";
-  columns: ColumnKey[];
-}
-
-type StoryView = StoryViewKey | StoryCustomView;
-
-type ColumnKey =
-  | "sceneNo"
-  | "shotNo"
-  | "script"
-  | "referenceImages"
-  | "storyboardImages"
-  | "videoAssets"
-  | "dub"
-  | "owners"
-  | "duration"
-  | "totalDone"
-  | "imageProgress"
-  | "videoProgress"
-  | "notes";
-
-interface ColumnConfig {
-  key: ColumnKey;
-  label: string;
-  width: number;
-  sticky?: boolean;
-}
-
-const PROGRESS_ORDER: ProgressState[] = ["待上传", "待审核", "待修改", "已完成"];
-
-const PROGRESS_META: Record<ProgressState, { bg: string; color: string; dot: string }> = {
-  待上传: { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.62)", dot: "#8C867E" },
-  待审核: { bg: "rgba(232,115,34,0.14)", color: "#E87322", dot: "#E87322" },
-  待修改: { bg: "rgba(238,83,83,0.14)", color: "#F06B6B", dot: "#F06B6B" },
-  已完成: { bg: "rgba(86,196,138,0.14)", color: "#56C48A", dot: "#56C48A" },
-};
-
-const COMMENT_STATUS_META: Record<CommentStatus, { bg: string; color: string }> = {
-  待处理: { bg: "rgba(232,115,34,0.15)", color: "#E87322" },
-  已处理: { bg: "rgba(86,196,138,0.15)", color: "#56C48A" },
-};
-
-const ALL_COLUMNS: ColumnConfig[] = [
-  { key: "sceneNo", label: "场次", width: 92, sticky: true },
-  { key: "shotNo", label: "分镜号", width: 96, sticky: true },
-  { key: "script", label: "文字脚本", width: 280 },
-  { key: "referenceImages", label: "画面参考", width: 160 },
-  { key: "storyboardImages", label: "分镜图", width: 170 },
-  { key: "videoAssets", label: "分镜视频", width: 170 },
-  { key: "dub", label: "配音", width: 140 },
-  { key: "owners", label: "负责人", width: 130 },
-  { key: "duration", label: "时长", width: 92 },
-  { key: "totalDone", label: "总进度", width: 92 },
-  { key: "imageProgress", label: "画面进度", width: 128 },
-  { key: "videoProgress", label: "视频进度", width: 128 },
-  { key: "notes", label: "备注", width: 180 },
-];
-
-const DEFAULT_MASTER_COLUMNS: ColumnKey[] = ALL_COLUMNS.map((column) => column.key);
-const DEFAULT_IMAGE_COLUMNS: ColumnKey[] = ["sceneNo", "shotNo", "script", "storyboardImages", "imageProgress"];
-const DEFAULT_VIDEO_COLUMNS: ColumnKey[] = ["sceneNo", "shotNo", "script", "videoAssets", "videoProgress"];
-
-const STORYBOARD_DATA: StoryEpisode[] = [
+// ─── Mock Data ────────────────────────────────────────────────────────────────
+const EPISODES: StoryEpisode[] = [
   {
     id: "ep1",
     name: "第一集",
     scenes: [
       {
-        id: "ep1-sc1",
+        id: "s1",
         name: "第一幕 · 引子",
         panels: [
-          {
-            id: "panel-1",
-            rowNo: 1,
-            sceneNo: 1,
-            shotNo: "001",
-            script: "晨雾压过古道，白发女侠从云海深处走来，远处城楼露出轮廓。",
-            referenceImages: [
-              "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-            ],
-            storyboardImages: [
-              {
-                id: "img-1",
-                src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-                label: "分镜图 A",
-                countLabel: "2 条评论",
-                uploadInfo: "AI 生成 · 2026-05-11 14:20",
-              },
-              {
-                id: "img-2",
-                src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-                label: "分镜图 B",
-                countLabel: "原图",
-                uploadInfo: "上传 · 2026-05-11 16:08",
-              },
-            ],
-            videoAssets: [
-              {
-                id: "video-1",
-                src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-                label: "动态预演",
-                countLabel: "00:12 / 1 条评论",
-                uploadInfo: "AI 视频 · 2026-05-11 18:10",
-              },
-            ],
-            dub: "旁白：山海之间，风雪先至。",
-            owners: ["林月", "阿青"],
-            duration: 5.0,
-            totalDone: false,
-            imageProgress: "待审核",
-            videoProgress: "待上传",
-            notes: "镜头缓推，保留雾气层次",
-            imageComments: [
-              { id: "ic-1", author: "导演", status: "待处理", time: "今天 15:30", content: "人物边缘需要更干净，左肩轮廓再提亮。" },
-              { id: "ic-2", author: "美术", status: "已处理", time: "今天 16:02", content: "已根据批注修正头发高光，并补了一版烟雾。", },
-            ],
-            videoComments: [
-              { id: "vc-1", author: "制片", status: "待处理", time: "今天 18:40", content: "0:07 处推进太快，建议慢 20%。", timestamp: "00:07" },
-            ],
-          },
-          {
-            id: "panel-2",
-            rowNo: 2,
-            sceneNo: 1,
-            shotNo: "002",
-            script: "近景定格回眸，剑柄出现在右下角，风吹起发丝。",
-            referenceImages: [],
-            storyboardImages: [
-              {
-                id: "img-3",
-                src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-                label: "回眸特写",
-                countLabel: "1 张",
-                uploadInfo: "上传 · 2026-05-11 17:12",
-              },
-            ],
-            videoAssets: [],
-            dub: "女主：你终于来了。",
-            owners: ["阿青"],
-            duration: 3.5,
-            totalDone: true,
-            imageProgress: "已完成",
-            videoProgress: "待上传",
-            notes: "保留负空间给字幕",
-            imageComments: [],
-            videoComments: [],
-          },
-          {
-            id: "panel-3",
-            rowNo: 3,
-            sceneNo: 2,
-            shotNo: "003",
-            script: "古城楼全景，城门开启，人群向两侧退开。",
-            referenceImages: [
-              "https://images.unsplash.com/photo-1551264397-09c6f678a930?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-            ],
-            storyboardImages: [],
-            videoAssets: [
-              {
-                id: "video-2",
-                src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-                label: "城门开场",
-                countLabel: "00:08 / 原始版",
-                uploadInfo: "生成 · 2026-05-12 09:14",
-              },
-            ],
-            dub: "",
-            owners: ["道具组"],
-            duration: 4.2,
-            totalDone: false,
-            imageProgress: "待上传",
-            videoProgress: "待审核",
-            notes: "",
-            imageComments: [],
-            videoComments: [
-              { id: "vc-2", author: "导演", status: "待处理", time: "今天 10:22", content: "镜头末端的人群调度不够整齐。", timestamp: "00:06" },
-            ],
-          },
+          { id: "p1", rowNo: 1, eventType: "场", sceneLabel: "第1场", shotNo: "1", script: "本场在从利行办楼高昇独的没不功风，有著而理分，吞使亦不们事出的是轮止分这特别，区现在墒囧做方，不表土本术习，计特台国动时谁行。公车揭在", refImg: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", storyboardImg: "https://images.unsplash.com/photo-1636075219672-a422660ce589?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", crew: ["小明", "小红"], duration: "5s", progress: "待审核", notes: "" },
+          { id: "p2", rowNo: 2, eventType: "场", sceneLabel: "第1场", shotNo: "2", script: "本场在从利行办楼高昇独的没不功风，有著而理分，吞使亦不们事出的是轮止分这特别，区现在墒囧做方，不表土本术习，计特台国动时谁行。", refImg: undefined, storyboardImg: "https://images.unsplash.com/photo-1551264397-09c6f678a930?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", crew: [], duration: "5s", progress: "待审核", notes: "" },
+          { id: "p3", rowNo: 3, eventType: "景", sceneLabel: "第1场", shotNo: "3", script: "远景，云雾缭绕的仙山，配乐悠扬", refImg: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", storyboardImg: "https://images.unsplash.com/photo-1743951896798-2936f661f939?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", crew: ["小明"], duration: "3s", progress: "已完成", notes: "推镜头" },
+          { id: "p4", rowNo: 4, eventType: "场", sceneLabel: "第2场", shotNo: "1", script: "中远景，女主角从云雾中缓步走出，白发飘扬", refImg: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", storyboardImg: undefined, crew: ["小红"], duration: "4.5s", progress: "审核中", notes: "跟拍" },
+          { id: "p5", rowNo: 5, eventType: "特效", sceneLabel: "第2场", shotNo: "2", script: "全景，拔剑，剑光四射，特效叠加", refImg: "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", storyboardImg: "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", crew: ["小明", "小红"], duration: "2.5s", progress: "未开始", notes: "升格拍摄" },
         ],
       },
       {
-        id: "ep1-sc2",
+        id: "s2",
         name: "第二幕 · 对决",
         panels: [
-          {
-            id: "panel-4",
-            rowNo: 4,
-            sceneNo: 3,
-            shotNo: "004",
-            script: "双人对峙中景，剑锋切过画面前景。",
-            referenceImages: [
-              "https://images.unsplash.com/photo-1772371272152-d1806d4351e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-            ],
-            storyboardImages: [
-              {
-                id: "img-4",
-                src: "https://images.unsplash.com/photo-1772490184368-d6c7d8001fa6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-                label: "对峙构图",
-                countLabel: "3 条评论",
-                uploadInfo: "AI 生成 · 2026-05-12 08:33",
-              },
-            ],
-            videoAssets: [
-              {
-                id: "video-3",
-                src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-                label: "对峙试动",
-                countLabel: "00:10 / 2 条评论",
-                uploadInfo: "上传 · 2026-05-12 11:10",
-              },
-            ],
-            dub: "男主：此剑之后，再无退路。",
-            owners: ["林月", "导演"],
-            duration: 6.3,
-            totalDone: false,
-            imageProgress: "待修改",
-            videoProgress: "待修改",
-            notes: "情绪强度还不够",
-            imageComments: [
-              { id: "ic-3", author: "导演", status: "待处理", time: "今天 08:40", content: "两个人的视线关系还没对上。" },
-            ],
-            videoComments: [
-              { id: "vc-3", author: "后期", status: "待处理", time: "今天 11:28", content: "0:03 的动势建议再强一点。", timestamp: "00:03" },
-              { id: "vc-4", author: "导演", status: "已处理", time: "今天 11:40", content: "已确认保留当前速度，重做镜头路径。", timestamp: "00:05" },
-            ],
-          },
+          { id: "p6", rowNo: 1, eventType: "场", sceneLabel: "第1场", shotNo: "1", script: "双方对峙，气氛剑拔弩张", refImg: "https://images.unsplash.com/photo-1551264397-09c6f678a930?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", storyboardImg: undefined, crew: ["小明"], duration: "3.0s", progress: "未开始", notes: "双人中景" },
         ],
       },
     ],
+  },
+  { id: "ep2", name: "第二集", scenes: [{ id: "s3", name: "第一幕 · 启程", panels: [{ id: "p7", rowNo: 1, eventType: "场", sceneLabel: "第1场", shotNo: "1", script: "晨雾中的古道，旅人启程", refImg: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", storyboardImg: undefined, crew: ["小明"], duration: "4.0s", progress: "未开始", notes: "横移镜头" }] }] },
+  { id: "ep3", name: "第三集", scenes: [] },
+  { id: "ep4", name: "第四集", scenes: [] },
+];
+
+// ─── Column definitions ───────────────────────────────────────────────────────
+type ColumnKey = "eventType" | "sceneLabel" | "shotNo" | "script" | "refImg" | "storyboardImg" | "storyboardVideo" | "crew" | "duration" | "progress" | "notes";
+const ALL_COLUMNS: { key: ColumnKey; label: string; width: number }[] = [
+  { key: "eventType", label: "事件", width: 60 },
+  { key: "sceneLabel", label: "场次", width: 80 },
+  { key: "shotNo", label: "分镜号", width: 70 },
+  { key: "script", label: "文字脚本", width: 260 },
+  { key: "refImg", label: "画面参考", width: 140 },
+  { key: "storyboardImg", label: "分镜图", width: 140 },
+  { key: "storyboardVideo", label: "分镜视频", width: 140 },
+  { key: "crew", label: "人员", width: 100 },
+  { key: "duration", label: "时长", width: 70 },
+  { key: "progress", label: "画面进度", width: 100 },
+  { key: "notes", label: "备注", width: 120 },
+];
+
+const PROGRESS_STYLES: Record<ProgressStatus, { bg: string; color: string }> = {
+  待审核: { bg: "rgba(232,115,34,0.15)", color: "#E87322" },
+  审核中: { bg: "rgba(74,158,224,0.15)", color: "#4A9EE0" },
+  已完成: { bg: "rgba(74,198,120,0.15)", color: "#4AC678" },
+  未开始: { bg: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.35)" },
+};
+
+const ART_SETTINGS = [
+  { id: "chars", name: "人物设定", status: "有进展" as const },
+  { id: "scenes", name: "场景设定", status: "有进展" as const },
+  { id: "props", name: "道具设定", status: "未开始" as const },
+];
+
+type StorySidebarTab = "files" | "assets";
+type StoryAssetSubTab = "generate" | "upload" | "subject" | "collect";
+type StoryboardGuideTarget =
+  | "applied-image"
+  | "detail-image-list"
+  | "detail-image-info"
+  | "detail-annotation"
+  | "detail-comment"
+  | "story-files"
+  | "story-toolbar"
+  | "story-table"
+  | "fill-handle"
+  | "story-export"
+  | "story-progress"
+  | "drag-asset-replace";
+
+const STORYBOARD_GUIDE_STEPS: { target: StoryboardGuideTarget; title: string; body: ReactNode }[] = [
+  {
+    target: "applied-image",
+    title: "查看应用结果",
+    body: "刚刚在生成模块点击「应用」确认后，图片已经写入到这里的分镜图，点击查看详情进行审阅批注",
   },
   {
-    id: "ep2",
-    name: "第二集",
-    scenes: [
-      {
-        id: "ep2-sc1",
-        name: "第一幕 · 启程",
-        panels: [
-          {
-            id: "panel-5",
-            rowNo: 1,
-            sceneNo: 1,
-            shotNo: "001",
-            script: "清晨的栈道与薄雾，旅人背影渐远。",
-            referenceImages: [
-              "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80",
-            ],
-            storyboardImages: [],
-            videoAssets: [],
-            dub: "旁白：人总要向更远处走去。",
-            owners: ["阿青"],
-            duration: 4.0,
-            totalDone: false,
-            imageProgress: "待上传",
-            videoProgress: "待上传",
-            notes: "等待脚本同步后再拆镜",
-            imageComments: [],
-            videoComments: [],
-          },
-        ],
-      },
-    ],
+    target: "detail-image-list",
+    title: "查看应用素材及历史记录",
+    body: "详情页左侧展示当前分镜下的全部内容。删除素材后可以切换到历史记录进行查看。",
+  },
+  {
+    target: "detail-image-info",
+    title: "查看图片信息",
+    body: "顶部展示生图信息，在本项目生成并应用的图片可以一键定位到对话，快速回到生成位置进行二次修改。",
+  },
+  {
+    target: "detail-annotation",
+    title: "审阅批注",
+    body: "支持使用批注工具标记，发送到批注对话框，进行评论回复。",
+  },
+  {
+    target: "story-files",
+    title: "分镜目录",
+    body: "左侧按剧集进行管理，通过标签查看每集当前进度，支持新增/切换不同视图。",
+  },
+  {
+    target: "story-table",
+    title: "分镜表编辑区",
+    body: "分镜表维护每条分镜的脚本、分镜图/视频、进度等信息，可自定义新增/编辑/隐藏行。",
+  },
+  {
+    target: "drag-asset-replace",
+    title: "应用资产到分镜",
+    body: "拖拽左侧资产图片到画面参考/分镜图/分镜视频上松开，即可把生成结果补充到对应镜头。",
+  },
+  {
+    target: "story-export",
+    title: "导出分镜素材",
+    body: "一键导出画面参考/分镜图/分镜视频等素材，进行后续制作、审阅或其他交付使用。",
   },
 ];
+const STORYBOARD_DETAIL_GUIDE_TARGETS: StoryboardGuideTarget[] = ["detail-image-list", "detail-image-info", "detail-annotation", "detail-comment"];
+const STORYBOARD_BASE_GUIDE_STEPS = STORYBOARD_GUIDE_STEPS.filter((step) => step.target !== "applied-image" && !STORYBOARD_DETAIL_GUIDE_TARGETS.includes(step.target));
 
-const PROJECT_MEMBERS = [
-  { id: "pm-1", name: "林月", role: "导演", tip: "项目成员可对项目所有文件和团队成员进行管理" },
-  { id: "pm-2", name: "阿青", role: "美术", tip: "项目成员可对项目所有文件和团队成员进行管理" },
-  { id: "pm-3", name: "道具组", role: "执行", tip: "项目成员可对项目所有文件和团队成员进行管理" },
-];
-
-const EXTERNAL_MEMBERS = [
-  { id: "ext-1", name: "投资方 A", email: "partner-a@demo.com", permission: "可阅读", scope: "第一集 / 画面表" },
-  { id: "ext-2", name: "外包后期", email: "post@demo.com", permission: "可编辑", scope: "第一集 / 视频表" },
-];
-
-const SCRIPT_IMPORT_ROWS = [
-  { id: "row-1", episode: "第一集", scene: "第1场", shotNo: "001", script: "晨雾压过古道，白发女侠从云海深处走来。", selected: true },
-  { id: "row-2", episode: "第一集", scene: "第1场", shotNo: "002", script: "近景回眸，发丝飞扬，剑柄压低在画面右侧。", selected: true },
-  { id: "row-3", episode: "第二集", scene: "第1场", shotNo: "001", script: "栈道长镜头，人物背影渐远。", selected: true },
-];
-
-function flattenPanels(episode: StoryEpisode) {
-  return episode.scenes.flatMap((scene) =>
-    scene.panels.map((panel) => ({
-      ...panel,
-      sceneName: scene.name,
-    })),
-  );
-}
-
-function getProgressCountForView(view: StoryView, panels: StoryPanel[]) {
-  if (typeof view !== "string") {
-    const hasImage = view.columns.includes("imageProgress");
-    const hasVideo = view.columns.includes("videoProgress");
-    const hasTotal = view.columns.includes("totalDone");
-    if (hasImage) {
-      return {
-        label: "画面进度",
-        completed: panels.filter((panel) => panel.imageProgress === "已完成").length,
-        total: panels.length,
-        description: "按画面进度字段中为“已完成”的行数计算",
-      };
-    }
-    if (hasVideo) {
-      return {
-        label: "视频进度",
-        completed: panels.filter((panel) => panel.videoProgress === "已完成").length,
-        total: panels.length,
-        description: "按视频进度字段中为“已完成”的行数计算",
-      };
-    }
-    if (hasTotal) {
-      return {
-        label: "总进度",
-        completed: panels.filter((panel) => panel.totalDone).length,
-        total: panels.length,
-        description: "按总进度复选框勾选行数计算",
-      };
-    }
-    return null;
-  }
-
-  if (view === "master") {
-    return {
-      label: "总进度",
-      completed: panels.filter((panel) => panel.totalDone).length,
-      total: panels.length,
-      description: "分镜总表按总进度复选框勾选行数 / 总行数计算",
-    };
-  }
-
-  if (view === "image") {
-    return {
-      label: "画面进度",
-      completed: panels.filter((panel) => panel.imageProgress === "已完成").length,
-      total: panels.length,
-      description: "画面表按画面进度为“已完成”的行数 / 总行数计算",
-    };
-  }
-
-  return {
-    label: "视频进度",
-    completed: panels.filter((panel) => panel.videoProgress === "已完成").length,
-    total: panels.length,
-    description: "视频表按视频进度为“已完成”的行数 / 总行数计算",
-  };
-}
-
-function getViewLabel(view: StoryView) {
-  if (typeof view !== "string") {
-    return view.name;
-  }
-  if (view === "master") return "分集总表";
-  if (view === "image") return "画面表";
-  return "视频表";
-}
-
-function getViewColumns(view: StoryView) {
-  if (typeof view !== "string") {
-    return view.columns;
-  }
-  if (view === "master") return DEFAULT_MASTER_COLUMNS;
-  if (view === "image") return DEFAULT_IMAGE_COLUMNS;
-  return DEFAULT_VIDEO_COLUMNS;
-}
-
-function AssetThumb({
-  src,
-  label,
-  meta,
-  onClick,
-  kind,
+function StoryboardModuleGuide({
+  step,
+  total,
+  current,
+  onPrev,
+  onNext,
+  onClose,
 }: {
-  src?: string;
-  label: string;
-  meta?: string;
-  onClick?: () => void;
-  kind: AssetKind;
+  step: number;
+  total: number;
+  current: { target: StoryboardGuideTarget; title: string; body: ReactNode };
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex w-full items-center gap-2 rounded-xl border p-2 text-left transition-colors hover:bg-white/6"
-      style={{
-        background: "rgba(255,255,255,0.03)",
-        borderColor: "rgba(255,255,255,0.08)",
-      }}
-    >
-      <div
-        className="relative h-14 w-16 overflow-hidden rounded-lg"
-        style={{ background: "rgba(255,255,255,0.04)" }}
-      >
-        {src ? (
-          <img src={src} alt={label} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            {kind === "image" ? (
-              <LucideImage size={18} style={{ color: "rgba(255,255,255,0.25)" }} />
-            ) : (
-              <Video size={18} style={{ color: "rgba(255,255,255,0.25)" }} />
-            )}
-          </div>
-        )}
-        {kind === "video" && (
-          <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ background: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.55) 100%)" }}
-          >
-            <div
-              className="flex h-7 w-7 items-center justify-center rounded-full"
-              style={{ background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.14)" }}
-            >
-              <Video size={12} style={{ color: "white" }} />
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium" style={{ color: "rgba(255,255,255,0.82)" }}>
-          {label}
-        </div>
-        <div className="mt-1 text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-          {meta ?? "点击查看详情"}
-        </div>
-      </div>
-    </button>
+  const [cardPosition, setCardPosition] = useState<CSSProperties>({ right: 24, bottom: 24 });
+  const [targetFrame, setTargetFrame] = useState<CSSProperties | null>(null);
+  const [extraFrames, setExtraFrames] = useState<CSSProperties[]>([]);
+  const [annotationCue, setAnnotationCue] = useState<{ from: CSSProperties; to: CSSProperties; image: string } | null>(null);
+  const [fillHandleCue, setFillHandleCue] = useState<{ from: CSSProperties; to: CSSProperties } | null>(null);
+  const [dragAssetCue, setDragAssetCue] = useState<{ from: CSSProperties; to: CSSProperties; image: string } | null>(null);
+  const maskId = `storyboard-guide-mask-${useId().replace(/:/g, "")}`;
+  const isLast = step === total - 1;
+  const nextLabel = current.target === "applied-image" ? "查看详情" : isLast ? "完成引导" : "下一步";
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    let tries = 0;
+    const updatePosition = () => {
+      // fill-handle and drag-asset-replace use multiple targets, not a single element
+      const isMultiTarget = current.target === "fill-handle" || current.target === "drag-asset-replace";
+      const target = isMultiTarget
+        ? (document.querySelector(current.target === "drag-asset-replace" ? '[data-storyboard-guide-target="story-video-cell"]' : '[data-storyboard-guide-target="fill-shot-cell"]') as HTMLElement | null)
+        : (document.querySelector(`[data-storyboard-guide-target="${current.target}"]`) as HTMLElement | null);
+      if (!target) {
+        if (tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+
+      const margin = 18;
+      const gap = 18;
+      const pad = 8;
+      const cardWidth = 360;
+      const cardHeight = 230;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const makeFrame = (selector: string, padding = 8) => {
+        const el = document.querySelector(selector) as HTMLElement | null;
+        if (!el) return null;
+        const box = el.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) return null;
+        const leftValue = Math.max(margin, box.left - padding);
+        const topValue = Math.max(margin, box.top - padding);
+        const rightValue = Math.min(viewportWidth - margin, box.right + padding);
+        const bottomValue = Math.min(viewportHeight - margin, box.bottom + padding);
+        return {
+          left: leftValue,
+          top: topValue,
+          width: Math.max(0, rightValue - leftValue),
+          height: Math.max(0, bottomValue - topValue),
+        } as CSSProperties;
+      };
+
+      // For multi-target steps, use extraFrames for highlighting, no single targetFrame
+      if (isMultiTarget) {
+        setTargetFrame(null);
+
+        if (current.target === "fill-handle") {
+          setExtraFrames([]);
+
+          // Compute fillHandleCue from shot-cell and fill-visible-rows
+          const fromEl = document.querySelector('[data-storyboard-guide-target="fill-shot-cell"]') as HTMLElement | null;
+          const toEl = document.querySelector('[data-storyboard-guide-target="fill-visible-rows"]') as HTMLElement | null;
+          if (fromEl && toEl) {
+            const fromRect = fromEl.getBoundingClientRect();
+            const toRect = toEl.getBoundingClientRect();
+            setFillHandleCue({
+              from: { left: fromRect.right - 7, top: fromRect.bottom - 7 },
+              to: { left: fromRect.right - 7, top: Math.min(toRect.bottom - 10, fromRect.bottom + 162) },
+            });
+          } else {
+            setFillHandleCue(null);
+          }
+          setDragAssetCue(null);
+        } else if (current.target === "drag-asset-replace") {
+          const sidebarFrame = makeFrame('[data-storyboard-guide-target="story-assets-sidebar"]', 4);
+          const storyVideoFrame = makeFrame('[data-storyboard-guide-target="story-video-cell"]', 4);
+          const assetImgFrame = makeFrame('[data-storyboard-video-guide-source="true"], [data-storyboard-guide-target="story-asset-item"]', 4);
+          setExtraFrames([sidebarFrame, storyVideoFrame, assetImgFrame].filter(Boolean) as CSSProperties[]);
+
+          // Compute dragAssetCue: from asset item to storyboard video cell
+          const fromEl = document.querySelector('[data-storyboard-video-guide-source="true"], [data-storyboard-guide-target="story-asset-item"]') as HTMLElement | null;
+          const toEl = document.querySelector('[data-storyboard-guide-target="story-video-cell"]') as HTMLElement | null;
+          const imgEl = fromEl?.querySelector("img") as HTMLImageElement | null;
+          if (fromEl && toEl) {
+            const fromRect = fromEl.getBoundingClientRect();
+            const toRect = toEl.getBoundingClientRect();
+            setDragAssetCue({
+              from: { left: fromRect.left + 4, top: fromRect.top + 4 },
+              to: { left: toRect.left + toRect.width / 2 - 30, top: toRect.top + toRect.height / 2 - 30 },
+              image: imgEl?.src ?? "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=120&q=70",
+            });
+          } else if (tries < 18) {
+            tries += 1;
+            frame = window.requestAnimationFrame(updatePosition);
+            return;
+          } else {
+            setDragAssetCue(null);
+          }
+          setFillHandleCue(null);
+        }
+      } else {
+        const mainFrame = {
+          left: Math.max(margin, rect.left - pad),
+          top: Math.max(margin, rect.top - pad),
+          width: Math.max(0, Math.min(viewportWidth - margin, rect.right + pad) - Math.max(margin, rect.left - pad)),
+          height: Math.max(0, Math.min(viewportHeight - margin, rect.bottom + pad) - Math.max(margin, rect.top - pad)),
+        } as CSSProperties;
+        setTargetFrame(mainFrame);
+
+        const nextExtraFrames: CSSProperties[] = [];
+        if (current.target === "detail-image-info") {
+          const locateFrame = makeFrame('[data-storyboard-guide-target="detail-locate-icon"]', 6);
+          if (locateFrame) nextExtraFrames.push(locateFrame);
+        }
+        if (current.target === "detail-annotation") {
+          const imageFrame = makeFrame('[data-storyboard-guide-target="detail-main-image"]', 8);
+          const toolbarFrame = makeFrame('[data-storyboard-guide-target="detail-drawing-toolbar"]', 6);
+          if (imageFrame) nextExtraFrames.push(imageFrame);
+          if (toolbarFrame) nextExtraFrames.push(toolbarFrame);
+        }
+        setExtraFrames(nextExtraFrames);
+      }
+
+      if (current.target === "detail-annotation") {
+        const fromEl = document.querySelector('[data-storyboard-guide-target="detail-main-image"]') as HTMLElement | null;
+        const toEl = document.querySelector('[data-storyboard-guide-target="detail-annotation"]') as HTMLElement | null;
+        const img = fromEl?.querySelector("img") as HTMLImageElement | null;
+        if (fromEl && toEl) {
+          const fromRect = fromEl.getBoundingClientRect();
+          const toRect = toEl.getBoundingClientRect();
+          setAnnotationCue({
+            from: { left: fromRect.left + fromRect.width / 2 - 30, top: fromRect.top + fromRect.height / 2 - 30 },
+            to: { left: toRect.left + 60, top: toRect.top + 84 },
+            image: img?.src ?? "https://images.unsplash.com/photo-1636075219672-a422660ce589?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=120&q=70",
+          });
+        } else if (tries < 18) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+          return;
+        } else {
+          setAnnotationCue(null);
+        }
+      } else {
+        setAnnotationCue(null);
+        if (current.target !== "drag-asset-replace") {
+          setDragAssetCue(null);
+        }
+      }
+
+      let left = rect.right + gap;
+      let top = rect.top + Math.max(0, (rect.height - cardHeight) / 2);
+      if (current.target === "detail-image-list") {
+        left = rect.right + gap;
+        top = Math.min(Math.max(rect.top + 58, margin), viewportHeight - cardHeight - margin);
+      } else if (current.target === "story-files") {
+        left = Math.min(rect.right + gap, viewportWidth - cardWidth - margin);
+        top = Math.min(Math.max(rect.top + 54, margin), viewportHeight - cardHeight - margin);
+      } else if (current.target === "drag-asset-replace") {
+        left = Math.min(Math.max(rect.right + 64, margin), viewportWidth - cardWidth - margin);
+        top = Math.min(Math.max(rect.top - 34, margin), viewportHeight - cardHeight - margin);
+      } else if (current.target === "fill-handle") {
+        left = Math.min(Math.max(rect.right + 64, margin), viewportWidth - cardWidth - margin);
+        top = Math.min(Math.max(rect.top - 34, margin), viewportHeight - cardHeight - margin);
+      } else if (current.target === "story-export") {
+        left = Math.max(margin, rect.left - cardWidth - gap);
+        top = Math.min(Math.max(rect.bottom + gap, margin), viewportHeight - cardHeight - margin);
+      } else if (current.target === "detail-annotation") {
+        left = Math.max(margin, Math.min(rect.left - cardWidth -20, viewportWidth - cardWidth - margin));
+        top = Math.min(Math.max(rect.top + 100, margin), viewportHeight - cardHeight - margin);
+      } else if (current.target.startsWith("detail-")) {
+        left = Math.max(margin, Math.min(rect.left - cardWidth - gap, viewportWidth - cardWidth - margin));
+        if (left < margin + 40) left = Math.max(margin, viewportWidth - cardWidth - margin);
+        top = Math.min(Math.max(rect.top, margin), viewportHeight - cardHeight - margin);
+      }
+      if (left + cardWidth + margin > viewportWidth) left = rect.left - cardWidth - gap;
+      if (left < margin) {
+        left = Math.min(Math.max(rect.left, margin), viewportWidth - cardWidth - margin);
+        top = rect.bottom + gap;
+      }
+      if (top + cardHeight + margin > viewportHeight) top = rect.top - cardHeight - gap;
+      if (top < margin) top = Math.min(Math.max(rect.bottom + gap, margin), viewportHeight - cardHeight - margin);
+
+      setCardPosition({ left, top });
+    };
+
+    frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [current.target]);
+
+  const renderMaskHole = (frame: CSSProperties, radius = 20) => (
+    <rect
+      x={Number(frame.left) || 0}
+      y={Number(frame.top) || 0}
+      width={Number(frame.width) || 0}
+      height={Number(frame.height) || 0}
+      rx={radius}
+      fill="black"
+    />
   );
-}
 
-function MemberAvatars({ owners }: { owners: string[] }) {
-  if (owners.length === 0) {
-    return (
-      <div
-        className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed"
-        style={{ borderColor: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.2)" }}
-      >
-        <UserPlus size={12} />
-      </div>
-    );
-  }
+  const renderHighlightFrame = (frame: CSSProperties, zIndex = 75, opacity = 0.24) => (
+    <div
+      className="absolute rounded-[20px]"
+      style={{
+        ...frame,
+        zIndex,
+        border: "3px solid #F5A623",
+        boxShadow: `0 0 0 6px rgba(245,166,35,0.18), 0 18px 44px rgba(245,166,35,${opacity})`,
+      }}
+    />
+  );
 
   return (
-    <div className="flex items-center">
-      {owners.map((owner, index) => (
-        <div
-          key={`${owner}-${index}`}
-          className="flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-semibold"
-          style={{
-            marginLeft: index === 0 ? 0 : -8,
-            background: index % 2 === 0 ? "#E87322" : "#6B84FF",
-            borderColor: "#140F09",
-            color: "white",
-          }}
-          title={owner}
-        >
-          {owner.slice(0, 1)}
+    <div className="fixed inset-0 z-[70] pointer-events-none">
+      {current.target === "fill-handle" ? null : current.target === "drag-asset-replace" ? (
+        <>
+          {/* SVG mask: punch holes for the highlighted cells */}
+          {extraFrames.length > 0 && (
+            <svg className="absolute inset-0 h-full w-full" style={{ zIndex: 70 }} aria-hidden="true">
+              <defs>
+                <mask id={maskId}>
+                  <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                  {extraFrames.map((frame, index) => (
+                    <rect
+                      key={index}
+                      x={Number(frame.left) || 0}
+                      y={Number(frame.top) || 0}
+                      width={Number(frame.width) || 0}
+                      height={Number(frame.height) || 0}
+                      rx={18}
+                      fill="black"
+                    />
+                  ))}
+                </mask>
+              </defs>
+              <rect x="0" y="0" width="100%" height="100%" fill="rgba(4,3,2,0.56)" mask={`url(#${maskId})`} />
+            </svg>
+          )}
+          {extraFrames.map((frame, index) => (
+            <div key={index}>{renderHighlightFrame(frame, 76, 0.2)}</div>
+          ))}
+        </>
+      ) : targetFrame ? (
+        <>
+          <svg className="absolute inset-0 h-full w-full" style={{ zIndex: 70 }} aria-hidden="true">
+            <defs>
+              <mask id={maskId}>
+                <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                {renderMaskHole(targetFrame, 20)}
+                {extraFrames.map((frame, index) => (
+                  <g key={index}>{renderMaskHole(frame, 18)}</g>
+                ))}
+              </mask>
+            </defs>
+            <rect x="0" y="0" width="100%" height="100%" fill="rgba(4,3,2,0.56)" mask={`url(#${maskId})`} />
+          </svg>
+          {renderHighlightFrame(targetFrame, 75, 0.24)}
+          {extraFrames.map((frame, index) => (
+            <div key={index}>{renderHighlightFrame(frame, 76, 0.2)}</div>
+          ))}
+        </>
+      ) : (
+        <div className="absolute inset-0" style={{ background: "rgba(4,3,2,0.56)" }} />
+      )}
+      {annotationCue && (
+        <>
+          <style>{`
+            @keyframes storyboard-annotation-drag {
+              0%, 12% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+              18% { opacity: 1; }
+              74% { transform: translate3d(calc(var(--to-x) - var(--from-x)), calc(var(--to-y) - var(--from-y)), 0) scale(0.72); opacity: 1; }
+              88%, 100% { transform: translate3d(calc(var(--to-x) - var(--from-x)), calc(var(--to-y) - var(--from-y)), 0) scale(0.72); opacity: 0; }
+            }
+          `}</style>
+          <div
+            className="absolute z-[78] overflow-hidden rounded-xl"
+            style={{
+              ...annotationCue.from,
+              width: 60,
+              height: 60,
+              "--from-x": `${annotationCue.from.left}px`,
+              "--from-y": `${annotationCue.from.top}px`,
+              "--to-x": `${annotationCue.to.left}px`,
+              "--to-y": `${annotationCue.to.top}px`,
+              animation: "storyboard-annotation-drag 2.2s ease-in-out infinite",
+              border: "2px solid #F5A623",
+              boxShadow: "0 16px 36px rgba(0,0,0,0.42), 0 0 24px rgba(245,166,35,0.28)",
+            } as CSSProperties}
+          >
+            <img src={annotationCue.image} alt="" className="h-full w-full object-cover" />
+          </div>
+        </>
+      )}
+      {fillHandleCue && (
+        <>
+          <style>{`
+            @keyframes storyboard-fill-handle-drag {
+              0%, 10% { transform: translateY(0) scale(1); opacity: 0; }
+              18% { opacity: 1; }
+              42% { transform: translateY(8px) scale(1.08); opacity: 1; }
+              72% { transform: translateY(var(--drag-distance, 160px)) scale(1); opacity: 1; }
+              86%, 100% { transform: translateY(var(--drag-distance, 160px)) scale(1); opacity: 0; }
+            }
+          `}</style>
+          <div
+            className="absolute z-[79] flex items-center justify-center rounded-[4px] text-base font-black leading-none"
+            style={{
+              left: fillHandleCue.from.left,
+              top: fillHandleCue.from.top,
+              width: 22,
+              height: 22,
+              "--drag-distance": `${fillHandleCue.to.top - fillHandleCue.from.top}px`,
+              animation: "storyboard-fill-handle-drag 2.1s ease-in-out infinite",
+              background: "#FFFFFF",
+              border: "2px solid #6F8FF7",
+              color: "#6F8FF7",
+              boxShadow: "0 0 0 2px rgba(255,255,255,0.8), 0 10px 24px rgba(0,0,0,0.38)",
+            } as CSSProperties}
+          >
+            +
+          </div>
+        </>
+      )}
+      {dragAssetCue && (
+        <>
+          <style>{`
+            @keyframes storyboard-drag-asset {
+              0%, 10% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+              18% { transform: translate(0, 0) scale(0.65); opacity: 1; }
+              30% { transform: translate(calc((var(--dx) * 0.3)), calc((var(--dy) * 0.1))) scale(0.72); opacity: 1; }
+              60% { transform: translate(calc((var(--dx) * 0.7)), calc((var(--dy) * 0.6))) scale(0.85); opacity: 1; }
+              82% { transform: translate(var(--dx), var(--dy)) scale(0.95); opacity: 1; }
+              92%, 100% { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 0; }
+            }
+          `}</style>
+          <div
+            className="fixed z-[79] overflow-hidden rounded-lg"
+            style={{
+              left: dragAssetCue.from.left,
+              top: dragAssetCue.from.top,
+              width: 56,
+              height: 56,
+              "--dx": `${dragAssetCue.to.left - dragAssetCue.from.left}px`,
+              "--dy": `${dragAssetCue.to.top - dragAssetCue.from.top}px`,
+              animation: "storyboard-drag-asset 2.4s ease-in-out infinite",
+              border: "2.5px solid #E87322",
+              boxShadow: "0 18px 40px rgba(0,0,0,0.48), 0 0 28px rgba(232,115,34,0.3)",
+            } as CSSProperties}
+          >
+            <img src={dragAssetCue.image} alt="" className="h-full w-full object-cover" />
+          </div>
+        </>
+      )}
+      <div className="absolute z-[80] w-[360px] rounded-2xl p-4 pointer-events-auto" style={{ ...cardPosition, background: "#1A1510", border: "2px solid #F5A623", boxShadow: "0 28px 70px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.08), 0 0 34px rgba(245,166,35,0.22)" }}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-base font-semibold text-white">{current.title}</h3>
+            <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ color: "#F5A623", background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.22)" }}>
+              {step + 1}/{total}
+            </span>
+          </div>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-white/10" style={{ color: "rgba(255,255,255,0.45)" }} title="关闭新手引导">
+            <X size={14} />
+          </button>
         </div>
-      ))}
+        <div className="mb-4 text-sm leading-6" style={{ color: "rgba(255,255,255,0.68)" }}>{current.body}</div>
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={onPrev} className="h-8 rounded-lg px-3 text-xs transition-opacity" style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.68)" }}>
+            上一步
+          </button>
+          <button onClick={onNext} className="h-8 rounded-lg px-3 text-xs font-medium transition-opacity hover:opacity-90" style={{ background: "#E87322", color: "#fff" }}>
+            {nextLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-function ProgressPill({
-  value,
-  onClick,
-}: {
-  value: ProgressState;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
-      style={{ background: PROGRESS_META[value].bg, color: PROGRESS_META[value].color }}
-    >
-      <span
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ background: PROGRESS_META[value].dot }}
-      />
-      {value}
-    </button>
-  );
-}
+const STORY_ASSETS = [
+  { id: "sa1", src: "https://images.unsplash.com/photo-1743951896798-2936f661f939?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "白发女侠_v1.jpg", type: "image" as const },
+  { id: "sa2", src: "https://images.unsplash.com/photo-1686747513617-ccd391daa3e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "古城背景.jpg", type: "image" as const },
+  { id: "sa3", src: "https://images.unsplash.com/photo-1775193823752-84a3c871f93a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "山林场景.jpg", type: "image" as const },
+  { id: "sa4", src: "https://images.unsplash.com/photo-1760256993941-ec41ccc6e376?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "远景背景.jpg", type: "image" as const },
+  { id: "sa5", src: "https://images.unsplash.com/photo-1636075219672-a422660ce589?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "战斗特效.jpg", type: "image" as const },
+  { id: "sa6", src: "https://images.unsplash.com/photo-1662103631385-a56dcaee528b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=200&q=70", name: "动效_v1.mp4", type: "video" as const },
+];
 
-function StoryReviewDialog({
-  open,
-  onOpenChange,
+function StoryboardDetailDrawer({
   panel,
-  kind,
-  initialAssetIndex,
-  episodeName,
-  sceneName,
+  onClose,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  panel: StoryPanel | null;
-  kind: AssetKind;
-  initialAssetIndex: number;
-  episodeName: string;
-  sceneName: string;
+  panel: StoryPanel;
+  onClose: () => void;
 }) {
-  const [selectedAssetIndex, setSelectedAssetIndex] = useState(initialAssetIndex);
-  const [commentDraft, setCommentDraft] = useState("");
-  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
-  const [assetTitle, setAssetTitle] = useState("");
-
-  useEffect(() => {
-    if (open) {
-      setSelectedAssetIndex(initialAssetIndex);
-      setCommentDraft("");
-      setIsRenamingTitle(false);
-    }
-  }, [initialAssetIndex, open]);
-
-  if (!panel) {
-    return null;
-  }
-
-  const assets = kind === "image" ? panel.storyboardImages : panel.videoAssets;
-  const comments = kind === "image" ? panel.imageComments : panel.videoComments;
-  const activeAsset = assets[selectedAssetIndex] ?? assets[0];
-  const generatedTitle = `${episodeName}_${sceneName}_${panel.owners[0] ?? "未分配"}_${selectedAssetIndex + 1}`;
-
-  useEffect(() => {
-    if (open) {
-      setAssetTitle(generatedTitle);
-    }
-  }, [generatedTitle, open]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="overflow-hidden border-0 p-0"
-        style={{
-          maxWidth: "calc(100vw - 48px)",
-          width: "1220px",
-          background: "#18120D",
-          color: "white",
-        }}
-      >
-        <DialogHeader className="sr-only">
-          <DialogTitle>{kind === "image" ? "图片批注" : "视频批注"}</DialogTitle>
-          <DialogDescription>查看并编辑分镜素材批注</DialogDescription>
-        </DialogHeader>
-        <div className="flex min-h-[700px] max-h-[86vh]">
-          <div
-            className="flex w-[260px] flex-col border-r"
-            style={{ borderColor: "rgba(255,255,255,0.06)", background: "#110D09" }}
-          >
-            <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="text-sm font-semibold">{kind === "image" ? "图片批注" : "视频批注"}</div>
-              <div className="mt-1 text-xs" style={{ color: "rgba(255,255,255,0.42)" }}>
-                镜号 {panel.shotNo} · 当前共 {assets.length} 个{kind === "image" ? "图片" : "视频"}版本
-              </div>
-            </div>
-            <div className="flex-1 space-y-3 overflow-auto px-4 py-4">
-              {assets.map((asset, index) => {
-                const selected = index === selectedAssetIndex;
-                return (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    onClick={() => setSelectedAssetIndex(index)}
-                    className="w-full rounded-2xl border p-2 text-left transition-colors"
-                    style={{
-                      borderColor: selected ? "rgba(232,115,34,0.45)" : "rgba(255,255,255,0.08)",
-                      background: selected ? "rgba(232,115,34,0.08)" : "rgba(255,255,255,0.03)",
-                    }}
-                  >
-                    <div className="relative overflow-hidden rounded-xl" style={{ aspectRatio: "16 / 10" }}>
-                      <img src={asset.src} alt={asset.label} className="h-full w-full object-cover" />
-                      <div
-                        className="absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-medium"
-                        style={{ background: "rgba(0,0,0,0.56)", color: "rgba(255,255,255,0.88)" }}
-                      >
-                        {asset.countLabel}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs font-medium" style={{ color: "rgba(255,255,255,0.86)" }}>
-                      {asset.label}
-                    </div>
-                    <div className="mt-1 text-[11px]" style={{ color: "rgba(255,255,255,0.42)" }}>
-                      {asset.uploadInfo}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="px-4 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-              <div
-                className="rounded-2xl border p-3"
-                style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.62)" }}>
-                    批注工具
-                  </span>
-                  <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
-                    涂鸦 / 文本 / 框选 / 箭头
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  {["涂鸦", "文本", "框选", "箭头", "附件"].map((tool) => (
-                    <div
-                      key={tool}
-                      className="rounded-full px-2 py-1 text-[11px]"
-                      style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.48)" }}
-                    >
-                      {tool}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex min-w-0 flex-1 flex-col" style={{ background: "#0E0A07" }}>
-            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div>
-                <div className="flex items-center gap-2">
-                  {isRenamingTitle ? (
-                    <input
-                      autoFocus
-                      value={assetTitle}
-                      onChange={(event) => setAssetTitle(event.target.value)}
-                      onBlur={() => setIsRenamingTitle(false)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") setIsRenamingTitle(false);
-                        if (event.key === "Escape") {
-                          setAssetTitle(generatedTitle);
-                          setIsRenamingTitle(false);
-                        }
-                      }}
-                      className="min-w-[320px] rounded-xl border bg-transparent px-3 py-1.5 text-sm font-semibold outline-none"
-                      style={{ borderColor: "rgba(232,115,34,0.28)", color: "rgba(255,255,255,0.92)" }}
-                    />
-                  ) : (
-                    <>
-                      <div className="text-sm font-semibold">{assetTitle || generatedTitle}</div>
-                      <button
-                        type="button"
-                        onClick={() => setIsRenamingTitle(true)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full"
-                        style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.46)" }}
-                        title="重命名"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="mt-1 text-xs" style={{ color: "rgba(255,255,255,0.42)" }}>
-                  支持在素材上标记并发送评论，右侧同步展示分镜信息与评论记录
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="rounded-full border px-3 py-1.5 text-xs"
-                  style={{ borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)" }}
-                  onClick={() => toast.success("已切换上一条")}
-                >
-                  <ChevronLeft size={12} className="inline mr-1" />
-                  上一行
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full border px-3 py-1.5 text-xs"
-                  style={{ borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.55)" }}
-                  onClick={() => toast.success("已切换下一条")}
-                >
-                  下一行
-                  <ChevronRight size={12} className="inline ml-1" />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-5">
-              <div
-                className="relative overflow-hidden rounded-[28px] border"
-                style={{ borderColor: "rgba(255,255,255,0.08)", background: "#17120E", minHeight: "420px" }}
-              >
-                {activeAsset ? (
-                  <img src={activeAsset.src} alt={activeAsset.label} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full min-h-[420px] items-center justify-center">
-                    <span style={{ color: "rgba(255,255,255,0.28)" }}>暂无素材</span>
-                  </div>
-                )}
-                <div
-                  className="absolute left-6 top-6 rounded-2xl px-3 py-2 text-xs"
-                  style={{ background: "rgba(0,0,0,0.55)", color: "rgba(255,255,255,0.82)" }}
-                >
-                  点击下方输入批注，可对 {kind === "image" ? "图片" : "视频"} 进行标记
-                </div>
-              </div>
-
-              <div
-                className="mt-4 rounded-[24px] border p-4"
-                style={{ borderColor: "rgba(255,255,255,0.08)", background: "#15100C" }}
-              >
-                <div className="mb-3 flex items-center gap-2">
-                  <MessageSquare size={14} style={{ color: "#E87322" }} />
-                  <span className="text-sm font-medium">新增批注</span>
-                </div>
-                <textarea
-                  value={commentDraft}
-                  onChange={(event) => setCommentDraft(event.target.value)}
-                  placeholder={`点击输入文字批注，可对${kind === "image" ? "图片" : "视频"}进行标记`}
-                  className="h-24 w-full resize-none rounded-2xl border bg-transparent px-4 py-3 text-sm outline-none"
-                  style={{
-                    borderColor: "rgba(255,255,255,0.08)",
-                    color: "rgba(255,255,255,0.82)",
-                  }}
-                />
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs" style={{ color: "rgba(255,255,255,0.36)" }}>
-                    支持图片/视频时间点批注、箭头标记与附件上传
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      toast.success("批注已发送");
-                      setCommentDraft("");
-                    }}
-                    className="rounded-full px-4 py-2 text-sm font-medium"
-                    style={{ background: "#E87322", color: "white" }}
-                  >
-                    发送批注
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="flex w-[340px] flex-col border-l"
-            style={{ borderColor: "rgba(255,255,255,0.06)", background: "#120E0A" }}
-          >
-            <div className="px-5 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="text-sm font-semibold">分镜信息</div>
-            </div>
-            <div className="flex-1 space-y-4 overflow-auto px-5 py-4">
-              <section
-                className="rounded-2xl border p-4"
-                style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-              >
-                <div className="mb-2 text-xs font-medium" style={{ color: "rgba(255,255,255,0.42)" }}>
-                  固定信息
-                </div>
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <div className="mb-1 text-[11px]" style={{ color: "rgba(255,255,255,0.34)" }}>文字脚本</div>
-                    <div style={{ color: "rgba(255,255,255,0.78)", lineHeight: 1.6 }}>{panel.script}</div>
-                  </div>
-                  <div>
-                    <div className="mb-1 text-[11px]" style={{ color: "rgba(255,255,255,0.34)" }}>
-                      {kind === "image" ? "画面参考" : "分镜图"}
-                    </div>
-                    <div className="flex gap-2">
-                      {(kind === "image" ? panel.referenceImages : panel.storyboardImages.map((asset) => asset.src))
-                        .slice(0, 2)
-                        .map((src, index) => (
-                          <div
-                            key={`${src}-${index}`}
-                            className="h-16 w-16 overflow-hidden rounded-xl border"
-                            style={{ borderColor: "rgba(255,255,255,0.08)" }}
-                          >
-                            <img src={src} alt="" className="h-full w-full object-cover" />
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section
-                className="rounded-2xl border p-4"
-                style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.42)" }}>
-                    评论记录
-                  </div>
-                  <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.28)" }}>
-                    {comments.length} 条
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {comments.length === 0 && (
-                    <div className="rounded-xl border border-dashed px-3 py-4 text-xs" style={{ color: "rgba(255,255,255,0.28)", borderColor: "rgba(255,255,255,0.08)" }}>
-                      暂无评论
-                    </div>
-                  )}
-                  {comments.map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="rounded-2xl border p-3"
-                      style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
-                    >
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.82)" }}>
-                            {comment.author}
-                          </span>
-                          <span
-                            className="rounded-full px-2 py-0.5 text-[10px]"
-                            style={{ background: COMMENT_STATUS_META[comment.status].bg, color: COMMENT_STATUS_META[comment.status].color }}
-                          >
-                            {comment.status}
-                          </span>
-                        </div>
-                        <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.28)" }}>
-                          {comment.timestamp ? `${comment.time} · ${comment.timestamp}` : comment.time}
-                        </span>
-                      </div>
-                      <div className="text-sm leading-6" style={{ color: "rgba(255,255,255,0.6)" }}>
-                        {comment.content}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section
-                className="rounded-2xl border p-4"
-                style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-              >
-                <div className="mb-2 text-xs font-medium" style={{ color: "rgba(255,255,255,0.42)" }}>
-                  {kind === "image" ? "图片信息" : "视频信息"}
-                </div>
-                <div className="space-y-2 text-sm" style={{ color: "rgba(255,255,255,0.62)" }}>
-                  <div className="flex items-center justify-between">
-                    <span>生成/上传</span>
-                    <span style={{ color: "rgba(255,255,255,0.84)" }}>{activeAsset?.uploadInfo ?? "暂无"}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>备注</span>
-                    <span style={{ color: "rgba(255,255,255,0.84)" }}>{panel.notes || "无"}</span>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ShareProjectDialog({
-  open,
-  onOpenChange,
-  episodes,
-  customViews,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  episodes: StoryEpisode[];
-  customViews: StoryCustomView[];
-}) {
-  const [externalPermission, setExternalPermission] = useState<"可阅读" | "可编辑">("可阅读");
-  const [selectedScopes, setSelectedScopes] = useState<string[]>(["ep1", "master"]);
-
-  const scopes = [
-    ...episodes.map((episode) => ({ id: episode.id, label: `${episode.name}（含全集视图）` })),
-    { id: "master", label: "分集总表" },
-    { id: "image", label: "画面表" },
-    { id: "video", label: "视频表" },
-    ...customViews.map((view) => ({ id: view.id, label: view.name })),
+  const previewPanels = [
+    panel,
+    { ...panel, id: "preview-2", storyboardImg: "https://images.unsplash.com/photo-1551264397-09c6f678a930?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300&q=80", shotNo: "2" },
   ];
 
-  const toggleScope = (scopeId: string) => {
-    setSelectedScopes((prev) =>
-      prev.includes(scopeId) ? prev.filter((id) => id !== scopeId) : [...prev, scopeId],
-    );
-  };
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="overflow-hidden border-0 p-0"
-        style={{
-          width: "920px",
-          maxWidth: "calc(100vw - 32px)",
-          background: "#17110C",
-          color: "white",
-        }}
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-6 py-5" style={{ background: "rgba(0,0,0,0.82)" }}>
+      <button
+        onClick={onClose}
+        className="absolute right-6 top-5 flex h-10 w-10 items-center justify-center rounded-xl"
+        style={{ background: "rgba(255,255,255,0.09)", color: "rgba(255,255,255,0.58)" }}
       >
-        <DialogHeader className="px-6 pt-6">
-          <DialogTitle className="flex items-center gap-2 text-white">
-            <Share2 size={16} style={{ color: "#E87322" }} />
-            项目分享
-          </DialogTitle>
-          <DialogDescription style={{ color: "rgba(255,255,255,0.42)" }}>
-            支持项目/表格/视图维度的分享协作，并区分阅读、编辑权限
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-0 md:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-5 border-r px-6 py-5" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            <section
-              className="rounded-[24px] border p-4"
-              style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-            >
-              <div className="mb-3 flex items-center gap-2">
-                <span className="text-sm font-semibold">项目成员</span>
-                <div
-                  className="group relative inline-flex h-5 w-5 items-center justify-center rounded-full border"
-                  style={{ borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.45)" }}
-                >
-                  <Info size={11} />
-                  <div
-                    className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 hidden w-52 -translate-x-1/2 rounded-xl border px-3 py-2 text-[11px] leading-5 group-hover:block"
-                    style={{
-                      background: "#221810",
-                      borderColor: "rgba(255,255,255,0.08)",
-                      color: "rgba(255,255,255,0.68)",
-                    }}
-                  >
-                    项目成员可对项目所有文件和团队成员进行管理
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {PROJECT_MEMBERS.map((member, index) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between rounded-2xl border px-4 py-3"
-                    style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold"
-                        style={{ background: index % 2 === 0 ? "#E87322" : "#6273FF", color: "white" }}
-                      >
-                        {member.name.slice(0, 1)}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.82)" }}>
-                          {member.name}
-                        </div>
-                        <div className="text-xs" style={{ color: "rgba(255,255,255,0.36)" }}>
-                          {member.role}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-full border px-3 py-1.5 text-xs"
-                      style={{ borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.56)" }}
-                      onClick={() => toast.success("已打开项目成员管理")}
-                    >
-                      编辑项目
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </section>
+        <X size={22} />
+      </button>
+      <button className="absolute left-7 top-1/2 flex h-14 w-10 -translate-y-1/2 items-center justify-center rounded-xl" style={{ background: "rgba(255,255,255,0.09)", color: "rgba(255,255,255,0.58)" }}>
+        <ChevronLeft size={24} />
+      </button>
+      <button className="absolute right-7 top-1/2 flex h-14 w-10 -translate-y-1/2 items-center justify-center rounded-xl" style={{ background: "rgba(255,255,255,0.09)", color: "rgba(255,255,255,0.58)" }}>
+        <ChevronRight size={24} />
+      </button>
 
-            <section
-              className="rounded-[24px] border p-4"
-              style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-            >
-              <div className="mb-3 text-sm font-semibold">外部成员</div>
-              <div className="mb-4 grid gap-3 md:grid-cols-2">
-                <div>
-                  <div className="mb-2 text-xs" style={{ color: "rgba(255,255,255,0.38)" }}>权限</div>
-                  <div className="flex gap-2">
-                    {(["可阅读", "可编辑"] as const).map((permission) => (
-                      <button
-                        key={permission}
-                        type="button"
-                        onClick={() => setExternalPermission(permission)}
-                        className="rounded-full px-3 py-1.5 text-xs"
-                        style={{
-                          background: externalPermission === permission ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)",
-                          color: externalPermission === permission ? "#E87322" : "rgba(255,255,255,0.46)",
-                          border: `1px solid ${externalPermission === permission ? "rgba(232,115,34,0.28)" : "rgba(255,255,255,0.08)"}`,
-                        }}
-                      >
-                        {permission}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-2 text-xs" style={{ color: "rgba(255,255,255,0.38)" }}>分享链接</div>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-center gap-2 rounded-full px-3 py-2 text-xs"
-                    style={{ background: "#E87322", color: "white" }}
-                    onClick={() => {
-                      navigator.clipboard.writeText("https://storyboard.demo/share/project-01").catch(() => {});
-                      toast.success("分享链接已复制");
-                    }}
-                  >
-                    <Link size={12} />
-                    {externalPermission}
-                  </button>
-                </div>
-              </div>
-              <div className="mb-2 text-xs" style={{ color: "rgba(255,255,255,0.38)" }}>文件范围</div>
-              <div className="flex flex-wrap gap-2">
-                {scopes.map((scope) => {
-                  const selected = selectedScopes.includes(scope.id);
-                  return (
-                    <button
-                      key={scope.id}
-                      type="button"
-                      onClick={() => toggleScope(scope.id)}
-                      className="rounded-full px-3 py-1.5 text-xs"
-                      style={{
-                        background: selected ? "rgba(232,115,34,0.14)" : "rgba(255,255,255,0.05)",
-                        color: selected ? "#E87322" : "rgba(255,255,255,0.5)",
-                        border: `1px solid ${selected ? "rgba(232,115,34,0.24)" : "rgba(255,255,255,0.08)"}`,
-                      }}
-                    >
-                      {scope.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+      <div className="flex h-[calc(100vh-40px)] w-full max-w-[1880px] overflow-hidden rounded-2xl" style={{ background: "#11100D", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 28px 90px rgba(0,0,0,0.72)" }}>
+        <aside
+          className="flex w-[260px] flex-col"
+          data-storyboard-guide-target="detail-image-list"
+          style={{ background: "#12120F", borderRight: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          <div className="px-4 py-4">
+            <h3 className="text-sm font-semibold text-white">场次 2_分镜1-1</h3>
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-lg p-1" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <button className="h-8 rounded-md text-xs font-medium" style={{ background: "rgba(232,115,34,0.22)", color: "#E87322" }}>当前列表</button>
+              <button className="h-8 rounded-md text-xs" style={{ color: "rgba(255,255,255,0.48)" }}>历史记录</button>
+            </div>
+            <button className="mt-4 flex h-[68px] w-full items-center justify-center gap-2 rounded-lg border border-dashed text-sm font-semibold" style={{ background: "rgba(232,115,34,0.1)", borderColor: "rgba(232,115,34,0.34)", color: "#E87322" }}>
+              <Upload size={16} />上传图片
+            </button>
           </div>
-
-          <div className="space-y-4 px-6 py-5">
-            <div className="text-sm font-semibold">当前分享权限</div>
-            {EXTERNAL_MEMBERS.map((member) => (
+          <div className="flex-1 overflow-auto px-4 pb-4">
+            {previewPanels.map((item, index) => (
               <div
-                key={member.id}
-                className="rounded-[24px] border p-4"
-                style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
+                key={item.id}
+                className="group relative mb-3 overflow-hidden rounded-lg"
+                style={{
+                  aspectRatio: "16/9",
+                  background: "#0D0A06",
+                  border: index === 0 ? "1px solid rgba(232,115,34,0.62)" : "1px solid rgba(255,255,255,0.08)",
+                }}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.84)" }}>
-                      {member.name}
-                    </div>
-                    <div className="mt-1 text-xs" style={{ color: "rgba(255,255,255,0.36)" }}>
-                      {member.email}
-                    </div>
-                  </div>
-                  <span
-                    className="rounded-full px-2.5 py-1 text-[11px]"
-                    style={{
-                      background: member.permission === "可编辑" ? "rgba(232,115,34,0.14)" : "rgba(255,255,255,0.06)",
-                      color: member.permission === "可编辑" ? "#E87322" : "rgba(255,255,255,0.56)",
-                    }}
-                  >
-                    {member.permission}
-                  </span>
+                {item.storyboardImg && <img src={item.storyboardImg} alt="" className="h-full w-full object-cover" />}
+                <div className="absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px]" style={{ background: "rgba(0,0,0,0.58)", color: "rgba(255,255,255,0.86)" }}>
+                  <MessageSquare size={10} className="mr-1 inline" />{index + 1}/1
                 </div>
-                <div className="mt-3 text-xs" style={{ color: "rgba(255,255,255,0.46)" }}>
-                  文件范围：{member.scope}
-                </div>
-                <div className="mt-4 flex items-center gap-2">
-                  {["可阅读", "可编辑", "移除"].map((action) => (
-                    <button
-                      key={action}
-                      type="button"
-                      className="rounded-full border px-3 py-1.5 text-xs"
-                      style={{
-                        borderColor: action === "移除" ? "rgba(255,107,107,0.2)" : "rgba(255,255,255,0.08)",
-                        color: action === "移除" ? "#F06B6B" : "rgba(255,255,255,0.56)",
-                        opacity: action === "移除" ? 1 : 0.92,
-                      }}
-                      onClick={() => toast.success(`已为 ${member.name} 设置 ${action}`)}
-                    >
-                      {action}
-                    </button>
-                  ))}
+                <div className="absolute right-2 top-2 flex items-center gap-1">
+                  <button className="flex h-6 w-6 items-center justify-center rounded-md" style={{ background: "rgba(0,0,0,0.48)", color: "rgba(255,255,255,0.75)" }}><Star size={13} /></button>
+                  <button className="flex h-6 w-6 items-center justify-center rounded-md" style={{ background: "rgba(0,0,0,0.48)", color: "rgba(255,255,255,0.75)" }}><Download size={13} /></button>
+                  <button className="flex h-6 w-6 items-center justify-center rounded-md" style={{ background: "rgba(0,0,0,0.48)", color: "rgba(255,255,255,0.75)" }}><Trash2 size={13} /></button>
                 </div>
               </div>
             ))}
-            <div
-              className="rounded-[24px] border p-4"
-              style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-            >
-              <div className="mb-2 text-sm font-semibold">权限提醒</div>
-              <div className="text-xs leading-6" style={{ color: "rgba(255,255,255,0.48)" }}>
-                外部成员进入后，分享按钮会显示为对应权限；项目列表编辑/删除按钮会置灰，并提示“无权调整分享范围”。
-              </div>
-            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+        </aside>
 
-function UploadScriptDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [rows, setRows] = useState(SCRIPT_IMPORT_ROWS);
-  const allSelected = rows.every((row) => row.selected);
-
-  const toggleRow = (id: string) => {
-    setRows((prev) =>
-      prev.map((row) => (row.id === id ? { ...row, selected: !row.selected } : row)),
-    );
-  };
-
-  const toggleAll = () => {
-    setRows((prev) => prev.map((row) => ({ ...row, selected: !allSelected })));
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="overflow-hidden border-0 p-0"
-        style={{
-          width: "980px",
-          maxWidth: "calc(100vw - 32px)",
-          background: "#17110C",
-          color: "white",
-        }}
-      >
-        <DialogHeader className="px-6 pt-6">
-          <DialogTitle className="flex items-center gap-2 text-white">
-            <Upload size={16} style={{ color: "#E87322" }} />
-            上传脚本
-          </DialogTitle>
-          <DialogDescription style={{ color: "rgba(255,255,255,0.42)" }}>
-            支持下载模版，上传 Excel 后解析并同步到分镜表。若文件有其他信息，将追加在现有数据后面。
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-0 md:grid-cols-[0.92fr_1.08fr]">
-          <div className="space-y-4 border-r px-6 py-5" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-            <div
-              className="rounded-[24px] border border-dashed p-5"
-              style={{ borderColor: "rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.02)" }}
-            >
-              <div className="text-sm font-semibold">storyboard_script_v5.xlsx</div>
-              <div className="mt-2 text-xs leading-6" style={{ color: "rgba(255,255,255,0.42)" }}>
-                左上角显示文件名，可重新上传；上传完成后立即进入解析列表。
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button
-                  type="button"
-                  className="rounded-full border px-3 py-2 text-xs"
-                  style={{ borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.58)" }}
-                  onClick={() => toast.success("模板下载已开始")}
-                >
-                  下载模版
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full px-3 py-2 text-xs"
-                  style={{ background: "#E87322", color: "white" }}
-                  onClick={() => toast.success("已重新上传脚本")}
-                >
-                  重新上传
-                </button>
-              </div>
-            </div>
-
-            <div
-              className="rounded-[24px] border p-4"
-              style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-            >
-              <div className="mb-3 text-sm font-semibold">筛选条件</div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-2xl border px-3 py-2" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                  <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.34)" }}>集数</div>
-                  <div className="mt-1 text-sm">全部</div>
-                </div>
-                <div className="rounded-2xl border px-3 py-2" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                  <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.34)" }}>场次</div>
-                  <div className="mt-1 text-sm">全部</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 py-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold">解析结果</div>
-                <div className="mt-1 text-xs" style={{ color: "rgba(255,255,255,0.42)" }}>
-                  默认全选所有行，确认同步后写入文件
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={toggleAll}
-                className="rounded-full border px-3 py-1.5 text-xs"
-                style={{ borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.56)" }}
-              >
-                {allSelected ? "取消全选" : "全选"}
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-[58px] items-center justify-between px-5" style={{ background: "#1E1C18", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-white">004_image_场景_张晓茵</h2>
+              <button className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.72)" }}>
+                <Pencil size={15} />
               </button>
             </div>
+          </div>
 
-            <div
-              className="overflow-hidden rounded-[24px] border"
-              style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}
-            >
-              <div
-                className="grid px-4 py-3 text-xs font-medium"
-                style={{
-                  gridTemplateColumns: "52px 1fr 90px 90px 1.8fr",
-                  borderBottom: "1px solid rgba(255,255,255,0.06)",
-                  color: "rgba(255,255,255,0.42)",
-                }}
-              >
-                <span>选择</span>
-                <span>集数</span>
-                <span>场次</span>
-                <span>镜号</span>
-                <span>脚本</span>
+          <div
+            className="px-5 py-3"
+            data-storyboard-guide-target="detail-image-info"
+            style={{ background: "#151410", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: "#E87322", color: "#fff", fontSize: 11 }}>张</div>
+                <span className="text-sm font-medium text-white">张晓茵</span>
+                <span className="rounded-md px-2 py-0.5 text-xs" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.74)" }}>1K</span>
+                <span className="rounded-md px-2 py-0.5 text-xs" style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.74)" }}>智能比例</span>
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.36)" }}>2026-06-16 09:52</span>
               </div>
-              {rows.map((row) => (
-                <div
-                  key={row.id}
-                  className="grid items-center px-4 py-3 text-sm"
-                  style={{
-                    gridTemplateColumns: "52px 1fr 90px 90px 1.8fr",
-                    borderBottom: "1px solid rgba(255,255,255,0.06)",
-                    color: "rgba(255,255,255,0.74)",
-                  }}
-                >
+              <div className="flex items-center gap-2">
+                {[Target, Copy, Pencil].map((Icon, index) => (
                   <button
-                    type="button"
-                    onClick={() => toggleRow(row.id)}
-                    className="flex h-5 w-5 items-center justify-center rounded border"
-                    style={{
-                      borderColor: row.selected ? "#E87322" : "rgba(255,255,255,0.14)",
-                      background: row.selected ? "#E87322" : "transparent",
-                    }}
+                    key={index}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg"
+                    data-storyboard-guide-target={index === 0 ? "detail-locate-icon" : undefined}
+                    style={{ background: index === 0 ? "rgba(232,115,34,0.18)" : "rgba(255,255,255,0.06)", color: index === 0 ? "#F5A623" : "rgba(255,255,255,0.66)", boxShadow: index === 0 ? "0 0 0 3px rgba(245,166,35,0.12)" : "none" }}
                   >
-                    {row.selected && <Check size={12} className="text-white" />}
+                    <Icon size={15} />
                   </button>
-                  <span>{row.episode}</span>
-                  <span>{row.scene}</span>
-                  <span>{row.shotNo}</span>
-                  <span className="line-clamp-2" style={{ color: "rgba(255,255,255,0.56)" }}>
-                    {row.script}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-
-            <div className="mt-5 flex justify-end">
-              <button
-                type="button"
-                onClick={() => toast.success("已确认同步脚本到文件")}
-                className="rounded-full px-4 py-2 text-sm font-medium"
-                style={{ background: "#E87322", color: "white" }}
-              >
-                确认同步
-              </button>
+            <div className="rounded-lg px-4 py-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <p className="text-sm leading-6" style={{ color: "rgba(255,255,255,0.72)" }}>
+                这张照片捕捉了一个复古风格的办公室或书房，充满了温暖而怀旧的氛围。房间被从右侧大窗户透入的柔和自然光照亮，窗户部分被白色窗帘遮挡。
+              </p>
+              <p className="mt-3 truncate text-sm" style={{ color: "rgba(255,255,255,0.72)" }}>
+                在画面中央，有一张绿色的木桌，上面铺着绿色桌布。桌上摊开一张详细的大地图，部分被斜放在上面的木尺覆盖。
+              </p>
             </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+
+          <div className="relative flex-1 overflow-hidden" style={{ background: "radial-gradient(circle at top, rgba(36,115,102,0.16), transparent 28%), #11100D" }}>
+            <div
+              className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-5 rounded-full px-5 py-3"
+              data-storyboard-guide-target="detail-drawing-toolbar"
+              style={{ background: "rgba(16,31,32,0.9)", border: "1px solid rgba(74,198,198,0.22)", boxShadow: "0 10px 36px rgba(0,0,0,0.44)" }}
+            >
+              {[LayoutGrid, Link, Send, AlignLeft, RotateCcw, RotateCw, Trash2].map((Icon, index) => (
+                <button key={index} className="flex h-5 w-5 items-center justify-center" style={{ color: "rgba(220,232,232,0.76)" }}>
+                  <Icon size={18} />
+                </button>
+              ))}
+              <div className="h-6 w-px" style={{ background: "rgba(255,255,255,0.12)" }} />
+              {["#F05252", "#4CC3FF", "#F5C142"].map((color) => (
+                <span key={color} className="h-5 w-5 rounded-full" style={{ background: color, border: "2px solid rgba(255,255,255,0.8)" }} />
+              ))}
+              <ChevronDown size={16} style={{ color: "rgba(255,255,255,0.62)" }} />
+            </div>
+            <div className="flex h-full items-center justify-center px-2 pt-24">
+              <div
+                className="relative h-[min(66vh,760px)] w-full overflow-hidden rounded-sm"
+                data-storyboard-guide-target="detail-main-image"
+                style={{ background: "#0D0A06" }}
+              >
+                {panel.storyboardImg && <img src={panel.storyboardImg} alt="" className="h-full w-full object-cover" />}
+                <div className="absolute left-8 top-8 rounded-xl px-5 py-3 text-4xl font-semibold" style={{ color: "rgba(255,255,255,0.78)", border: "2px solid rgba(255,255,255,0.32)", background: "rgba(0,0,0,0.12)" }}>
+                  AI 生成
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <aside className="flex w-[390px] flex-col p-4" style={{ background: "#12120F", borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
+          <h3 className="text-sm font-semibold" style={{ color: "#E87322" }}>分镜信息</h3>
+          <div className="mt-2 h-px w-14" style={{ background: "#E87322" }} />
+          <div className="mt-3 rounded-lg p-4" style={{ border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+            <p className="text-sm font-semibold text-white">文字脚本</p>
+            <p className="mt-2 text-xs leading-5" style={{ color: "rgba(255,255,255,0.58)" }}>{panel.script}</p>
+          </div>
+
+          <div
+            className="mt-4 rounded-lg p-3"
+            data-storyboard-guide-target="detail-annotation"
+            style={{ border: "1px solid rgba(232,115,34,0.5)", background: "rgba(232,115,34,0.04)", boxShadow: "0 0 0 3px rgba(232,115,34,0.08)" }}
+          >
+            <p className="mb-3 text-sm font-semibold text-white">批注</p>
+            <div className="flex h-[310px] flex-col rounded-lg p-3" style={{ border: "1px solid rgba(232,115,34,0.3)", background: "#14110D" }}>
+              <button className="mb-5 flex h-20 w-20 items-center justify-center rounded-md" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.72)" }}>
+                <Plus size={28} />
+              </button>
+              <textarea className="min-h-0 flex-1 resize-none bg-transparent text-sm outline-none" style={{ color: "rgba(255,255,255,0.72)", caretColor: "#E87322" }} placeholder="点击输入批注" defaultValue={panel.notes} />
+              <div className="mt-3 flex justify-end">
+                <button
+                  className="rounded-md px-4 py-1.5 text-xs font-medium"
+                  data-storyboard-guide-target="detail-comment"
+                  style={{ background: "#B34E12", color: "#fff" }}
+                >
+                  发送
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 min-h-0 flex-1">
+            <p className="text-sm font-semibold text-white">评论 <span style={{ color: "rgba(255,255,255,0.42)" }}>(总评论数:1)</span></p>
+            <div className="mt-3 rounded-lg p-3" style={{ border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)" }}>
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: "#E87322", color: "#fff", fontSize: 11 }}>张</div>
+                <span className="text-sm font-semibold text-white">张晓茵</span>
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.42)" }}>2026-06-25 16:11</span>
+              </div>
+              <p className="mt-3 text-sm text-white">评论</p>
+              <div className="mt-3 flex gap-4 text-xs" style={{ color: "rgba(255,255,255,0.48)" }}>
+                <button>回复</button>
+                <button style={{ color: "#E87322" }}>解决</button>
+                <button>发送到对话</button>
+              </div>
+              <div className="ml-7 mt-4 rounded-lg p-3" style={{ border: "1px solid rgba(255,255,255,0.06)", background: "#151410" }}>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: "#E87322", color: "#fff", fontSize: 10 }}>张</div>
+                  <span className="text-sm font-semibold text-white">张晓茵</span>
+                  <span className="text-xs" style={{ color: "rgba(255,255,255,0.42)" }}>2026-06-25 16:11</span>
+                </div>
+                <p className="mt-2 text-sm text-white">111</p>
+                <p className="mt-1 text-xs" style={{ color: "rgba(255,255,255,0.42)" }}>发送到对话</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }
 
+// ─── Main Component ───────────────────────────────────────────────────────────
 export function ProjectStoryboardPage() {
-  const [episodes, setEpisodes] = useState(STORYBOARD_DATA);
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [episodes, setEpisodes] = useState<StoryEpisode[]>(EPISODES);
   const [activeEpisodeId, setActiveEpisodeId] = useState("ep1");
-  const [activeSceneId, setActiveSceneId] = useState("ep1-sc1");
-  const [expandedEpisodes, setExpandedEpisodes] = useState<Record<string, boolean>>({
-    ep1: true,
-    ep2: true,
-  });
+  const [activeSceneId, setActiveSceneId] = useState("s1");
+  const [expandedEpisodes, setExpandedEpisodes] = useState<Record<string, boolean>>({ ep1: true });
+  const [expandedArt, setExpandedArt] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [storySidebarTab, setStorySidebarTab] = useState<StorySidebarTab>("files");
+  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
+    eventType: true, sceneLabel: true, shotNo: true, script: true,
+    refImg: true, storyboardImg: true, storyboardVideo: true, crew: true, duration: true,
+    progress: true, notes: true,
+  });
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
+  const [editField, setEditField] = useState<string>("");
+  const [editValue, setEditValue] = useState<string>("");
+  const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null);
+  const [detailPanelId, setDetailPanelId] = useState<string | null>(null);
+  const [sortDuration, setSortDuration] = useState<"none" | "asc" | "desc">("none");
   const [showShareModal, setShowShareModal] = useState(false);
-  const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [reviewTarget, setReviewTarget] = useState<{
-    panel: StoryPanel;
-    kind: AssetKind;
-    assetIndex: number;
-  } | null>(null);
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-  const [editingCell, setEditingCell] = useState<{ panelId: string; field: ColumnKey } | null>(null);
-  const [editingValue, setEditingValue] = useState("");
-  const [activeView, setActiveView] = useState<StoryView>("master");
-  const [customViews, setCustomViews] = useState<StoryCustomView[]>([
-    {
-      id: "view-static",
-      name: "静态流程",
-      type: "custom",
-      columns: ["sceneNo", "shotNo", "script", "storyboardImages", "imageProgress", "owners", "notes"],
-    },
-    {
-      id: "view-dynamic",
-      name: "动态流程",
-      type: "custom",
-      columns: ["sceneNo", "shotNo", "script", "videoAssets", "videoProgress", "owners", "notes"],
-    },
-  ]);
-  const [draggedColumn, setDraggedColumn] = useState<ColumnKey | null>(null);
-  const [columnOrder, setColumnOrder] = useState<Record<string, ColumnKey[]>>({
-    master: [...DEFAULT_MASTER_COLUMNS],
-    image: [...DEFAULT_IMAGE_COLUMNS],
-    video: [...DEFAULT_VIDEO_COLUMNS],
-    "view-static": ["sceneNo", "shotNo", "script", "storyboardImages", "imageProgress", "owners", "notes"],
-    "view-dynamic": ["sceneNo", "shotNo", "script", "videoAssets", "videoProgress", "owners", "notes"],
-  });
-  const [columnVisibility, setColumnVisibility] = useState<Record<string, Record<ColumnKey, boolean>>>({
-    master: Object.fromEntries(DEFAULT_MASTER_COLUMNS.map((key) => [key, true])) as Record<ColumnKey, boolean>,
-    image: Object.fromEntries(DEFAULT_IMAGE_COLUMNS.map((key) => [key, true])) as Record<ColumnKey, boolean>,
-    video: Object.fromEntries(DEFAULT_VIDEO_COLUMNS.map((key) => [key, true])) as Record<ColumnKey, boolean>,
-    "view-static": Object.fromEntries(ALL_COLUMNS.map((column) => [column.key, columnOrder["view-static"]?.includes(column.key) ?? false])) as Record<ColumnKey, boolean>,
-    "view-dynamic": Object.fromEntries(ALL_COLUMNS.map((column) => [column.key, columnOrder["view-dynamic"]?.includes(column.key) ?? false])) as Record<ColumnKey, boolean>,
-  });
-  const [sortDirection, setSortDirection] = useState<"none" | "asc" | "desc">("none");
-  const [progressMenu, setProgressMenu] = useState<{ panelId: string; field: "imageProgress" | "videoProgress" } | null>(null);
+  const [progressDropdownId, setProgressDropdownId] = useState<string | null>(null);
+  const [showStoryboardGuide, setShowStoryboardGuide] = useState(() => searchParams.get("guide") === "1");
+  const [storyboardGuideStep, setStoryboardGuideStep] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
+  const isAppliedGuide = searchParams.get("applied") === "1";
+  const storyboardGuideSteps = isAppliedGuide ? STORYBOARD_GUIDE_STEPS : STORYBOARD_BASE_GUIDE_STEPS;
+  const currentStoryboardGuideStep = storyboardGuideSteps[storyboardGuideStep];
+
+  const closeStoryboardGuide = () => {
+    setShowStoryboardGuide(false);
+    setStoryboardGuideStep(0);
+    const nextUrl = `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  };
 
   useEffect(() => {
-    if (!progressMenu) return;
-    const handler = (event: MouseEvent) => {
-      if (tableRef.current && !tableRef.current.contains(event.target as Node)) {
-        setProgressMenu(null);
+    if (searchParams.get("guide") === "1") {
+      setShowStoryboardGuide(true);
+      setStoryboardGuideStep(() => {
+        if (searchParams.get("guideStep") === "last") return storyboardGuideSteps.length - 1;
+        if (isAppliedGuide) return 0;
+        return 0;
+      });
+    }
+  }, [searchParams, isAppliedGuide, storyboardGuideSteps.length]);
+
+  useEffect(() => {
+    if (searchParams.get("applied") !== "1") return;
+    const appliedSrc = searchParams.get("appliedSrc");
+    if (!appliedSrc) return;
+    setEpisodes((prev) => prev.map((ep) => ep.id === "ep1" ? {
+      ...ep,
+      scenes: ep.scenes.map((scene) => scene.id === "s1" ? {
+        ...scene,
+        panels: scene.panels.map((panel) => panel.id === "p1" ? {
+          ...panel,
+          storyboardImg: appliedSrc,
+          progress: "审核中" as ProgressStatus,
+          notes: "来自生成模块应用",
+        } : panel),
+      } : scene),
+    } : ep));
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!showStoryboardGuide || !currentStoryboardGuideStep) return;
+    if (currentStoryboardGuideStep.target === "applied-image") {
+      setViewMode("table");
+      setSidebarCollapsed(false);
+      setStorySidebarTab("files");
+      setActiveEpisodeId("ep1");
+      setActiveSceneId("s1");
+      setExpandedEpisodes((prev) => ({ ...prev, ep1: true }));
+      setSelectedPanelId("p1");
+    }
+    if (STORYBOARD_DETAIL_GUIDE_TARGETS.includes(currentStoryboardGuideStep.target)) {
+      setViewMode("table");
+      setSidebarCollapsed(false);
+      setStorySidebarTab("files");
+      setActiveEpisodeId("ep1");
+      setActiveSceneId("s1");
+      setExpandedEpisodes((prev) => ({ ...prev, ep1: true }));
+      setSelectedPanelId("p1");
+      setDetailPanelId("p1");
+    }
+    if (currentStoryboardGuideStep.target === "story-files") {
+      setSidebarCollapsed(false);
+      setStorySidebarTab("files");
+      setDetailPanelId(null);
+    }
+    if (currentStoryboardGuideStep.target === "story-table" || currentStoryboardGuideStep.target === "fill-handle" || currentStoryboardGuideStep.target === "story-export") {
+      setDetailPanelId(null);
+    }
+    if (currentStoryboardGuideStep.target === "drag-asset-replace") {
+      setViewMode("table");
+      setSidebarCollapsed(false);
+      setStorySidebarTab("assets");
+      setDetailPanelId(null);
+    }
+    if (currentStoryboardGuideStep.target === "story-table" || currentStoryboardGuideStep.target === "fill-handle" || currentStoryboardGuideStep.target === "story-export" || currentStoryboardGuideStep.target === "drag-asset-replace" || currentStoryboardGuideStep.target === "story-progress" || currentStoryboardGuideStep.target === "applied-image" || STORYBOARD_DETAIL_GUIDE_TARGETS.includes(currentStoryboardGuideStep.target)) {
+      setViewMode("table");
+      setProgressDropdownId(null);
+    }
+    window.setTimeout(() => {
+      const scrollTarget = currentStoryboardGuideStep.target === "fill-handle"
+        ? document.querySelector('[data-storyboard-guide-target="fill-shot-cell"]')
+        : currentStoryboardGuideStep.target === "drag-asset-replace"
+          ? document.querySelector('[data-storyboard-guide-target="story-video-cell"]')
+        : document.querySelector(`[data-storyboard-guide-target="${currentStoryboardGuideStep.target}"]`);
+      scrollTarget?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  }, [currentStoryboardGuideStep, showStoryboardGuide]);
+
+  useEffect(() => {
+    if (!progressDropdownId) return;
+    const handler = (e: MouseEvent) => {
+      if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
+        setProgressDropdownId(null);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [progressMenu]);
+  }, [progressDropdownId]);
 
-  const activeEpisode = episodes.find((episode) => episode.id === activeEpisodeId) ?? episodes[0];
-  const activeScene = activeEpisode?.scenes.find((scene) => scene.id === activeSceneId) ?? activeEpisode?.scenes[0];
+  const activeEpisode = episodes.find((e) => e.id === activeEpisodeId);
+  const activeScene = activeEpisode?.scenes.find((s) => s.id === activeSceneId);
+  const detailPanel = activeScene?.panels.find((panel) => panel.id === detailPanelId) ?? null;
 
-  const viewId = typeof activeView === "string" ? activeView : activeView.id;
-  const configuredColumns = columnOrder[viewId] ?? getViewColumns(activeView);
-  const visibleMap =
-    columnVisibility[viewId] ??
-    (Object.fromEntries(ALL_COLUMNS.map((column) => [column.key, configuredColumns.includes(column.key)])) as Record<ColumnKey, boolean>);
-  const visibleColumns = configuredColumns
-    .filter((key) => visibleMap[key])
-    .map((key) => ALL_COLUMNS.find((column) => column.key === key))
-    .filter(Boolean) as ColumnConfig[];
+  const toggleEpisode = (id: string) => setExpandedEpisodes((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  const basePanels = activeScene?.panels ?? [];
-  const filteredPanels = useMemo(() => {
-    const viewAdjusted = basePanels.filter((panel) => {
-      if (typeof activeView === "string") {
-        if (activeView === "image") return panel.storyboardImages.length > 0 || panel.imageProgress !== "待上传";
-        if (activeView === "video") return panel.videoAssets.length > 0 || panel.videoProgress !== "待上传";
-      }
-      return true;
+  const getPanels = (): StoryPanel[] => {
+    const panels = activeScene?.panels ?? [];
+    if (sortDuration === "none") return panels;
+    return [...panels].sort((a, b) => {
+      const av = parseFloat(a.duration);
+      const bv = parseFloat(b.duration);
+      return sortDuration === "asc" ? av - bv : bv - av;
     });
-
-    if (sortDirection === "none") return viewAdjusted;
-    return [...viewAdjusted].sort((a, b) =>
-      sortDirection === "asc" ? a.duration - b.duration : b.duration - a.duration,
-    );
-  }, [activeView, basePanels, sortDirection]);
-
-  const progressSummary = getProgressCountForView(activeView, filteredPanels);
-
-  const updatePanel = (panelId: string, updater: (panel: StoryPanel) => StoryPanel) => {
-    setEpisodes((prev) =>
-      prev.map((episode) =>
-        episode.id !== activeEpisodeId
-          ? episode
-          : {
-              ...episode,
-              scenes: episode.scenes.map((scene) =>
-                scene.id !== activeSceneId
-                  ? scene
-                  : {
-                      ...scene,
-                      panels: scene.panels.map((panel) => (panel.id === panelId ? updater(panel) : panel)),
-                    },
-              ),
-            },
-      ),
-    );
   };
+
+  const totalPanels = (ep: StoryEpisode) => ep.scenes.reduce((acc, s) => acc + s.panels.length, 0);
+  const completedPanels = (ep: StoryEpisode) => ep.scenes.reduce((acc, s) => acc + s.panels.filter((p) => p.progress === "已完成").length, 0);
 
   const addPanel = () => {
     if (!activeScene) return;
-    const nextNo = activeScene.panels.length + 1;
     const newPanel: StoryPanel = {
-      id: `panel-${Date.now()}`,
-      rowNo: nextNo,
-      sceneNo: activeScene.panels.length > 0 ? activeScene.panels[activeScene.panels.length - 1].sceneNo : 1,
-      shotNo: String(nextNo).padStart(3, "0"),
+      id: `p${Date.now()}`,
+      rowNo: activeScene.panels.length + 1,
+      eventType: "场",
+      sceneLabel: `第${activeScene.panels.length + 1}场`,
+      shotNo: String(activeScene.panels.length + 1),
       script: "请填写文字脚本",
-      referenceImages: [],
-      storyboardImages: [],
-      videoAssets: [],
-      dub: "",
-      owners: [],
-      duration: 3.0,
-      totalDone: false,
-      imageProgress: "待上传",
-      videoProgress: "待上传",
+      crew: [],
+      duration: "3s",
+      progress: "未开始",
       notes: "",
-      imageComments: [],
-      videoComments: [],
     };
-    setEpisodes((prev) =>
-      prev.map((episode) =>
-        episode.id !== activeEpisodeId
-          ? episode
-          : {
-              ...episode,
-              scenes: episode.scenes.map((scene) =>
-                scene.id !== activeSceneId ? scene : { ...scene, panels: [...scene.panels, newPanel] },
-              ),
-            },
-      ),
-    );
-    toast.success("已新增分镜行");
-  };
-
-  const duplicatePanel = (panelId: string) => {
-    const panel = basePanels.find((item) => item.id === panelId);
-    if (!panel) return;
-    const duplicated = {
-      ...panel,
-      id: `panel-${Date.now()}`,
-      rowNo: basePanels.length + 1,
-      shotNo: `${panel.shotNo}-副本`,
-    };
-    setEpisodes((prev) =>
-      prev.map((episode) =>
-        episode.id !== activeEpisodeId
-          ? episode
-          : {
-              ...episode,
-              scenes: episode.scenes.map((scene) =>
-                scene.id !== activeSceneId ? scene : { ...scene, panels: [...scene.panels, duplicated] },
-              ),
-            },
-      ),
-    );
-    toast.success("已复制分镜行");
+    setEpisodes((prev) => prev.map((ep) => ep.id === activeEpisodeId ? {
+      ...ep, scenes: ep.scenes.map((sc) => sc.id === activeSceneId ? { ...sc, panels: [...sc.panels, newPanel] } : sc)
+    } : ep));
+    toast.success("已新增分镜");
   };
 
   const deletePanel = (panelId: string) => {
-    setEpisodes((prev) =>
-      prev.map((episode) =>
-        episode.id !== activeEpisodeId
-          ? episode
-          : {
-              ...episode,
-              scenes: episode.scenes.map((scene) =>
-                scene.id !== activeSceneId
-                  ? scene
-                  : { ...scene, panels: scene.panels.filter((panel) => panel.id !== panelId) },
-              ),
-            },
-      ),
-    );
-    toast.success("已删除分镜行");
+    setEpisodes((prev) => prev.map((ep) => ep.id === activeEpisodeId ? {
+      ...ep, scenes: ep.scenes.map((sc) => sc.id === activeSceneId ? { ...sc, panels: sc.panels.filter((p) => p.id !== panelId) } : sc)
+    } : ep));
+    toast.success("已删除分镜");
   };
 
-  const startEdit = (panel: StoryPanel, field: ColumnKey) => {
-    if (["referenceImages", "storyboardImages", "videoAssets", "owners"].includes(field)) return;
-    setEditingCell({ panelId: panel.id, field });
-    if (field === "duration") setEditingValue(String(panel.duration));
-    else if (field === "sceneNo") setEditingValue(String(panel.sceneNo));
-    else if (field === "totalDone") setEditingValue(panel.totalDone ? "true" : "false");
-    else setEditingValue(String((panel as unknown as Record<string, string | number | boolean>)[field] ?? ""));
+  const updatePanelField = (panelId: string, field: string, value: string) => {
+    setEpisodes((prev) => prev.map((ep) => ep.id === activeEpisodeId ? {
+      ...ep, scenes: ep.scenes.map((sc) => sc.id === activeSceneId ? {
+        ...sc, panels: sc.panels.map((p) => p.id === panelId ? { ...p, [field]: value } : p)
+      } : sc)
+    } : ep));
+    setEditingPanelId(null);
   };
 
-  const commitEdit = () => {
-    if (!editingCell) return;
-    const { panelId, field } = editingCell;
-    updatePanel(panelId, (panel) => {
-      if (field === "duration") {
-        return { ...panel, duration: Number(editingValue || 0) };
-      }
-      if (field === "sceneNo") {
-        return { ...panel, sceneNo: Number(editingValue || 0) };
-      }
-      if (field === "shotNo" || field === "script" || field === "dub" || field === "notes") {
-        return { ...panel, [field]: editingValue } as StoryPanel;
-      }
-      return panel;
-    });
-    setEditingCell(null);
+  const startEdit = (panelId: string, field: string, currentValue: string) => {
+    setEditingPanelId(panelId);
+    setEditField(field);
+    setEditValue(currentValue);
   };
 
-  const toggleEpisode = (episodeId: string) => {
-    setExpandedEpisodes((prev) => ({ ...prev, [episodeId]: !prev[episodeId] }));
-  };
-
-  const setProgressValue = (
-    panelId: string,
-    field: "imageProgress" | "videoProgress",
-    value: ProgressState,
-  ) => {
-    updatePanel(panelId, (panel) => ({ ...panel, [field]: value }));
-    setProgressMenu(null);
-  };
-
-  const moveColumn = (target: ColumnKey) => {
-    if (!draggedColumn || draggedColumn === target) return;
-    const current = [...configuredColumns];
-    const from = current.indexOf(draggedColumn);
-    const to = current.indexOf(target);
-    if (from === -1 || to === -1) return;
-    current.splice(from, 1);
-    current.splice(to, 0, draggedColumn);
-    setColumnOrder((prev) => ({ ...prev, [viewId]: current }));
-    setDraggedColumn(null);
-  };
-
-  const toggleColumn = (columnKey: ColumnKey) => {
-    setColumnVisibility((prev) => ({
-      ...prev,
-      [viewId]: {
-        ...(prev[viewId] ?? ({} as Record<ColumnKey, boolean>)),
-        [columnKey]: !(prev[viewId]?.[columnKey] ?? configuredColumns.includes(columnKey)),
-      },
-    }));
-  };
-
-  const createView = () => {
-    const id = `view-${Date.now()}`;
-    const view: StoryCustomView = {
-      id,
-      name: `新视图 ${customViews.length + 1}`,
-      type: "custom",
-      columns: ["sceneNo", "shotNo", "script", "storyboardImages", "imageProgress", "notes"],
-    };
-    setCustomViews((prev) => [...prev, view]);
-    setColumnOrder((prev) => ({ ...prev, [id]: [...view.columns] }));
-    setColumnVisibility((prev) => ({
-      ...prev,
-      [id]: Object.fromEntries(ALL_COLUMNS.map((column) => [column.key, view.columns.includes(column.key)])) as Record<ColumnKey, boolean>,
-    }));
-    setActiveView(view);
-    toast.success("已新增视图");
-  };
-
-  const renameView = (viewIdToRename: string) => {
-    setCustomViews((prev) =>
-      prev.map((view, index) =>
-        view.id === viewIdToRename ? { ...view, name: `协作视图 ${index + 1}` } : view,
-      ),
-    );
-    toast.success("视图已重命名");
-  };
-
-  const removeView = (viewIdToRemove: string) => {
-    setCustomViews((prev) => prev.filter((view) => view.id !== viewIdToRemove));
-    setActiveView("master");
-    toast.success("视图已删除");
-  };
-
-  const duplicateView = (viewToDuplicate: StoryCustomView) => {
-    const id = `view-${Date.now()}`;
-    const copy = { ...viewToDuplicate, id, name: `${viewToDuplicate.name} 副本` };
-    setCustomViews((prev) => [...prev, copy]);
-    setColumnOrder((prev) => ({ ...prev, [id]: [...(columnOrder[viewToDuplicate.id] ?? viewToDuplicate.columns)] }));
-    setColumnVisibility((prev) => ({
-      ...prev,
-      [id]: { ...(prev[viewToDuplicate.id] ?? {}) } as Record<ColumnKey, boolean>,
-    }));
-    toast.success("视图已复制");
-  };
-
-  const getSceneSidebarLabel = (scene: StoryScene, index: number) => {
-    const matched = scene.name.match(/第(\d+)幕|第(\d+)场/);
-    const parsedNo = matched ? Number(matched[1] ?? matched[2]) : index + 1;
-    return `第${parsedNo}场`;
-  };
+  const panels = getPanels();
 
   return (
     <>
-      <div className="flex h-full overflow-hidden" style={{ background: "#120D08", color: "white" }}>
-        <aside
-          className="relative flex shrink-0 flex-col border-r"
-          style={{
-            width: sidebarCollapsed ? "28px" : "248px",
-            borderColor: "rgba(255,255,255,0.06)",
-            background: "linear-gradient(180deg, #100C08 0%, #0B0907 100%)",
-            transition: "width 0.2s ease",
-          }}
+    <div className="flex h-full" style={{ background: "#140F09" }}>
+      {/* ── Secondary Sidebar ─────────────────────────────────────────────── */}
+      <div
+        className="flex flex-col flex-shrink-0 relative"
+        style={{
+          width: sidebarCollapsed ? "28px" : "220px",
+          background: "#110E0A",
+          borderRight: "1px solid rgba(255,255,255,0.05)",
+          transition: "width 0.2s ease",
+          overflow: "hidden",
+        }}
+      >
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="absolute top-2 right-1 z-10 w-5 h-5 rounded flex items-center justify-center hover:bg-white/10"
+          style={{ color: "rgba(255,255,255,0.35)" }}
+          title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
         >
-          <button
-            type="button"
-            onClick={() => setSidebarCollapsed((prev) => !prev)}
-            className="absolute right-1 top-2 z-20 flex h-6 w-6 items-center justify-center rounded-full"
-            style={{ color: "rgba(255,255,255,0.36)", background: "rgba(255,255,255,0.04)" }}
-          >
-            {sidebarCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-          </button>
+          {sidebarCollapsed ? <ChevronRight size={11} /> : <ChevronLeft size={11} />}
+        </button>
 
-          {!sidebarCollapsed && (
-            <>
-              <div className="flex border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                {[
-                  { key: "files" as const, label: "文件" },
-                  { key: "assets" as const, label: "资产" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setStorySidebarTab(tab.key)}
-                    className="flex-1 px-3 py-3 text-xs font-medium"
-                    style={{
-                      color: storySidebarTab === tab.key ? "#E87322" : "rgba(255,255,255,0.42)",
-                      borderBottom: storySidebarTab === tab.key ? "2px solid #E87322" : "2px solid transparent",
-                    }}
-                  >
-                    {tab.label}
+        {!sidebarCollapsed && (
+          <>
+            {/* Sidebar tabs: 文件 / 资产 */}
+            <div className="flex flex-shrink-0 border-b" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+              {([
+                { key: "files" as const, label: "文件" },
+                { key: "assets" as const, label: "资产" },
+              ]).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setStorySidebarTab(tab.key)}
+                  className="flex-1 py-2.5 text-xs transition-colors"
+                  style={{
+                    color: storySidebarTab === tab.key ? "#E87322" : "rgba(255,255,255,0.4)",
+                    borderBottom: storySidebarTab === tab.key ? "2px solid #E87322" : "2px solid transparent",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {storySidebarTab === "files" && (
+              <>
+                {/* Files tab header */}
+                <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+                  <div className="flex items-center gap-1.5">
+                    <Film size={11} style={{ color: "#E87322" }} />
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.6)" }}>分镜</span>
+                  </div>
+                  <button title="新建集" onClick={() => toast.success("新建集功能")}>
+                    <Plus size={13} style={{ color: "rgba(255,255,255,0.3)" }} />
                   </button>
-                ))}
-              </div>
+                </div>
 
-              {storySidebarTab === "files" ? (
-                <div className="flex-1 overflow-auto px-3 py-3">
+                <div className="flex-1 overflow-auto py-1" data-storyboard-guide-target="story-files">
+                  {/* Episodes */}
                   {episodes.map((episode) => {
-                    const expanded = expandedEpisodes[episode.id];
-                    const panels = flattenPanels(episode);
-                    const episodeProgress = getProgressCountForView(activeView, panels);
+                    const isExpanded = expandedEpisodes[episode.id];
+                    const total = totalPanels(episode);
+                    const completed = completedPanels(episode);
                     return (
-                      <div key={episode.id} className="mb-3 rounded-[22px] border" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+                      <div key={episode.id} className="mb-0.5">
                         <button
-                          type="button"
-                          onClick={() => {
-                            setActiveEpisodeId(episode.id);
-                            if (episode.scenes[0]) setActiveSceneId(episode.scenes[0].id);
-                            if (episode.id === "ep1") setActiveView("master");
-                            toggleEpisode(episode.id);
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-3 text-left"
-                          style={{
-                            background: episode.id === activeEpisodeId && activeView === "master" && episode.id === "ep1" ? "rgba(232,115,34,0.08)" : "transparent",
-                          }}
+                          onClick={() => { setActiveEpisodeId(episode.id); toggleEpisode(episode.id); if (episode.scenes.length > 0) setActiveSceneId(episode.scenes[0].id); }}
+                          className="w-full flex items-center gap-1.5 px-2 py-2 text-left transition-colors hover:bg-white/5 group"
                         >
-                          <ChevronRight
-                            size={12}
-                            style={{
-                              color: episode.id === activeEpisodeId && activeView === "master" && episode.id === "ep1" ? "#E87322" : "rgba(255,255,255,0.36)",
-                              transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-                              transition: "transform 0.15s",
-                            }}
-                          />
-                          <Film size={13} style={{ color: episode.id === activeEpisodeId && activeView === "master" && episode.id === "ep1" ? "#E87322" : "#E87322" }} />
-                          <span
-                            className="flex-1 text-sm font-medium"
-                            style={{ color: episode.id === activeEpisodeId && activeView === "master" && episode.id === "ep1" ? "#E87322" : "rgba(255,255,255,0.82)" }}
-                          >
-                            {episode.name}
-                          </span>
-                          {episodeProgress && (
-                            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.34)" }}>
-                              {episodeProgress.completed}/{episodeProgress.total}
-                            </span>
-                          )}
+                          <ChevronRight size={11} style={{ color: "rgba(255,255,255,0.35)", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s" }} />
+                          <Film size={12} style={{ color: "#E87322", flexShrink: 0 }} />
+                          <span className="flex-1 text-xs" style={{ color: activeEpisodeId === episode.id ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.55)" }}>{episode.name}</span>
+                          {total > 0 && <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.25)" }}>{completed}/{total}</span>}
                         </button>
-                        {expanded && (
-                          <div className="space-y-1 px-2 pb-2">
-                            {episode.id === "ep1" ? (
-                              <>
-                                {episode.scenes.map((scene, index) => {
-                                  const active = episode.id === activeEpisodeId && scene.id === activeSceneId && activeView === "master";
-                                  return (
-                                    <div
-                                      key={scene.id}
-                                      className="group flex items-center gap-2 rounded-2xl px-3 py-2"
-                                      style={{
-                                        background: active ? "rgba(232,115,34,0.12)" : "transparent",
-                                        color: active ? "#E87322" : "rgba(255,255,255,0.5)",
-                                      }}
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveEpisodeId(episode.id);
-                                          setActiveSceneId(scene.id);
-                                          setActiveView("master");
-                                        }}
-                                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                      >
-                                        <AlignLeft size={11} />
-                                        <span className="flex-1 truncate text-xs">{getSceneSidebarLabel(scene, index)}</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="opacity-0 transition-opacity group-hover:opacity-100"
-                                        style={{ color: "rgba(255,255,255,0.32)" }}
-                                        onClick={() => toast.success(`可重命名 ${getSceneSidebarLabel(scene, index)}`)}
-                                        title="重命名"
-                                      >
-                                        <Pencil size={11} />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="opacity-0 transition-opacity group-hover:opacity-100"
-                                        style={{ color: "rgba(255,107,107,0.66)" }}
-                                        onClick={() => toast.success(`可删除 ${getSceneSidebarLabel(scene, index)}`)}
-                                        title="删除"
-                                      >
-                                        <Trash2 size={11} />
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                              </>
-                            ) : (
-                              <>
+
+                        {isExpanded && episode.scenes.length > 0 && (
+                          <div className="ml-5">
+                            {episode.scenes.map((scene) => {
+                              const isActiveScene = activeSceneId === scene.id && activeEpisodeId === episode.id;
+                              return (
                                 <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveEpisodeId(episode.id);
-                                    if (episode.scenes[0]) setActiveSceneId(episode.scenes[0].id);
-                                    setActiveView("video");
-                                  }}
-                                  className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-left"
-                                  style={{
-                                    background: activeEpisodeId === episode.id && activeView === "video" ? "rgba(232,115,34,0.12)" : "transparent",
-                                    color: activeEpisodeId === episode.id && activeView === "video" ? "#E87322" : "rgba(255,255,255,0.5)",
-                                  }}
+                                  key={scene.id}
+                                  onClick={() => { setActiveEpisodeId(episode.id); setActiveSceneId(scene.id); }}
+                                  className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-colors"
+                                  style={{ background: isActiveScene ? "rgba(232,115,34,0.12)" : "transparent", color: isActiveScene ? "#E87322" : "rgba(255,255,255,0.45)" }}
+                                  onMouseEnter={(e) => { if (!isActiveScene) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)"; }}
+                                  onMouseLeave={(e) => { if (!isActiveScene) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                                 >
-                                  <Video size={11} />
-                                  <span className="flex-1 text-xs">动态</span>
+                                  <AlignLeft size={10} style={{ flexShrink: 0 }} />
+                                  <span className="text-xs truncate">{scene.name}</span>
+                                  <span className="ml-auto" style={{ fontSize: "9px" }}>{scene.panels.length}</span>
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveEpisodeId(episode.id);
-                                    if (episode.scenes[0]) setActiveSceneId(episode.scenes[0].id);
-                                    setActiveView("image");
-                                  }}
-                                  className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-left"
-                                  style={{
-                                    background: activeEpisodeId === episode.id && activeView === "image" ? "rgba(232,115,34,0.12)" : "transparent",
-                                    color: activeEpisodeId === episode.id && activeView === "image" ? "#E87322" : "rgba(255,255,255,0.5)",
-                                  }}
-                                >
-                                  <LucideImage size={11} />
-                                  <span className="flex-1 text-xs">静态</span>
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs"
-                              style={{ color: "rgba(255,255,255,0.28)" }}
-                              onClick={() => toast.success(`已在 ${episode.name} 新建视图`)}
-                            >
-                              <Plus size={11} />
-                              新建视图
+                              );
+                            })}
+                            <button className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left hover:bg-white/5" style={{ color: "rgba(255,255,255,0.2)", fontSize: "10px" }}>
+                              <Plus size={10} />新建幕
+                            </button>
+                          </div>
+                        )}
+
+                        {isExpanded && episode.scenes.length === 0 && (
+                          <div className="ml-5">
+                            <button className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left hover:bg-white/5" style={{ color: "rgba(255,255,255,0.2)", fontSize: "10px" }}>
+                              <Plus size={10} />新建幕
                             </button>
                           </div>
                         )}
                       </div>
                     );
                   })}
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-dashed px-3 py-3 text-sm"
-                    style={{ borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.36)" }}
-                    onClick={() => toast.success("已新建剧集")}
-                  >
-                    <Plus size={13} />
-                    新建剧集
-                  </button>
                 </div>
-              ) : (
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <ProjectAssetsSidebarPanel />
-                </div>
-              )}
-            </>
-          )}
-        </aside>
-
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "#13110F" }}>
-          <header
-            className="border-b px-6 pb-3 pt-4"
-            style={{
-              borderColor: "rgba(255,255,255,0.05)",
-              background: "#141210",
-            }}
-          >
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-sm">
-                  <span style={{ color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>《见君心》番外短片</span>
-                  <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.24)" }} />
-                  {progressSummary && (
-                    <div
-                      className="group relative rounded-xl px-3 py-1.5 text-sm font-semibold"
-                      style={{
-                        background: "linear-gradient(180deg, #FFB06A 0%, #FF7F2D 100%)",
-                        color: "#1A120C",
-                      }}
-                    >
-                      进度： {progressSummary.completed}/{progressSummary.total}
-                      <div
-                        className="pointer-events-none absolute left-0 top-full z-10 mt-2 hidden w-64 rounded-2xl border px-3 py-2 text-[11px] leading-5 group-hover:block"
-                        style={{
-                          background: "#1D150F",
-                          borderColor: "rgba(255,255,255,0.08)",
-                          color: "rgba(255,255,255,0.62)",
-                        }}
-                      >
-                        {progressSummary.description}
-                      </div>
-                    </div>
-                  )}
-                  <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.24)" }} />
-                  <span style={{ color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>{activeEpisode?.name}</span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowShareModal(true)}
-                  className="rounded-full px-5 py-2 text-sm font-semibold"
-                  style={{ background: "linear-gradient(180deg, #FFB06A 0%, #FF7F2D 100%)", color: "#120D08" }}
-                >
-                  分享
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowUploadDialog(true)}
-                  className="rounded-full px-5 py-2 text-sm font-semibold"
-                  style={{ background: "linear-gradient(180deg, #FFB06A 0%, #FF7F2D 100%)", color: "#120D08" }}
-                >
-                  上传脚本
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full px-5 py-2 text-sm font-semibold"
-                  style={{ background: "#4A4A4A", color: "white" }}
-                  onClick={() => toast.success("已开始批量导出")}
-                >
-                  导出
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <div className="border-b px-6 py-0" style={{ borderColor: "rgba(255,255,255,0.05)", background: "#141210" }}>
-            <div className="flex items-center gap-6">
-              <button
-                type="button"
-                onClick={() => setActiveView("master")}
-                className="flex items-center gap-2 border-b-2 px-1 py-4 text-[15px] font-medium"
-                style={{
-                  borderColor: activeView === "master" ? "#FF8A33" : "transparent",
-                  color: activeView === "master" ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.68)",
-                }}
-              >
-                <AlignLeft size={14} />
-                {activeEpisode?.name}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveView("image")}
-                className="border-b-2 px-1 py-4 text-[15px] font-medium"
-                style={{
-                  borderColor: activeView === "image" ? "#FF8A33" : "transparent",
-                  color: activeView === "image" ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.68)",
-                }}
-              >
-                画面表
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveView("video")}
-                className="border-b-2 px-1 py-4 text-[15px] font-medium"
-                style={{
-                  borderColor: activeView === "video" ? "#FF8A33" : "transparent",
-                  color: activeView === "video" ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.68)",
-                }}
-              >
-                视频表
-              </button>
-              {typeof activeView !== "string" && (
-                <div className="group flex items-center gap-2 border-b-2 px-1 py-4 text-[15px] font-medium" style={{ borderColor: "#FF8A33", color: "rgba(255,255,255,0.9)" }}>
-                  <button type="button" onClick={() => setActiveView(activeView)}>{activeView.name}</button>
-                  <button type="button" onClick={() => duplicateView(activeView)} style={{ color: "rgba(255,255,255,0.4)" }}>
-                    <Copy size={11} />
-                  </button>
-                  <button type="button" onClick={() => renameView(activeView.id)} style={{ color: "rgba(255,255,255,0.4)" }}>
-                    <Pencil size={11} />
-                  </button>
-                  <button type="button" onClick={() => removeView(activeView.id)} style={{ color: "rgba(255,107,107,0.72)" }}>
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              )}
-              <div className="flex items-center gap-2 text-[15px] font-medium" style={{ color: "rgba(255,255,255,0.72)" }}>
-                <button
-                  type="button"
-                  onClick={createView}
-                  className="px-1 py-4"
-                >
-                  <Plus size={13} className="mr-1 inline" />
-                  新建视图
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative flex items-center gap-4 border-b px-6 py-2.5" style={{ borderColor: "rgba(255,255,255,0.05)", background: "#211D1B" }}>
-            <button
-              type="button"
-              onClick={() => setShowFilterMenu((prev) => !prev)}
-              className="text-sm"
-              style={{ color: "rgba(255,255,255,0.62)" }}
-            >
-              筛选
-              <span className="ml-1 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-[11px]" style={{ background: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.72)" }}>
-                2
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowColumnMenu((prev) => !prev)}
-              className="text-sm"
-              style={{ color: "rgba(255,255,255,0.62)" }}
-            >
-              列设置
-            </button>
-            <button
-              type="button"
-              onClick={() => setSortDirection((prev) => (prev === "none" ? "desc" : prev === "desc" ? "asc" : "none"))}
-              className="text-sm"
-              style={{ color: "rgba(255,255,255,0.62)" }}
-            >
-              时长 {sortDirection === "asc" ? "↑" : sortDirection === "desc" ? "↓" : ""}
-            </button>
-
-            {showFilterMenu && (
-              <div
-                className="absolute left-6 top-full z-20 mt-2 w-[320px] rounded-[24px] border p-4"
-                style={{ background: "#1B140E", borderColor: "rgba(255,255,255,0.08)" }}
-              >
-                <div className="mb-3 text-sm font-semibold">筛选</div>
-                <div className="space-y-2 text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                  <div className="rounded-2xl border px-3 py-2" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                    画面进度：支持等于 / 不等于 / 包含 / 不包含 / 为空 / 不为空
-                  </div>
-                  <div className="rounded-2xl border px-3 py-2" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                    时长：支持大于 / 小于 / 等于
-                  </div>
-                  <div className="rounded-2xl border px-3 py-2" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                    负责人：支持成员筛选
-                  </div>
-                </div>
-              </div>
+              </>
             )}
 
+            {storySidebarTab === "assets" && (
+              <div className="flex flex-col h-full overflow-hidden" style={{ width: "280px", flexShrink: 0 }} data-storyboard-guide-target="story-assets-sidebar">
+                <ProjectAssetsSidebarPanel
+                  projectId="1"
+                  activeSubTab="generate"
+                  hideSubTabs
+                  hideTitle
+                  hideSourceFilter
+                  title="资产"
+                  guideDragAssetReplace={showStoryboardGuide && currentStoryboardGuideStep?.target === "drag-asset-replace"}
+                  guideStoryboardVideoDrop={showStoryboardGuide && currentStoryboardGuideStep?.target === "drag-asset-replace"}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── Main Storyboard Area ───────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-3 flex-shrink-0" data-storyboard-guide-target="story-toolbar" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", background: "#0D0A06" }}>
+          {/* Breadcrumb + progress */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm truncate" style={{ color: "rgba(255,255,255,0.8)" }}>{activeEpisode?.name}</span>
+            <ChevronRight size={11} style={{ color: "rgba(255,255,255,0.25)" }} />
+            <span className="text-sm truncate" style={{ color: "rgba(255,255,255,0.55)" }}>{activeScene?.name ?? "—"}</span>
+            {activeEpisode && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full ml-1 flex-shrink-0"
+                style={{ background: "rgba(232,115,34,0.12)" }}>
+                <span style={{ fontSize: "10px", color: "#E87322" }}>
+                  进度 {completedPanels(activeEpisode)}/{totalPanels(activeEpisode)} 片
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* View type tabs */}
+          <div className="flex items-center gap-1 ml-4">
+            <button onClick={() => setViewMode("table")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+              style={{ background: viewMode === "table" ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: viewMode === "table" ? "#E87322" : "rgba(255,255,255,0.4)" }}>
+              <AlignLeft size={11} />画面表
+            </button>
+            <button onClick={() => setViewMode("card")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+              style={{ background: viewMode === "card" ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: viewMode === "card" ? "#E87322" : "rgba(255,255,255,0.4)" }}>
+              <LayoutGrid size={11} />卡片视图
+            </button>
+            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors" style={{ color: "rgba(255,255,255,0.3)", border: "1px dashed rgba(255,255,255,0.1)" }}>
+              <Plus size={11} />新建视图
+            </button>
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Right actions */}
+          <div className="flex items-center gap-2">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <Upload size={11} />上传脚本
+            </button>
+            <button
+              onClick={() => setShowShareModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
+              style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.08)" }}
+            >
+              <Share2 size={11} />分享
+            </button>
+            <button
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:opacity-80 transition-opacity"
+              data-storyboard-guide-target="story-export"
+              style={{ background: "#E87322", color: "white" }}
+            >
+              <Download size={11} />导出
+            </button>
+          </div>
+        </div>
+
+        {/* Filter bar */}
+        <div className="flex items-center gap-3 px-5 py-2.5 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+          <div className="relative">
+            <button
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
+              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <Filter size={11} />筛选
+            </button>
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowColumnMenu(!showColumnMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
+              style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <Settings2 size={11} />列设置
+            </button>
             {showColumnMenu && (
-              <div
-                className="absolute left-[96px] top-full z-20 mt-2 w-[240px] rounded-[24px] border p-3"
-                style={{ background: "#1B140E", borderColor: "rgba(255,255,255,0.08)" }}
-              >
-                <div className="mb-2 text-sm font-semibold">列设置</div>
-                {configuredColumns.map((columnKey) => {
-                  const column = ALL_COLUMNS.find((item) => item.key === columnKey);
-                  if (!column) return null;
-                  const visible = visibleMap[columnKey];
-                  return (
-                    <button
-                      key={column.key}
-                      type="button"
-                      onClick={() => toggleColumn(column.key)}
-                      className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-xs"
-                      style={{ color: "rgba(255,255,255,0.6)" }}
-                    >
-                      <span>{column.label}</span>
-                      <span
-                        className="flex h-4 w-4 items-center justify-center rounded"
-                        style={{
-                          background: visible ? "#E87322" : "rgba(255,255,255,0.08)",
-                          color: visible ? "white" : "transparent",
-                        }}
-                      >
-                        <Check size={10} />
-                      </span>
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowColumnMenu(false)} />
+                <div className="absolute top-full mt-1 left-0 z-20 rounded-xl overflow-hidden" style={{ background: "#2A2018", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 24px rgba(0,0,0,0.6)", minWidth: "160px" }}>
+                  {ALL_COLUMNS.map((col) => (
+                    <button key={col.key} onClick={() => setVisibleColumns((prev) => ({ ...prev, [col.key]: !prev[col.key] }))} className="w-full flex items-center justify-between px-3 py-2 text-xs text-left hover:bg-white/5" style={{ color: "rgba(255,255,255,0.6)" }}>
+                      {col.label}
+                      <div className="w-4 h-4 rounded flex items-center justify-center" style={{ background: visibleColumns[col.key] ? "#E87322" : "rgba(255,255,255,0.1)" }}>
+                        {visibleColumns[col.key] && <Check size={9} className="text-white" />}
+                      </div>
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div
-              ref={tableRef}
-              className="overflow-auto"
-              style={{ background: "#12100F" }}
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
+              {panels.length} 个分镜
+            </span>
+            <button
+              onClick={addPanel}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:opacity-80"
+              style={{ background: "#E87322", color: "white" }}
             >
-              <div
-                className="grid min-w-max"
-                style={{
-                  gridTemplateColumns: `36px 68px ${visibleColumns.map((column) => `${column.width}px`).join(" ")} 64px`,
-                }}
-              >
-                <div
-                  className="sticky left-0 top-0 z-10 flex h-9 items-center justify-center border-b border-r"
-                  style={{ borderColor: "rgba(255,255,255,0.12)", background: "#0B0B0A", color: "rgba(255,255,255,0.28)" }}
-                >
-                  ○
+              <Plus size={11} />新增分镜
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto">
+          {viewMode === "table" ? (
+            /* TABLE VIEW */
+            <div ref={tableRef} data-storyboard-guide-target="story-table" style={{ minWidth: "fit-content" }}>
+              {/* Table header */}
+              <div className="flex items-center sticky top-0 z-10 flex-shrink-0" style={{ background: "#110E0A", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                {/* Row number */}
+                <div className="flex items-center justify-center flex-shrink-0" style={{ width: "48px", height: "36px", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)" }}>#</span>
                 </div>
-                <div
-                  className="sticky top-0 z-10 flex h-9 items-center justify-center border-b border-r"
-                  style={{ borderColor: "rgba(255,255,255,0.12)", background: "#0B0B0A", color: "rgba(255,255,255,0.28)" }}
-                >
-                  
-                </div>
-                {visibleColumns.map((column) => (
-                  <div
-                    key={column.key}
-                    className="flex h-9 items-center gap-1 border-b border-r px-3"
-                    draggable
-                    onDragStart={() => setDraggedColumn(column.key)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={() => moveColumn(column.key)}
-                    style={{ borderColor: "rgba(255,255,255,0.12)", background: "#0B0B0A", color: "rgba(255,255,255,0.86)" }}
-                  >
-                    <span className="text-[13px]">{column.label}</span>
-                    {(column.key === "videoAssets" || column.key === "duration") && (
-                      <ChevronDown size={11} style={{ color: "rgba(255,255,255,0.72)" }} />
+                {/* Columns */}
+                {ALL_COLUMNS.filter((c) => visibleColumns[c.key]).map((col) => (
+                  <div key={col.key} className="flex items-center gap-1 px-3 flex-shrink-0"
+                    style={{ width: `${col.width}px`, height: "36px", borderRight: "1px solid rgba(255,255,255,0.04)" }}>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", whiteSpace: "nowrap" }}>{col.label}</span>
+                    {col.key === "duration" && (
+                      <button onClick={() => setSortDuration((s) => s === "none" ? "desc" : s === "desc" ? "asc" : "none")} className="ml-0.5 flex-shrink-0">
+                        <ChevronDown size={9} style={{ color: sortDuration !== "none" ? "#E87322" : "rgba(255,255,255,0.25)", transform: sortDuration === "asc" ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                      </button>
                     )}
                   </div>
                 ))}
-                <div
-                  className="flex h-9 items-center justify-center border-b"
-                  style={{ borderColor: "rgba(255,255,255,0.12)", background: "#0B0B0A", color: "rgba(255,255,255,0.3)" }}
-                >
-                  
+                {/* Add column */}
+                <div className="flex items-center justify-center flex-shrink-0 px-3" style={{ width: "40px", height: "36px" }}>
+                  <button className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10" title="添加列">
+                    <Plus size={11} style={{ color: "rgba(255,255,255,0.25)" }} />
+                  </button>
                 </div>
-
-                {filteredPanels.length === 0 && (
-                  <div
-                    className="col-span-full flex flex-col items-center justify-center gap-3 px-6 py-16"
-                    style={{ color: "rgba(255,255,255,0.28)" }}
-                  >
-                    <Film size={28} />
-                    <span className="text-sm">暂无数据</span>
-                  </div>
-                )}
-
-                {filteredPanels.map((panel) => (
-                  <FragmentRow
-                    key={panel.id}
-                    panel={panel}
-                    selected={selectedRowId === panel.id}
-                    visibleColumns={visibleColumns}
-                    editingCell={editingCell}
-                    editingValue={editingValue}
-                    setEditingValue={setEditingValue}
-                    setEditingCell={setEditingCell}
-                    startEdit={startEdit}
-                    commitEdit={commitEdit}
-                    setSelectedRowId={setSelectedRowId}
-                    setProgressMenu={setProgressMenu}
-                    progressMenu={progressMenu}
-                    setProgressValue={setProgressValue}
-                    openReview={(kind, assetIndex) => setReviewTarget({ panel, kind, assetIndex })}
-                    duplicatePanel={duplicatePanel}
-                    deletePanel={deletePanel}
-                    updatePanel={updatePanel}
-                  />
-                ))}
               </div>
-            </div>
-          </div>
-        </main>
-      </div>
 
-      <ShareProjectDialog
-        open={showShareModal}
-        onOpenChange={setShowShareModal}
-        episodes={episodes}
-        customViews={customViews}
-      />
-      <UploadScriptDialog open={showUploadDialog} onOpenChange={setShowUploadDialog} />
-      <StoryReviewDialog
-        open={!!reviewTarget}
-        onOpenChange={(open) => {
-          if (!open) setReviewTarget(null);
+              {/* Rows */}
+              {panels.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16" style={{ color: "rgba(255,255,255,0.2)" }}>
+                  <Film size={32} />
+                  <p className="mt-3 text-sm">暂无分镜，点击「新增分镜」开始创作</p>
+                </div>
+              ) : (
+                panels.map((panel, rowIndex) => {
+                  const isSelected = selectedPanelId === panel.id;
+                  return (
+                    <div
+                      key={panel.id}
+                      className="flex items-stretch group transition-colors"
+                      data-storyboard-guide-target={rowIndex === 2 ? "fill-visible-rows" : undefined}
+                      style={{
+                        background: isSelected ? "rgba(232,115,34,0.04)" : "transparent",
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        minHeight: "72px",
+                      }}
+                      onClick={() => setSelectedPanelId(isSelected ? null : panel.id)}
+                    >
+                      {/* Row number */}
+                      <div className="flex items-center justify-center flex-shrink-0 relative" style={{ width: "48px", borderRight: "1px solid rgba(255,255,255,0.04)" }}>
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)" }}>{panel.rowNo}</span>
+                        <button className="absolute right-0.5 top-1 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded hover:bg-red-900/20"
+                          onClick={(e) => { e.stopPropagation(); deletePanel(panel.id); }}>
+                          <X size={9} style={{ color: "rgba(255,100,100,0.5)" }} />
+                        </button>
+                      </div>
+
+                      {/* Columns */}
+                      {ALL_COLUMNS.filter((c) => visibleColumns[c.key]).map((col) => {
+                        const isEditing = editingPanelId === panel.id && editField === col.key;
+                        return (
+                          <div
+                            key={col.key}
+                            className="relative flex items-start px-3 py-2 flex-shrink-0"
+                            data-storyboard-guide-target={
+                              rowIndex === 1 && col.key === "sceneLabel" ? "fill-scene-cell"
+                                : rowIndex === 1 && col.key === "shotNo" ? "fill-shot-cell"
+                                  : undefined
+                            }
+                            style={{
+                              width: `${col.width}px`,
+                              borderRight: "1px solid rgba(255,255,255,0.04)",
+                            }}
+                            onDoubleClick={() => {
+                              if (col.key !== "refImg" && col.key !== "storyboardImg" && col.key !== "crew" && col.key !== "progress") {
+                                const val = String(panel[col.key as keyof StoryPanel] ?? "");
+                                startEdit(panel.id, col.key, val);
+                              }
+                            }}
+                          >
+                            {col.key === "eventType" && (
+                              <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: "rgba(232,115,34,0.15)", color: "#E87322", fontSize: "11px", flexShrink: 0 }}>{panel.eventType}</span>
+                            )}
+
+                            {col.key === "sceneLabel" && (
+                              isEditing ? (
+                                <input autoFocus className="w-full bg-transparent text-xs outline-none" style={{ border: "1px solid rgba(232,115,34,0.4)", borderRadius: "4px", padding: "2px 6px", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
+                                  value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => updatePanelField(panel.id, col.key, editValue)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") updatePanelField(panel.id, col.key, editValue); if (e.key === "Escape") setEditingPanelId(null); }} />
+                              ) : (
+                                <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>{panel.sceneLabel}</span>
+                              )
+                            )}
+
+                            {col.key === "shotNo" && (
+                              isEditing ? (
+                                <input autoFocus className="w-full bg-transparent text-xs outline-none" style={{ border: "1px solid rgba(232,115,34,0.4)", borderRadius: "4px", padding: "2px 6px", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
+                                  value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => updatePanelField(panel.id, col.key, editValue)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") updatePanelField(panel.id, col.key, editValue); if (e.key === "Escape") setEditingPanelId(null); }} />
+                              ) : (
+                                <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>{panel.shotNo}</span>
+                              )
+                            )}
+
+                            {col.key === "script" && (
+                              isEditing ? (
+                                <textarea autoFocus className="w-full bg-transparent text-xs outline-none resize-none" style={{ border: "1px solid rgba(232,115,34,0.4)", borderRadius: "4px", padding: "4px 6px", color: "rgba(255,255,255,0.8)", caretColor: "#E87322", height: "60px" }}
+                                  value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => updatePanelField(panel.id, col.key, editValue)}
+                                  onKeyDown={(e) => { if (e.key === "Escape") setEditingPanelId(null); }} />
+                              ) : (
+                                <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)", lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>{panel.script}</span>
+                              )
+                            )}
+
+                            {col.key === "refImg" && (
+                              panel.refImg ? (
+                                <div className="rounded-md overflow-hidden" style={{ width: "100px", height: "64px" }}>
+                                  <img src={panel.refImg} alt="" className="w-full h-full object-cover" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center rounded-md" style={{ width: "100px", height: "64px", background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.07)" }}>
+                                  <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.15)" }}>—</span>
+                                </div>
+                              )
+                            )}
+
+                            {col.key === "storyboardImg" && (
+                              panel.storyboardImg ? (
+                                <div
+                                  className="rounded-md overflow-hidden"
+                                  data-storyboard-guide-target={panel.id === "p1" ? "applied-image" : panel.id === "p3" ? "story-img-cell" : undefined}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedPanelId(panel.id);
+                                    setDetailPanelId(panel.id);
+                                  }}
+                                  style={{
+                                    width: "100px",
+                                    height: "64px",
+                                    cursor: "pointer",
+                                    boxShadow: searchParams.get("applied") === "1" && panel.id === "p1" ? "0 0 0 2px rgba(232,115,34,0.62), 0 10px 26px rgba(232,115,34,0.2)" : "none",
+                                  }}
+                                >
+                                  <img src={panel.storyboardImg} alt="" className="w-full h-full object-cover" />
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center rounded-md" style={{ width: "100px", height: "64px", background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.07)" }}>
+                                  <Plus size={14} style={{ color: "rgba(255,255,255,0.1)" }} />
+                                </div>
+                              )
+                            )}
+
+                            {col.key === "storyboardVideo" && (
+                              panel.storyboardVideo ? (
+                                <div className="relative rounded-md overflow-hidden" style={{ width: "100px", height: "64px" }}>
+                                  <img src={panel.storyboardVideo} alt="" className="w-full h-full object-cover" />
+                                  <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.18)" }}>
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: "rgba(0,0,0,0.62)", color: "rgba(255,255,255,0.86)" }}>
+                                      <Video size={12} />
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  className="flex flex-col items-center justify-center gap-1 rounded-md"
+                                  data-storyboard-guide-target={panel.id === "p3" ? "story-video-cell" : undefined}
+                                  style={{ width: "100px", height: "64px", background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(255,255,255,0.09)" }}
+                                >
+                                  <Video size={14} style={{ color: "rgba(255,255,255,0.16)" }} />
+                                  <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.16)" }}>拖入视频</span>
+                                </div>
+                              )
+                            )}
+
+                            {col.key === "crew" && (
+                              <div className="flex flex-wrap gap-1">
+                                {panel.crew.map((name, i) => (
+                                  <div key={i} className="w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0"
+                                    style={{ background: i === 0 ? "#E87322" : "#4A9EE0", fontSize: "9px", fontWeight: 600 }}>
+                                    {name[0]}
+                                  </div>
+                                ))}
+                                {panel.crew.length === 0 && (
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.06)", border: "1px dashed rgba(255,255,255,0.15)" }}>
+                                    <Plus size={9} style={{ color: "rgba(255,255,255,0.2)" }} />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {col.key === "duration" && (
+                              isEditing ? (
+                                <input autoFocus className="w-full bg-transparent text-xs outline-none" style={{ border: "1px solid rgba(232,115,34,0.4)", borderRadius: "4px", padding: "2px 6px", color: "rgba(255,255,255,0.8)", caretColor: "#E87322", width: "50px" }}
+                                  value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => updatePanelField(panel.id, col.key, editValue)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") updatePanelField(panel.id, col.key, editValue); if (e.key === "Escape") setEditingPanelId(null); }} />
+                              ) : (
+                                <span className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>{panel.duration}</span>
+                              )
+                            )}
+
+                            {col.key === "progress" && (
+                              <div className="relative flex-shrink-0">
+                                <button
+                                  data-storyboard-guide-target={panel.id === "p1" ? "story-progress" : undefined}
+                                  className="px-2 py-0.5 rounded text-xs"
+                                  style={{ background: PROGRESS_STYLES[panel.progress].bg, color: PROGRESS_STYLES[panel.progress].color, fontSize: "11px" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setProgressDropdownId(progressDropdownId === panel.id ? null : panel.id);
+                                  }}
+                                >
+                                  {panel.progress}
+                                </button>
+                                {progressDropdownId === panel.id && (
+                                  <div className="absolute top-full left-0 mt-1 z-50 rounded-md overflow-hidden shadow-lg border border-white/10"
+                                    style={{ background: "#1a1714", minWidth: "90px" }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {(["待审核", "审核中", "已完成", "未开始"] as ProgressStatus[]).map((status) => (
+                                      <button key={status}
+                                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                                        style={{
+                                          color: panel.progress === status ? PROGRESS_STYLES[status].color : "rgba(255,255,255,0.6)",
+                                          background: panel.progress === status ? PROGRESS_STYLES[status].bg : "transparent",
+                                        }}
+                                        onMouseEnter={(e) => { if (panel.progress !== status) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                                        onMouseLeave={(e) => { if (panel.progress !== status) e.currentTarget.style.background = "transparent"; }}
+                                        onClick={() => {
+                                          updatePanelField(panel.id, "progress", status);
+                                          setProgressDropdownId(null);
+                                        }}
+                                      >
+                                        {status}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {col.key === "notes" && (
+                              isEditing ? (
+                                <input autoFocus className="w-full bg-transparent text-xs outline-none" style={{ border: "1px solid rgba(232,115,34,0.4)", borderRadius: "4px", padding: "2px 6px", color: "rgba(255,255,255,0.8)", caretColor: "#E87322" }}
+                                  value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={() => updatePanelField(panel.id, col.key, editValue)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") updatePanelField(panel.id, col.key, editValue); if (e.key === "Escape") setEditingPanelId(null); }} />
+                              ) : (
+                                <span className="text-xs" style={{ color: panel.notes ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.15)", fontStyle: panel.notes ? "normal" : "italic" }}>{panel.notes || "请填写..."}</span>
+                              )
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Actions */}
+                      <div className="flex items-center justify-center flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ width: "40px" }}>
+                        <button onClick={(e) => { e.stopPropagation(); toast.success("更多操作"); }} className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10">
+                          <MoreHorizontal size={11} style={{ color: "rgba(255,255,255,0.3)" }} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              {/* Add row */}
+              <button
+                onClick={addPanel}
+                className="flex items-center gap-2 px-5 py-3 w-full text-left transition-colors hover:bg-white/5"
+                style={{ color: "rgba(255,255,255,0.25)", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: "12px" }}
+              >
+                <Plus size={12} />新增分镜行
+              </button>
+            </div>
+          ) : (
+            /* CARD VIEW */
+            <div className="p-5">
+              {panels.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16" style={{ color: "rgba(255,255,255,0.2)" }}>
+                  <Film size={32} /><p className="mt-3 text-sm">暂无分镜</p>
+                </div>
+              ) : (
+                <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+                  {panels.map((panel) => {
+                    const isSelected = selectedPanelId === panel.id;
+                    return (
+                      <div key={panel.id} onClick={() => setSelectedPanelId(isSelected ? null : panel.id)}
+                        className="rounded-xl overflow-hidden cursor-pointer transition-all group"
+                        style={{ background: "#1A1510", border: isSelected ? "2px solid #E87322" : "2px solid rgba(255,255,255,0.06)" }}>
+                        <div className="relative overflow-hidden" style={{ aspectRatio: "16/9" }}>
+                          {panel.storyboardImg || panel.refImg ? (
+                            <img src={panel.storyboardImg ?? panel.refImg} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center" style={{ background: "#231E17" }}>
+                              <Film size={24} style={{ color: "rgba(255,255,255,0.1)" }} />
+                            </div>
+                          )}
+                          <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-xs" style={{ background: isSelected ? "#E87322" : "rgba(0,0,0,0.6)", color: "white", fontSize: "10px", fontWeight: 600 }}>
+                            #{panel.rowNo.toString().padStart(2, "0")}
+                          </div>
+                          <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded" style={{ background: PROGRESS_STYLES[panel.progress].bg, color: PROGRESS_STYLES[panel.progress].color, fontSize: "9px" }}>
+                            {panel.progress}
+                          </div>
+                          <div className="absolute bottom-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.5)", fontSize: "9px", color: "rgba(232,115,34,0.9)" }}>
+                            <Clock size={8} />{panel.duration}
+                          </div>
+                        </div>
+                        <div className="p-2.5">
+                          <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>{panel.script}</p>
+                          <div className="flex items-center justify-between mt-2">
+                            <div className="flex gap-1">
+                              {panel.crew.map((name, i) => (
+                                <div key={i} className="w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: i === 0 ? "#E87322" : "#4A9EE0", fontSize: "8px", fontWeight: 600 }}>{name[0]}</div>
+                              ))}
+                            </div>
+                            <button onClick={(e) => { e.stopPropagation(); deletePanel(panel.id); }} className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded flex items-center justify-center hover:bg-red-900/20">
+                              <X size={9} style={{ color: "rgba(255,100,100,0.5)" }} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Add card */}
+                  <div onClick={addPanel} className="rounded-xl cursor-pointer flex flex-col items-center justify-center transition-opacity hover:opacity-80" style={{ border: "2px dashed rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)", minHeight: "160px" }}>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center mb-2" style={{ background: "rgba(232,115,34,0.1)", border: "1px dashed rgba(232,115,34,0.4)" }}>
+                      <Plus size={18} style={{ color: "#E87322" }} />
+                    </div>
+                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>新增分镜</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+    {showShareModal && (
+      <ShareModal episodes={episodes} onClose={() => setShowShareModal(false)} />
+    )}
+    {detailPanel && (
+      <StoryboardDetailDrawer panel={detailPanel} onClose={() => setDetailPanelId(null)} />
+    )}
+    {showStoryboardGuide && currentStoryboardGuideStep && (
+      <StoryboardModuleGuide
+        step={storyboardGuideStep}
+        total={storyboardGuideSteps.length}
+        current={currentStoryboardGuideStep}
+        onPrev={() => {
+          if (storyboardGuideStep === 0) {
+            closeStoryboardGuide();
+            navigate(`/project/${id}/generate?guide=1&guideStep=last`);
+            return;
+          }
+          setStoryboardGuideStep((value) => Math.max(0, value - 1));
         }}
-        panel={reviewTarget?.panel ?? null}
-        kind={reviewTarget?.kind ?? "image"}
-        initialAssetIndex={reviewTarget?.assetIndex ?? 0}
-        episodeName={activeEpisode?.name ?? "第1集"}
-        sceneName={activeScene?.name ?? "session名称"}
+        onNext={() => {
+          if (currentStoryboardGuideStep.target === "applied-image") {
+            setSelectedPanelId("p1");
+            setDetailPanelId("p1");
+            const firstDetailStep = storyboardGuideSteps.findIndex((item) => item.target === "detail-image-list");
+            setStoryboardGuideStep(firstDetailStep >= 0 ? firstDetailStep : Math.min(storyboardGuideSteps.length - 1, storyboardGuideStep + 1));
+            return;
+          }
+          if (currentStoryboardGuideStep.target === "detail-comment") {
+            setDetailPanelId(null);
+            const tableStep = storyboardGuideSteps.findIndex((item) => item.target === "story-table");
+            setStoryboardGuideStep(tableStep >= 0 ? tableStep : Math.min(storyboardGuideSteps.length - 1, storyboardGuideStep + 1));
+            return;
+          }
+          if (storyboardGuideStep === storyboardGuideSteps.length - 1) {
+            closeStoryboardGuide();
+            return;
+          }
+          setStoryboardGuideStep((value) => Math.min(storyboardGuideSteps.length - 1, value + 1));
+        }}
+        onClose={closeStoryboardGuide}
       />
+    )}
     </>
   );
 }
 
-function FragmentRow({
-  panel,
-  selected,
-  visibleColumns,
-  editingCell,
-  editingValue,
-  setEditingValue,
-  setEditingCell,
-  startEdit,
-  commitEdit,
-  setSelectedRowId,
-  setProgressMenu,
-  progressMenu,
-  setProgressValue,
-  openReview,
-  duplicatePanel,
-  deletePanel,
-  updatePanel,
-}: {
-  panel: StoryPanel;
-  selected: boolean;
-  visibleColumns: ColumnConfig[];
-  editingCell: { panelId: string; field: ColumnKey } | null;
-  editingValue: string;
-  setEditingValue: (value: string) => void;
-  setEditingCell: (cell: { panelId: string; field: ColumnKey } | null) => void;
-  startEdit: (panel: StoryPanel, field: ColumnKey) => void;
-  commitEdit: () => void;
-  setSelectedRowId: (value: string | null) => void;
-  setProgressMenu: (value: { panelId: string; field: "imageProgress" | "videoProgress" } | null) => void;
-  progressMenu: { panelId: string; field: "imageProgress" | "videoProgress" } | null;
-  setProgressValue: (
-    panelId: string,
-    field: "imageProgress" | "videoProgress",
-    value: ProgressState,
-  ) => void;
-  openReview: (kind: AssetKind, assetIndex: number) => void;
-  duplicatePanel: (panelId: string) => void;
-  deletePanel: (panelId: string) => void;
-  updatePanel: (panelId: string, updater: (panel: StoryPanel) => StoryPanel) => void;
-}) {
-  const leftActionSymbol = selected ? "✓" : panel.rowNo === 1 ? "+" : panel.rowNo === 2 ? "" : "+";
+// ─── Share Modal ──────────────────────────────────────────────────────────────
+interface ShareRecord {
+  id: string;
+  name: string;
+  email: string;
+  permission: "read" | "edit";
+  expiry: string;
+}
 
-  const renderEditableInput = (field: ColumnKey, value: string) => (
-    <input
-      autoFocus
-      value={editingValue}
-      onChange={(event) => setEditingValue(event.target.value)}
-      onBlur={commitEdit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") commitEdit();
-        if (event.key === "Escape") setEditingCell(null);
-      }}
-      className="w-full rounded-xl border bg-transparent px-3 py-2 text-xs outline-none"
-      style={{ borderColor: "rgba(232,115,34,0.32)", color: "rgba(255,255,255,0.84)" }}
-      aria-label={field}
-    />
-  );
+function ShareModal({ episodes, onClose }: { episodes: StoryEpisode[]; onClose: () => void }) {
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set(["ep1"]));
+  const [permission, setPermission] = useState<"read" | "edit">("read");
+  const [expiry, setExpiry] = useState("7days");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [shareRecords] = useState<ShareRecord[]>([
+    { id: "sr1", name: "外部人员A", email: "a@external.com", permission: "read", expiry: "2026-04-14" },
+    { id: "sr2", name: "外部人员B", email: "b@external.com", permission: "edit", expiry: "永久" },
+  ]);
+
+  const toggleFile = (id: string) => {
+    setSelectedFiles((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText("https://shanhai.ai/share/sb/x9k2m4p").catch(() => {});
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
+
+  const EXPIRY_LABELS: Record<string, string> = {
+    "7days": "7天", "30days": "30天", "permanent": "永久", "custom": "自定义"
+  };
 
   return (
-    <>
-      <div
-        className="sticky left-0 z-[1] flex items-start justify-center border-b border-r pt-3"
-        style={{
-          borderColor: "rgba(255,255,255,0.12)",
-          background: "#12100F",
-          color: selected ? "#FF8A33" : "rgba(255,255,255,0.56)",
-          minHeight: "158px",
-        }}
-        onClick={() => setSelectedRowId(selected ? null : panel.id)}
-      >
-        <div
-          className="flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-semibold"
-          style={{
-            borderColor: selected ? "#FF8A33" : "rgba(255,255,255,0.22)",
-            background: leftActionSymbol ? "rgba(255,255,255,0.04)" : "transparent",
-          }}
-        >
-          {leftActionSymbol}
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.75)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="flex flex-col rounded-2xl overflow-hidden" style={{ background: "#1A1510", border: "1px solid rgba(255,255,255,0.1)", width: "580px", maxHeight: "85vh", boxShadow: "0 24px 80px rgba(0,0,0,0.8)" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center gap-2">
+            <Share2 size={16} style={{ color: "#E87322" }} />
+            <h2 className="text-white" style={{ fontSize: "16px", fontWeight: 600 }}>分享故事板</h2>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10">
+            <X size={14} style={{ color: "rgba(255,255,255,0.5)" }} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {/* File selection */}
+          <div className="px-6 pt-5 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-xs mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>选择分享内容</p>
+            <div className="flex flex-col gap-1.5">
+              {episodes.map((ep) => (
+                <div key={ep.id}>
+                  <button onClick={() => toggleFile(ep.id)} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-white/5 transition-colors">
+                    <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0" style={{ background: selectedFiles.has(ep.id) ? "#E87322" : "transparent", border: selectedFiles.has(ep.id) ? "none" : "1.5px solid rgba(255,255,255,0.2)" }}>
+                      {selectedFiles.has(ep.id) && <Check size={9} className="text-white" />}
+                    </div>
+                    <Film size={13} style={{ color: "#E87322", flexShrink: 0 }} />
+                    <span className="text-sm flex-1" style={{ color: "rgba(255,255,255,0.75)" }}>{ep.name}</span>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>
+                      {ep.scenes.reduce((acc, s) => acc + s.panels.length, 0)} 帧
+                    </span>
+                  </button>
+                  {ep.scenes.map((sc) => (
+                    <button key={sc.id} onClick={() => toggleFile(sc.id)} className="ml-6 w-[calc(100%-24px)] flex items-center gap-3 px-3 py-1.5 rounded-lg text-left hover:bg-white/5 transition-colors">
+                      <div className="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0" style={{ background: selectedFiles.has(sc.id) ? "rgba(232,115,34,0.6)" : "transparent", border: selectedFiles.has(sc.id) ? "none" : "1.5px solid rgba(255,255,255,0.15)" }}>
+                        {selectedFiles.has(sc.id) && <Check size={8} className="text-white" />}
+                      </div>
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>{sc.name}</span>
+                      <span className="ml-auto" style={{ fontSize: "10px", color: "rgba(255,255,255,0.25)" }}>{sc.panels.length} 帧</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Permission + Expiry */}
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-xs mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>权限设置</p>
+            <div className="flex items-center gap-3 mb-4">
+              {[{ key: "read" as const, label: "阅读", icon: <Eye size={12} /> }, { key: "edit" as const, label: "编辑", icon: <Edit3 size={12} /> }].map(({ key, label, icon }) => (
+                <button key={key} onClick={() => setPermission(key)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors"
+                  style={{ background: permission === key ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.05)", color: permission === key ? "#E87322" : "rgba(255,255,255,0.5)", border: permission === key ? "1px solid rgba(232,115,34,0.3)" : "1px solid rgba(255,255,255,0.08)" }}>
+                  {icon}{label}
+                </button>
+              ))}
+            </div>
+            
+          </div>
+
+          {/* Share link */}
+          <div className="px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-xs mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>分享链接</p>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <Link size={11} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                <span className="text-xs truncate" style={{ color: "rgba(255,255,255,0.5)" }}>https://shanhai.ai/share/sb/x9k2m4p</span>
+              </div>
+              <button onClick={copyLink} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs transition-colors flex-shrink-0"
+                style={{ background: linkCopied ? "rgba(74,198,120,0.15)" : "#E87322", color: linkCopied ? "#4AC678" : "white" }}>
+                {linkCopied ? <Check size={11} /> : <Link size={11} />}
+                {linkCopied ? "已复制" : "复制链接"}
+              </button>
+            </div>
+          </div>
+
+          {/* Current permission records */}
+          <div className="px-6 py-4">
+            <p className="text-xs mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>当前分享权限详情</p>
+            {shareRecords.length === 0 ? (
+              <p className="text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>暂无分享记录</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {shareRecords.map((record) => (
+                  <div key={record.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white" style={{ background: "#4A9EE0", fontSize: "10px", fontWeight: 600 }}>
+                      {record.name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white">{record.name}</div>
+                      <div className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{record.email}</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-xs flex-shrink-0"
+                      style={{ background: record.permission === "edit" ? "rgba(232,115,34,0.15)" : "rgba(255,255,255,0.07)", color: record.permission === "edit" ? "#E87322" : "rgba(255,255,255,0.5)" }}>
+                      {record.permission === "edit" ? "编辑" : "阅读"}
+                    </span>
+                    
+                    <button className="text-xs px-2 py-0.5 rounded transition-colors hover:bg-red-900/20 flex-shrink-0" style={{ color: "rgba(255,100,100,0.6)" }}>
+                      撤销
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      <div
-        className="flex items-center justify-center border-b border-r"
-        style={{
-          borderColor: "rgba(255,255,255,0.12)",
-          background: "#12100F",
-          minHeight: "158px",
-        }}
-      >
-        <span className="text-sm" style={{ color: "rgba(255,255,255,0.72)" }}>
-          {panel.rowNo}
-        </span>
-      </div>
-
-      {visibleColumns.map((column) => {
-        const isEditing = editingCell?.panelId === panel.id && editingCell.field === column.key;
-        return (
-          <div
-            key={`${panel.id}-${column.key}`}
-            className="border-b border-r px-3 py-4"
-            style={{
-              borderColor: "rgba(255,255,255,0.12)",
-              background: "#12100F",
-              minHeight: "158px",
-            }}
-            onDoubleClick={() => startEdit(panel, column.key)}
-          >
-            {column.key === "sceneNo" &&
-              (isEditing ? (
-                renderEditableInput(column.key, String(panel.sceneNo))
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <span className="rounded-md border px-3 py-1 text-sm" style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.82)" }}>
-                    第 {panel.sceneNo} 场
-                  </span>
-                </div>
-              ))}
-
-            {column.key === "shotNo" &&
-              (isEditing ? (
-                renderEditableInput(column.key, panel.shotNo)
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <span className="rounded-md border px-3 py-1 text-sm" style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.82)" }}>
-                    {panel.sceneNo}-{panel.shotNo.replace(/^0+/, "") || panel.shotNo}
-                  </span>
-                </div>
-              ))}
-
-            {column.key === "script" &&
-              (isEditing ? (
-                <textarea
-                  autoFocus
-                  value={editingValue}
-                  onChange={(event) => setEditingValue(event.target.value)}
-                  onBlur={commitEdit}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") setEditingCell(null);
-                  }}
-                  className="h-24 w-full resize-none rounded-xl border bg-transparent px-3 py-2 text-xs outline-none"
-                  style={{ borderColor: "rgba(232,115,34,0.32)", color: "rgba(255,255,255,0.84)" }}
-                />
-              ) : (
-                <div className="line-clamp-5 text-[14px] leading-8" style={{ color: "rgba(255,255,255,0.82)" }}>
-                  {panel.script}
-                </div>
-              ))}
-
-            {column.key === "referenceImages" && (
-              <div className="space-y-2">
-                {panel.referenceImages.length > 0 ? (
-                  panel.referenceImages.slice(0, 2).map((src, index) => (
-                    <AssetThumb
-                      key={`${src}-${index}`}
-                      src={src}
-                      label={`参考图 ${index + 1}`}
-                      meta="本地上传 / 可拖拽"
-                      kind="image"
-                    />
-                  ))
-                ) : (
-                  <AssetThumb label="上传画面参考" meta="支持本地上传 / 侧边栏拖拽" kind="image" />
-                )}
-              </div>
-            )}
-
-            {column.key === "storyboardImages" && (
-              <div className="space-y-2">
-                {panel.storyboardImages.length > 0 ? (
-                  panel.storyboardImages.slice(0, 2).map((asset, index) => (
-                    <AssetThumb
-                      key={asset.id}
-                      src={asset.src}
-                      label={asset.label}
-                      meta={asset.countLabel}
-                      onClick={() => openReview("image", index)}
-                      kind="image"
-                    />
-                  ))
-                ) : (
-                  <AssetThumb
-                    label="上传分镜图"
-                    meta="支持评论、上传、删除、下载"
-                    onClick={() => toast.success("请先上传图片")}
-                    kind="image"
-                  />
-                )}
-              </div>
-            )}
-
-            {column.key === "videoAssets" && (
-              <div className="space-y-2">
-                {panel.videoAssets.length > 0 ? (
-                  panel.videoAssets.slice(0, 2).map((asset, index) => (
-                    <AssetThumb
-                      key={asset.id}
-                      src={asset.src}
-                      label={asset.label}
-                      meta={asset.countLabel}
-                      onClick={() => openReview("video", index)}
-                      kind="video"
-                    />
-                  ))
-                ) : (
-                  <AssetThumb
-                    label="上传分镜视频"
-                    meta="支持评论、上传、删除、下载"
-                    onClick={() => toast.success("请先上传视频")}
-                    kind="video"
-                  />
-                )}
-              </div>
-            )}
-
-            {column.key === "dub" &&
-              (isEditing ? (
-                renderEditableInput(column.key, panel.dub)
-              ) : (
-                <div className="line-clamp-5 text-[14px] leading-8" style={{ color: panel.dub ? "rgba(255,255,255,0.82)" : "rgba(255,255,255,0.26)" }}>
-                  {panel.dub || "待补充配音文案"}
-                </div>
-              ))}
-
-            {column.key === "owners" && (
-              <div className="flex h-full items-center">
-                <MemberAvatars owners={panel.owners} />
-              </div>
-            )}
-
-            {column.key === "duration" &&
-              (isEditing ? (
-                renderEditableInput(column.key, String(panel.duration))
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <span className="rounded-md border px-3 py-1 text-sm" style={{ borderColor: "rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.82)" }}>
-                    {panel.duration}s
-                  </span>
-                </div>
-              ))}
-
-            {column.key === "totalDone" && (
-              <button
-                type="button"
-                onClick={() => updatePanel(panel.id, (current) => ({ ...current, totalDone: !current.totalDone }))}
-                className="inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs"
-                style={{
-                  background: panel.totalDone ? "rgba(86,196,138,0.14)" : "rgba(255,255,255,0.05)",
-                  color: panel.totalDone ? "#56C48A" : "rgba(255,255,255,0.5)",
-                }}
-              >
-                {panel.totalDone ? <CheckSquare size={12} /> : <Check size={12} />}
-                {panel.totalDone ? "已勾选" : "未勾选"}
-              </button>
-            )}
-
-            {column.key === "imageProgress" && (
-              <div className="relative inline-flex">
-                <ProgressPill
-                  value={panel.imageProgress}
-                  onClick={() =>
-                    setProgressMenu(
-                      progressMenu?.panelId === panel.id && progressMenu.field === "imageProgress"
-                        ? null
-                        : { panelId: panel.id, field: "imageProgress" },
-                    )
-                  }
-                />
-                {progressMenu?.panelId === panel.id && progressMenu.field === "imageProgress" && (
-                  <div
-                    className="absolute left-0 top-full z-20 mt-2 w-28 overflow-hidden rounded-2xl border"
-                    style={{ borderColor: "rgba(255,255,255,0.08)", background: "#1C150F" }}
-                  >
-                    {PROGRESS_ORDER.map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => setProgressValue(panel.id, "imageProgress", status)}
-                        className="flex w-full items-center justify-between px-3 py-2 text-xs"
-                        style={{ color: panel.imageProgress === status ? PROGRESS_META[status].color : "rgba(255,255,255,0.58)" }}
-                      >
-                        {status}
-                        {panel.imageProgress === status && <Check size={11} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {column.key === "videoProgress" && (
-              <div className="relative inline-flex">
-                <ProgressPill
-                  value={panel.videoProgress}
-                  onClick={() =>
-                    setProgressMenu(
-                      progressMenu?.panelId === panel.id && progressMenu.field === "videoProgress"
-                        ? null
-                        : { panelId: panel.id, field: "videoProgress" },
-                    )
-                  }
-                />
-                {progressMenu?.panelId === panel.id && progressMenu.field === "videoProgress" && (
-                  <div
-                    className="absolute left-0 top-full z-20 mt-2 w-28 overflow-hidden rounded-2xl border"
-                    style={{ borderColor: "rgba(255,255,255,0.08)", background: "#1C150F" }}
-                  >
-                    {PROGRESS_ORDER.map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => setProgressValue(panel.id, "videoProgress", status)}
-                        className="flex w-full items-center justify-between px-3 py-2 text-xs"
-                        style={{ color: panel.videoProgress === status ? PROGRESS_META[status].color : "rgba(255,255,255,0.58)" }}
-                      >
-                        {status}
-                        {panel.videoProgress === status && <Check size={11} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {column.key === "notes" &&
-              (isEditing ? (
-                renderEditableInput(column.key, panel.notes)
-              ) : (
-                <div className="line-clamp-4 text-[14px] leading-7" style={{ color: panel.notes ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.26)" }}>
-                  {panel.notes || "填写备注"}
-                </div>
-              ))}
-          </div>
-        );
-      })}
-
-      <div
-        className="flex items-start justify-center gap-2 border-b px-2 pt-3"
-        style={{
-          borderColor: "rgba(255,255,255,0.12)",
-          background: "#12100F",
-          minHeight: "158px",
-        }}
-      >
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.46)" }}
-          onClick={() => duplicatePanel(panel.id)}
-          title="复制行"
-        >
-          <Copy size={11} />
-        </button>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.46)" }}
-          onClick={() => startEdit(panel, "script")}
-          title="编辑"
-        >
-          <Edit3 size={11} />
-        </button>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full"
-          style={{ background: "rgba(255,107,107,0.12)", color: "#F06B6B" }}
-          onClick={() => deletePanel(panel.id)}
-          title="删除"
-        >
-          <Trash2 size={11} />
-        </button>
-        <button
-          type="button"
-          className="flex h-7 w-7 items-center justify-center rounded-full"
-          style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.38)" }}
-          onClick={() => toast.success("右键菜单支持向上/下插入、复制、剪切、粘贴")}
-          title="更多"
-        >
-          <MoreHorizontal size={11} />
-        </button>
-      </div>
-    </>
+    </div>
   );
 }

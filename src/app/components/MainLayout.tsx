@@ -2,20 +2,22 @@ import { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router";
 import {
   Home, Box, Zap, FolderOpen, Layout, Wrench,
-  Menu, RefreshCw, ListTodo, ChevronDown,
+  Menu, RefreshCw, Bell, Link2,
 } from "lucide-react";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { EnterpriseSettings } from "./enterprise/EnterpriseSettings";
 import { TokenModal, PERSONAL_TOKEN_BALANCE } from "./TokenModal";
-import { TaskQueue } from "./TaskQueue";
+import { getMessageUnreadCount, MessageCenter, type MessageReadIds } from "./MessageCenter";
 import { SpaceContext, type SpaceId } from "../context/SpaceContext";
+import { LEGACY_OFFLINE_TIME, MigrationAnnouncementModal, PersonalProjectMigrationDialog } from "./MigrationPrompts";
+import { PROJECTS_DATA } from "../data/projectsData";
 
 const NAV_ITEMS = [
   { icon: Home, label: "主页", path: "/" },
   { icon: Box, label: "资产", path: "/assets" },
   { icon: FolderOpen, label: "项目", path: "/projects" },
   { icon: Zap, label: "生成", path: "/generate" },
-
+  { icon: Link2, label: "链接", path: "/project-link" },
   { icon: Layout, label: "画布", path: "/canvas" },
   { icon: Wrench, label: "工具库", path: "/tools" },
 ];
@@ -26,6 +28,8 @@ const SPACES = [
   { id: "ent2", name: "未来创意工作室", short: "未来创意", type: "enterprise" as const, role: "成员", avatarColor: "#1A5CC4", letter: "未" },
 ];
 
+const ANNOUNCEMENT_STORAGE_KEY = "team-collab-migration-announcement-read-v2";
+
 export function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,12 +37,23 @@ export function MainLayout() {
   const [showSpaceSwitcher, setShowSpaceSwitcher] = useState(false);
   const [showEnterpriseSettings, setShowEnterpriseSettings] = useState(false);
   const [showTokenModal, setShowTokenModal] = useState(false);
-  const [showTaskQueue, setShowTaskQueue] = useState(false);
+  const [showMessageCenter, setShowMessageCenter] = useState(false);
+  const [messageReadIds, setMessageReadIds] = useState<MessageReadIds>(new Set());
+  const [showAnnouncement, setShowAnnouncement] = useState(() => localStorage.getItem(ANNOUNCEMENT_STORAGE_KEY) !== "true");
+  const [showPersonalMigration, setShowPersonalMigration] = useState(false);
+  const [migrationInitialProjectIds, setMigrationInitialProjectIds] = useState<string[] | undefined>(undefined);
+  const [migratedProjectIds, setMigratedProjectIds] = useState<string[]>([]);
 
   const currentSpace = SPACES.find(s => s.id === currentSpaceId)!;
+  const messageUnreadCount = getMessageUnreadCount(currentSpaceId !== "personal", messageReadIds);
+
+  const openPersonalMigration = (projectIds?: string[]) => {
+    setMigrationInitialProjectIds(projectIds);
+    setShowPersonalMigration(true);
+  };
 
   return (
-    <SpaceContext.Provider value={{ spaceId: currentSpaceId as SpaceId }}>
+    <SpaceContext.Provider value={{ spaceId: currentSpaceId as SpaceId, migratedProjectIds, openPersonalMigration }}>
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: "#140F09" }}>
       {/* Sidebar */}
       <div className="flex flex-col items-center py-4 flex-shrink-0 relative z-20"
@@ -52,16 +67,17 @@ export function MainLayout() {
         {/* Nav Items */}
         <div className="flex flex-col gap-1 flex-1">
           {NAV_ITEMS.map(({ icon: Icon, label, path }) => {
-            // Hide "项目" in personal space
-            if (currentSpaceId === "personal" && path === "/projects") return null;
-
-            const isActive = location.pathname === path;
+            const isActive = location.pathname === path || (path !== "/" && location.pathname.startsWith(`${path}/`));
+            const isProjects = path === "/projects";
+            const showNewTag = currentSpaceId !== "personal" && isProjects;
+            const showOfflineTag = currentSpaceId === "personal" && isProjects;
             return (
               <button
                 key={path}
                 onClick={() => navigate(path)}
-                className="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-12"
+                className="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg transition-colors w-12 relative"
                 style={{ color: isActive ? "#E87322" : "rgba(255,255,255,0.4)" }}
+                title={showNewTag ? "新版团队协作已上线，项目协作能力统一在团队空间中使用" : showOfflineTag ? `个人空间项目将于 ${LEGACY_OFFLINE_TIME} 下线，请尽快完成迁移` : label}
                 onMouseEnter={(e) => {
                   if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.7)";
                 }}
@@ -69,8 +85,28 @@ export function MainLayout() {
                   if (!isActive) (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.4)";
                 }}
               >
-                <Icon size={18} />
-                <span className="text-center" style={{ fontSize: "10px", lineHeight: 1.2 }}>{label}</span>
+                <div className="relative">
+                  <Icon size={18} />
+                </div>
+                <span className="text-center relative" style={{ fontSize: "10px", lineHeight: 1.2 }}>
+                  {label}
+                  {showNewTag && (
+                    <span
+                      className="absolute -top-2 -right-4 rounded px-1 font-semibold"
+                      style={{ fontSize: "7px", lineHeight: "10px", color: "white", background: "#E87322" }}
+                    >
+                      NEW
+                    </span>
+                  )}
+                </span>
+                {showOfflineTag && (
+                  <span
+                    className="absolute -right-5 top-1 rounded px-1 font-semibold whitespace-nowrap"
+                    style={{ fontSize: "7px", lineHeight: "12px", color: "#fff", background: "#D9534F" }}
+                  >
+                    即将下线
+                  </span>
+                )}
               </button>
             );
           })}
@@ -90,6 +126,23 @@ export function MainLayout() {
                 {PERSONAL_TOKEN_BALANCE >= 1000 ? `${(PERSONAL_TOKEN_BALANCE / 1000).toFixed(1)}k` : PERSONAL_TOKEN_BALANCE}
               </span>
             </div>
+          </button>
+
+          <button
+            onClick={() => setShowMessageCenter(true)}
+            className="relative flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-white/5"
+            title="消息中心"
+            style={{ color: "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            <Bell size={18} />
+            {messageUnreadCount > 0 && (
+              <span
+                className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                style={{ background: "#E87322", color: "#fff", boxShadow: "0 0 0 2px #140F09" }}
+              >
+                {messageUnreadCount > 99 ? "99+" : messageUnreadCount}
+              </span>
+            )}
           </button>
 
           {/* ── Space Switcher Avatar ── */}
@@ -141,33 +194,48 @@ export function MainLayout() {
         <TokenModal onClose={() => setShowTokenModal(false)} mode="total" />
       )}
 
-      {showTaskQueue && (
-        <TaskQueue onClose={() => setShowTaskQueue(false)} />
+      {showAnnouncement && (
+        <MigrationAnnouncementModal
+          onClose={() => {
+            localStorage.setItem(ANNOUNCEMENT_STORAGE_KEY, "true");
+            setShowAnnouncement(false);
+          }}
+          onGoMigration={() => {
+            localStorage.setItem(ANNOUNCEMENT_STORAGE_KEY, "true");
+            setShowAnnouncement(false);
+            setCurrentSpaceId("personal");
+            navigate("/projects");
+            openPersonalMigration();
+          }}
+        />
       )}
 
-      {/* ── Floating Task Queue Pill (always visible, top-right) ── */}
-      {!showTaskQueue && (
-        <button
-          onClick={() => setShowTaskQueue(true)}
-          className="fixed z-[150] flex items-center gap-2 rounded-[20px]"
-          title="任务队列"
-          style={{
-            top: "16px",
-            right: "16px",
-            padding: "8px 16px 8px 14px",
-            background: "rgba(0,0,0,0.4)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            boxShadow: "inset 0 0 12px 0 rgba(255,255,255,0.2), 0 8px 32px rgba(0,0,0,0.4)",
+      {showMessageCenter && (
+        <MessageCenter
+          isTeamSpace={currentSpaceId !== "personal"}
+          readIds={messageReadIds}
+          setReadIds={setMessageReadIds}
+          onClose={() => setShowMessageCenter(false)}
+          onGoMigration={() => {
+            localStorage.setItem(ANNOUNCEMENT_STORAGE_KEY, "true");
+            setShowAnnouncement(false);
+            setShowMessageCenter(false);
+            setCurrentSpaceId("personal");
+            navigate("/projects");
+            openPersonalMigration();
           }}
-        >
-          <ListTodo size={15} style={{ color: "rgba(255,255,255,0.6)" }} />
-          <span style={{ fontSize: "14px", color: "rgba(255,255,255,0.6)", lineHeight: 1 }}>队列</span>
-          {/* Running task indicator */}
-          <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#E87322" }} />
-          <ChevronDown size={12} style={{ color: "rgba(255,255,255,0.35)" }} />
-        </button>
+        />
+      )}
+
+      {showPersonalMigration && (
+        <PersonalProjectMigrationDialog
+          projects={PROJECTS_DATA}
+          migratedIds={migratedProjectIds}
+          initialProjectIds={migrationInitialProjectIds}
+          teamSpaces={[]}
+          onClose={() => setShowPersonalMigration(false)}
+          onComplete={(ids) => setMigratedProjectIds(prev => Array.from(new Set([...prev, ...ids])))}
+        />
       )}
 
       <div className="flex-1 overflow-hidden relative">

@@ -10,7 +10,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: '/shanhai/',
+  base: '/',
   resolve: {
     alias: {
       // Alias @ to the src directory

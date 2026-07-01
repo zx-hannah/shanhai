@@ -37,7 +37,35 @@ export interface ProjectData {
   permission: ProjectPermission;
 }
 
+export const ONBOARDING_DEMO_PROJECT_ID = "onboarding-demo";
+
 export const PROJECTS_DATA: ProjectData[] = [
+  {
+    id: ONBOARDING_DEMO_PROJECT_ID,
+    name: "示例项目《国宝》",
+    description: "用于新手引导的示例项目，带你熟悉项目总览、成员协作、额度管理和内容生产流程",
+    lastEdit: "刚刚",
+    cover: "/community-assets/qin-ware.png",
+    status: "进行中",
+    progress: 36,
+    episodes: 3,
+    completedEpisodes: 1,
+    totalAssets: 64,
+    tokenUsed: 3200,
+    tokenTotal: 20000,
+    startDate: "2026-06-24",
+    episodeStats: [
+      { name: "第一集", progress: 100, assets: 28, tokenUsed: 1500 },
+      { name: "第二集", progress: 45, assets: 20, tokenUsed: 1100 },
+      { name: "第三集", progress: 8, assets: 6, tokenUsed: 600 },
+    ],
+    members: [
+      { name: "新手主创", avatar: "主", role: "主创", generated: 28, tokenUsed: 1250, contribution: 39 },
+      { name: "视觉设定", avatar: "视", role: "角色", generated: 21, tokenUsed: 980, contribution: 31 },
+      { name: "分镜协作", avatar: "分", role: "分镜", generated: 15, tokenUsed: 970, contribution: 30 },
+    ],
+    permission: "编辑" as const,
+  },
   {
     id: "1",
     name: "东方神话·第一季",
@@ -151,7 +179,7 @@ export const PROJECTS_DATA: ProjectData[] = [
       { name: "Kate", avatar: "Ka", role: "主创", generated: 55, tokenUsed: 2800, contribution: 67 },
       { name: "Leo", avatar: "Le", role: "助理", generated: 34, tokenUsed: 1400, contribution: 33 },
     ],
-    permission: "编辑" as const,
+    permission: "管理" as const,
   },
   {
     id: "5",

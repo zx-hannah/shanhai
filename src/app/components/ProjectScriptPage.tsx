@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { useParams, useNavigate } from "react-router";
+import { useState, useRef, useEffect, useLayoutEffect, type CSSProperties, type ReactNode } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router";
 import {
   Plus, Sparkles, Pencil, X, Check, Settings, Eye,
   Image, ChevronRight, ChevronLeft,
@@ -27,6 +27,30 @@ interface EpisodeItem {
 }
 
 type ExtractScope = "episode" | "global";
+type ScriptGuideTarget = "chapter-list" | "sidebar-toggle" | "script-editor" | "extract-subjects" | "linked-subjects";
+
+const SCRIPT_GUIDE_STEPS: { target: ScriptGuideTarget; title: string; body: ReactNode }[] = [
+  {
+    target: "chapter-list",
+    title: "分集目录",
+    body: "左侧是剧本分集，支持新增、重命名或删除剧集。",
+  },
+  {
+    target: "sidebar-toggle",
+    title: "展开/收起侧边栏",
+    body: "点击可以展开或收起左侧边栏。需要专注时可以收起侧边栏，给编辑区留出更多空间。",
+  },
+  {
+    target: "script-editor",
+    title: "剧本编辑",
+    body: "中间编辑区用于输入剧本正文。",
+  },
+  {
+    target: "linked-subjects",
+    title: "剧集关联主体",
+    body: "可为每集添加当前剧集关联的人物、场景、道具，进入主体模块后可查看每个主体的出现集数和占比。",
+  },
+];
 
 /* ── Mock Data ──────────────────────────────────────────────────────────────── */
 
@@ -217,6 +241,130 @@ function extractSubjectsFromChapters(chapters: Chapter[], scope: ExtractScope, a
   });
 
   return nextItems;
+}
+
+function ScriptModuleGuide({
+  step,
+  total,
+  current,
+  onPrev,
+  onNext,
+  onClose,
+}: {
+  step: number;
+  total: number;
+  current: { target: ScriptGuideTarget; title: string; body: ReactNode };
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const [cardPosition, setCardPosition] = useState<CSSProperties>({ right: 24, bottom: 24 });
+  const [targetFrame, setTargetFrame] = useState<CSSProperties | null>(null);
+  const isLast = step === total - 1;
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    let tries = 0;
+    const updatePosition = () => {
+      const target = document.querySelector(`[data-script-guide-target="${current.target}"]`) as HTMLElement | null;
+      if (!target) {
+        if (tries < 12) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        if (tries < 12) {
+          tries += 1;
+          frame = window.requestAnimationFrame(updatePosition);
+        }
+        return;
+      }
+
+      const margin = 18;
+      const gap = 18;
+      const pad = 8;
+      const cardWidth = 360;
+      const cardHeight = 240;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const frameLeft = Math.max(margin, rect.left - pad);
+      const frameTop = Math.max(margin, rect.top - pad);
+      const frameRight = Math.min(viewportWidth - margin, rect.right + pad);
+      const frameBottom = Math.min(viewportHeight - margin, rect.bottom + pad);
+
+      setTargetFrame({
+        left: frameLeft,
+        top: frameTop,
+        width: Math.max(0, frameRight - frameLeft),
+        height: Math.max(0, frameBottom - frameTop),
+      });
+
+      let left = rect.right + gap;
+      let top = rect.top + Math.max(0, (rect.height - cardHeight) / 2);
+      if (left + cardWidth + margin > viewportWidth) left = rect.left - cardWidth - gap;
+      if (left < margin) {
+        left = Math.min(Math.max(rect.left, margin), viewportWidth - cardWidth - margin);
+        top = rect.bottom + gap;
+      }
+      if (top + cardHeight + margin > viewportHeight) top = rect.top - cardHeight - gap;
+      if (top < margin) top = Math.min(Math.max(rect.bottom + gap, margin), viewportHeight - cardHeight - margin);
+
+      setCardPosition({ left, top });
+    };
+
+    frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [current.target]);
+
+  return (
+    <div className="fixed inset-0 z-[70] pointer-events-none">
+      {targetFrame ? (
+        <>
+          <div className="absolute left-0 right-0 top-0" style={{ height: targetFrame.top as number, background: "rgba(4,3,2,0.56)" }} />
+          <div className="absolute left-0 bottom-0 right-0" style={{ top: ((targetFrame.top as number) + (targetFrame.height as number)), background: "rgba(4,3,2,0.56)" }} />
+          <div className="absolute left-0" style={{ top: targetFrame.top as number, width: targetFrame.left as number, height: targetFrame.height as number, background: "rgba(4,3,2,0.56)" }} />
+          <div className="absolute right-0" style={{ top: targetFrame.top as number, left: ((targetFrame.left as number) + (targetFrame.width as number)), height: targetFrame.height as number, background: "rgba(4,3,2,0.56)" }} />
+          <div className="absolute rounded-[20px]" style={{ ...targetFrame, zIndex: 75, border: "3px solid #F5A623", boxShadow: "0 0 0 6px rgba(245,166,35,0.18), 0 18px 44px rgba(245,166,35,0.24)" }} />
+        </>
+      ) : (
+        <div className="absolute inset-0" style={{ background: "rgba(4,3,2,0.56)" }} />
+      )}
+      <div className="absolute z-[80] w-[360px] rounded-2xl p-4 pointer-events-auto" style={{ ...cardPosition, background: "#1A1510", border: "2px solid #F5A623", boxShadow: "0 28px 70px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.08), 0 0 34px rgba(245,166,35,0.22)" }}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-base font-semibold text-white">{current.title}</h3>
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+              style={{ color: "#F5A623", background: "rgba(245,166,35,0.12)", border: "1px solid rgba(245,166,35,0.22)" }}
+            >
+              {step + 1}/{total}
+            </span>
+          </div>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-white/10" style={{ color: "rgba(255,255,255,0.45)" }} title="关闭新手引导">
+            <X size={14} />
+          </button>
+        </div>
+        <p className="mb-4 text-sm leading-6" style={{ color: "rgba(255,255,255,0.68)" }}>{current.body}</p>
+        <div className="flex items-center justify-between gap-2">
+          <button onClick={onPrev} className="h-8 rounded-lg px-3 text-xs transition-opacity" style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.68)" }}>
+            上一步
+          </button>
+          <button onClick={onNext} className="h-8 rounded-lg px-3 text-xs font-medium transition-opacity hover:opacity-90" style={{ background: "#E87322", color: "#fff" }}>
+            {isLast ? "进入主体模块" : "下一步"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function GlobalSettings({
@@ -1085,6 +1233,7 @@ function SubjectExtractDialog({
 export function ProjectScriptPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [chapters, setChapters] = useState<Chapter[]>(MOCK_CHAPTERS);
   const [activeChapterId, setActiveChapterId] = useState("ch1");
   const [showSettings, setShowSettings] = useState(true);
@@ -1094,7 +1243,34 @@ export function ProjectScriptPage() {
   const [episodeItems, setEpisodeItems] = useState<EpisodeItem[]>(MOCK_EPISODE_ITEMS);
   const [showParseDialog, setShowParseDialog] = useState(false);
   const [showExtractDialog, setShowExtractDialog] = useState(false);
+  const [showScriptGuide, setShowScriptGuide] = useState(() => searchParams.get("guide") === "1");
+  const [scriptGuideStep, setScriptGuideStep] = useState(0);
   const extractCost = Math.max(1, Math.ceil(chapters.reduce((sum, chapter) => sum + chapter.content.length, 0) / 1000));
+  const currentScriptGuideStep = SCRIPT_GUIDE_STEPS[scriptGuideStep];
+
+  const closeScriptGuide = () => {
+    setShowScriptGuide(false);
+    setScriptGuideStep(0);
+    const nextUrl = `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  };
+
+  useEffect(() => {
+    if (searchParams.get("guide") === "1") {
+      setShowScriptGuide(true);
+      setScriptGuideStep(searchParams.get("guideStep") === "last" ? SCRIPT_GUIDE_STEPS.length - 1 : 0);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!showScriptGuide) return;
+    if (currentScriptGuideStep.target === "chapter-list" || currentScriptGuideStep.target === "sidebar-toggle") {
+      setSidebarCollapsed(false);
+    }
+    if (currentScriptGuideStep.target === "linked-subjects") {
+      setShowSettings(true);
+    }
+  }, [currentScriptGuideStep.target, showScriptGuide]);
 
   const handleParseConfirm = (parsed: ParsedEpisode[]) => {
     const newChapters = parsed.map((ep, idx) => ({
@@ -1192,6 +1368,7 @@ export function ProjectScriptPage() {
     <div className="flex h-full" style={{ background: "#140F09" }}>
       {/* ── Left Sidebar ──────────────────────────────────────────────── */}
       <div
+        data-script-guide-target="chapter-list"
         className="flex flex-col flex-shrink-0 relative"
         style={{
           width: sidebarCollapsed ? "28px" : "220px",
@@ -1203,6 +1380,7 @@ export function ProjectScriptPage() {
       >
         {/* Collapse toggle */}
         <button
+          data-script-guide-target="sidebar-toggle"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           className="absolute top-2 right-1 z-10 w-5 h-5 rounded flex items-center justify-center hover:bg-white/10"
           style={{ color: "rgba(255,255,255,0.35)" }}
@@ -1270,6 +1448,7 @@ export function ProjectScriptPage() {
                   <Sparkles size={11} />剧本解析
                 </button>
                 <button
+                  data-script-guide-target="extract-subjects"
                   onClick={() => setShowExtractDialog(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
                   style={{ background: "rgba(232,115,34,0.12)", color: "#E87322", border: "1px solid rgba(232,115,34,0.18)" }}
@@ -1283,7 +1462,7 @@ export function ProjectScriptPage() {
 
         {/* Editor area */}
         <div className="flex-1 overflow-auto">
-          <div className="max-w-3xl mx-auto px-8 py-6">
+          <div className="max-w-3xl mx-auto px-8 py-6" data-script-guide-target="script-editor">
             {editMode ? (
               <textarea
                 value={editContent}
@@ -1317,6 +1496,7 @@ export function ProjectScriptPage() {
       {/* ── Right Panel ───────────────────────────────────────────────── */}
       {showSettings && (
         <div
+          data-script-guide-target="linked-subjects"
           className="flex-shrink-0 flex flex-col overflow-hidden"
           style={{
             width: "280px",
@@ -1349,6 +1529,30 @@ export function ProjectScriptPage() {
         totalWords={chapters.reduce((sum, chapter) => sum + chapter.content.length, 0)}
         cost={extractCost}
       />
+      {showScriptGuide && currentScriptGuideStep && (
+        <ScriptModuleGuide
+          step={scriptGuideStep}
+          total={SCRIPT_GUIDE_STEPS.length}
+          current={currentScriptGuideStep}
+          onPrev={() => {
+            if (scriptGuideStep === 0) {
+              closeScriptGuide();
+              navigate(`/project/${id}?guide=1&guideStep=last`);
+              return;
+            }
+            setScriptGuideStep((value) => Math.max(0, value - 1));
+          }}
+          onNext={() => {
+            if (scriptGuideStep === SCRIPT_GUIDE_STEPS.length - 1) {
+              closeScriptGuide();
+              navigate(`/project/${id}/subjects?guide=1`);
+              return;
+            }
+            setScriptGuideStep((value) => Math.min(SCRIPT_GUIDE_STEPS.length - 1, value + 1));
+          }}
+          onClose={closeScriptGuide}
+        />
+      )}
     </div>
   );
 }
